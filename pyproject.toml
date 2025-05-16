@@ -1,0 +1,33 @@
+[project]
+name = "llm-iml"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "accelerate>=1.7.0",
+    "anthropic>=0.51.0",
+    "art>=6.5",
+    "boto3>=1.38.17",
+    "bpe>=1.0",
+    "confection==0.1.4",
+    "datasketch>=1.6.5",
+    "fschat>=0.2.36",
+    "google-cloud-aiplatform>=1.93.0",
+    "google-generativeai>=0.8.5",
+    "ipykernel>=6.29.5",
+    "ipywidgets>=8.1.7",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.3",
+    "mistralai>=1.7.0",
+    "openai>=1.25.1",
+    "pandas>=2.2.3",
+    "ray>=2.46.0",
+    "sentence-transformers>=4.1.0",
+    "spacy==3.7.2",
+    "tenacity>=9.1.2",
+    "torchvision>=0.18.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.51.3",
+    "vllm>=0.3.0",
+]
