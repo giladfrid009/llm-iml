@@ -147,8 +147,8 @@ class AutoDAN(SingleBehaviorRedTeamingMethod):
             candidates_tokens = tokenizer(candidates, padding=True, add_special_tokens=False, return_tensors='pt').input_ids
             candidates_embeds = embed_layer(candidates_tokens.to(model.device))
 
-            input_embeds = torch.cat([candidates_embeds, target_embeds.repeat(batch_size, 1, 1)], dim=1)
-            loss = find_executable_batch_size(self.compute_candidates_loss, self.forward_batch_size)(input_embeds, target_ids)
+            inputs_embeds = torch.cat([candidates_embeds, target_embeds.repeat(batch_size, 1, 1)], dim=1)
+            loss = find_executable_batch_size(self.compute_candidates_loss, self.forward_batch_size)(inputs_embeds, target_ids)
 
             best_new_adv_prefix_id = loss.argmin()
             best_new_adv_prefix = new_adv_prefixes[best_new_adv_prefix_id]
@@ -192,27 +192,27 @@ class AutoDAN(SingleBehaviorRedTeamingMethod):
                                                                 no_mutate_words=[])
             new_adv_prefixes = unfiltered_new_adv_prefixes
             
-            del candidates_embeds, input_embeds, loss
+            del candidates_embeds, inputs_embeds, loss
             torch.cuda.empty_cache()
             gc.collect()
         
         return test_case, logs
 
-    def compute_candidates_loss(self, forward_batch_size, input_embeds, target_ids):
+    def compute_candidates_loss(self, forward_batch_size, inputs_embeds, target_ids):
         if self.forward_batch_size != forward_batch_size:
             print(f"INFO: Setting candidates forward_batch_size to {forward_batch_size})")
             self.forward_batch_size = forward_batch_size
 
         all_loss = []
-        for i in range(0, input_embeds.shape[0], forward_batch_size):
+        for i in range(0, inputs_embeds.shape[0], forward_batch_size):
             with torch.no_grad():
-                input_embeds_batch = input_embeds[i:i+forward_batch_size]
-                outputs = self.model(inputs_embeds=input_embeds_batch)
+                inputs_embeds_batch = inputs_embeds[i:i+forward_batch_size]
+                outputs = self.model(inputs_embeds=inputs_embeds_batch)
             logits = outputs.logits
 
             # compute loss
             # Shift so that tokens < n predict n
-            tmp = input_embeds.shape[1] - target_ids.shape[1]
+            tmp = inputs_embeds.shape[1] - target_ids.shape[1]
             shift_logits = logits[..., tmp-1:-1, :].contiguous()
             shift_labels = target_ids.repeat(forward_batch_size, 1)
             # Flatten the tokens

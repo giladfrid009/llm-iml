@@ -134,10 +134,10 @@ def evaluate(
 
             for softopt_result, instance in zip(softopt_results, instance_group):
                 instance.id = id
-                input_embeds = softopt_result.input_embeds.to("cuda")
+                inputs_embeds = softopt_result.inputs_embeds.to("cuda")
                 with torch.no_grad():
                     output = model.generate(
-                        inputs_embeds=input_embeds,
+                        inputs_embeds=inputs_embeds,
                         pad_token_id=tokenizer.pad_token_id,
                         return_dict_in_generate=True,
                         **gen_kwargs,
@@ -151,7 +151,7 @@ def evaluate(
 
                 instance.generation = generation
                 if log_soft_embeds:
-                    instance.input_embeds = input_embeds.tolist()
+                    instance.inputs_embeds = inputs_embeds.tolist()
                 if log_losses:
                     instance.losses = softopt_result.losses
     # flatten list

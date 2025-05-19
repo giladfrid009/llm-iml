@@ -16,7 +16,6 @@ class EmbedInjector(nn.Module):
         num_tokens: int = 10,
         adv_token: str = "[ADV]",
     ):
-
         super().__init__()
 
         # model
@@ -33,8 +32,13 @@ class EmbedInjector(nn.Module):
         # params
         self.device = utils.extract_device(model)
         self.num_tokens = num_tokens
-        self.embed_dim = model.get_input_embeddings().weight.shape[1]
-        self.dtype = model.get_input_embeddings().weight.dtype
+
+    @property
+    def embed_dim(self) -> int:
+        """
+        Returns the embedding dimension of the model.
+        """
+        return self.model.get_input_embeddings().weight.size(-1)
 
     def tokenize(
         self,
@@ -54,7 +58,7 @@ class EmbedInjector(nn.Module):
                 - input_ids: Token IDs of the entire tokenized texts.
                 - attention_mask: Attention mask of the entire tokenized texts.
                 - adv_mask: Mask for the adversarial tokens.
-                - const_mask: Mask for the constant tokens for KV-cache.
+                - const_idx: Mask for the constant tokens for KV-cache.
                 - target_mask: Mask for the target tokens, if provided.
         """
 
@@ -120,15 +124,14 @@ class EmbedInjector(nn.Module):
         adv_token_id = self.tokenizer.convert_tokens_to_ids(self.adv_token)
         adv_mask = token_ids == adv_token_id
 
-        # create const mask, parts of the input batch that does not change
-        const_mask = torch.zeros_like(token_ids, dtype=torch.bool, device=self.device)
-        const_mask[:, : torch.argmax(adv_mask.int(), dim=1).min()] = True
+        # create const idx, parts of the input batch that does not change
+        const_idx = torch.argmax(adv_mask.int(), dim=1)
 
         result_dict = {
             "input_ids": token_ids,
             "attention_mask": attn_mask,
             "adv_mask": adv_mask,
-            "const_mask": const_mask,
+            "const_idx": const_idx,
         }
 
         if target_texts is not None:
@@ -149,11 +152,11 @@ class EmbedInjector(nn.Module):
             targets (list[str] | None): List of target texts. If None, only input texts are embedded.
 
         Returns:
-            dict[str, torch.Tensor]: Dictionary containing the embedded input and target texts, with the following keys:
+            dict[str,torch.Tensor]: Dictionary containing the embedded input and target texts, with the following keys:
                 - input_ids: Token IDs of the entire tokenized texts.
                 - attention_mask: Attention mask of the entire tokenized texts.
                 - adv_mask: Mask for the adversarial tokens.
-                - const_mask: Mask for the constant tokens for KV-cache.
+                - const_idx: Per sample index of the constant tokens, for KV-caching.
                 - target_mask: Mask for the target tokens, if provided.
                 - inputs_embeds: Input embeddings of the entire tokenized texts.
         """
@@ -165,31 +168,31 @@ class EmbedInjector(nn.Module):
 
     def inject_embed(
         self,
-        input_embeds: torch.Tensor,
+        inputs_embeds: torch.Tensor,
         adver_embeds: torch.Tensor,
         adver_mask: torch.Tensor,
     ) -> torch.Tensor:
         """
         Inject the adversarial embedding into the input embeddings.
         """
-        assert input_embeds.ndim == adver_embeds.ndim
-        assert input_embeds.size(0) == adver_embeds.size(0) == adver_mask.size(0)  # same batch size
-        assert input_embeds.size(-1) == adver_embeds.size(-1)  # same embedding size
+        assert inputs_embeds.ndim == adver_embeds.ndim
+        assert inputs_embeds.size(0) == adver_embeds.size(0) == adver_mask.size(0)  # same batch size
+        assert inputs_embeds.size(-1) == adver_embeds.size(-1)  # same embedding size
 
-        if input_embeds.ndim == adver_mask.ndim + 1:
+        if inputs_embeds.ndim == adver_mask.ndim + 1:
             adver_mask = adver_mask.unsqueeze(-1)
 
-        return input_embeds.masked_scatter(mask=adver_mask, source=adver_embeds)
+        return inputs_embeds.masked_scatter(mask=adver_mask, source=adver_embeds)
 
     def forward(
         self,
-        input_embeds: torch.Tensor,
+        inputs_embeds: torch.Tensor,
         attn_mask: torch.Tensor,
         **kwargs,
     ):
         return self.model(
             input_ids=None,
-            inputs_embeds=input_embeds,
+            inputs_embeds=inputs_embeds,
             attention_mask=attn_mask,
             **kwargs,
         )
@@ -210,7 +213,7 @@ class EmbedInjector(nn.Module):
         token_dict = self.embed(input_texts)
 
         inj_embeds = self.inject_embed(
-            input_embeds=token_dict["inputs_embeds"],
+            inputs_embeds=token_dict["inputs_embeds"],
             adver_embeds=adv_embed,
             adver_mask=token_dict["adv_mask"],
         )

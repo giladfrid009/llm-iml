@@ -98,18 +98,18 @@ class PEZ(SingleBehaviorRedTeamingMethod):
             # ========== compute logits with concatenated optim embeds and target text ========== #
             optim_embeds_projected = project_soft_embeds.apply(optim_embeds.to(model.dtype))
 
-            input_embeds = torch.cat([before_embeds.repeat(num_generate, 1, 1), 
+            inputs_embeds = torch.cat([before_embeds.repeat(num_generate, 1, 1), 
                                       behavior_embeds.repeat(num_generate, 1, 1), 
                                       optim_embeds_projected, 
                                       after_embeds.repeat(num_generate, 1, 1), 
                                       target_embeds.repeat(num_generate, 1, 1)], dim=1)
 
-            outputs = self.model(inputs_embeds=input_embeds)
+            outputs = self.model(inputs_embeds=inputs_embeds)
             logits = outputs.logits
             
             # ========== compute loss ========== #
             # Shift so that tokens < n predict n
-            tmp = input_embeds.shape[1] - target_embeds.shape[1]
+            tmp = inputs_embeds.shape[1] - target_embeds.shape[1]
             shift_logits = logits[..., tmp-1:-1, :].contiguous()
             shift_labels = target_ids.repeat(num_generate, 1)
             # Flatten the tokens

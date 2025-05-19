@@ -85,11 +85,11 @@ class UAT(SingleBehaviorRedTeamingMethod):
     def extract_grad_hook(self, module, grad_in, grad_out):
         self.extracted_grads.append(grad_out[0])
 
-    def get_loss(self, search_batch_size, input_embeds, target_embeds, target_ids, no_grad=True):
+    def get_loss(self, search_batch_size, inputs_embeds, target_embeds, target_ids, no_grad=True):
         loss_list = []
-        for i in range(0, input_embeds.shape[0], search_batch_size):
-            input_embeds_batch = input_embeds[i:i+search_batch_size]
-            current_batch_size = input_embeds_batch.shape[0]
+        for i in range(0, inputs_embeds.shape[0], search_batch_size):
+            inputs_embeds_batch = inputs_embeds[i:i+search_batch_size]
+            current_batch_size = inputs_embeds_batch.shape[0]
 
             # forward pass
             if self.use_prefix_cache:
@@ -101,20 +101,20 @@ class UAT(SingleBehaviorRedTeamingMethod):
                         prefix_cache_batch[i].append(self.prefix_cache[i][j].expand(current_batch_size, -1, -1, -1))
                 if no_grad:
                     with torch.no_grad():
-                        outputs = self.model(inputs_embeds=input_embeds_batch, past_key_values=prefix_cache_batch)
+                        outputs = self.model(inputs_embeds=inputs_embeds_batch, past_key_values=prefix_cache_batch)
                 else:
-                    outputs = self.model(inputs_embeds=input_embeds_batch, past_key_values=prefix_cache_batch)
+                    outputs = self.model(inputs_embeds=inputs_embeds_batch, past_key_values=prefix_cache_batch)
             else:
                 if no_grad:
                     with torch.no_grad():
-                        outputs = self.model(inputs_embeds=input_embeds_batch)
+                        outputs = self.model(inputs_embeds=inputs_embeds_batch)
                 else:
-                    outputs = self.model(inputs_embeds=input_embeds)
+                    outputs = self.model(inputs_embeds=inputs_embeds)
 
             logits = outputs.logits
             # compute loss
             # Shift so that tokens < n predict n
-            tmp = input_embeds.shape[1] - target_embeds.shape[1]
+            tmp = inputs_embeds.shape[1] - target_embeds.shape[1]
             shift_logits = logits[..., tmp-1:-1, :].contiguous()
             shift_labels = target_ids.repeat(current_batch_size, 1)
             # Flatten the tokens
@@ -168,7 +168,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
         embedding_weight = embed_layer.weight.detach()
 
 
-        # ========== setup trigger_tokens and input_embeds components ========== #
+        # ========== setup trigger_tokens and inputs_embeds components ========== #
         trigger_tokens = tokenizer(adv_string_init, return_tensors="pt", add_special_tokens=False).to(device)['input_ids'][0]
         trigger_token_length = len(trigger_tokens)
 
@@ -184,18 +184,18 @@ class UAT(SingleBehaviorRedTeamingMethod):
 
         if self.use_prefix_cache:
             # precompute and cache states for system prompt and user prompt
-            init_input_embeds = torch.cat([before_embeds, behavior_embeds], dim=1)
+            init_inputs_embeds = torch.cat([before_embeds, behavior_embeds], dim=1)
             with torch.no_grad():
-                outputs = model(inputs_embeds=init_input_embeds, use_cache=True)
+                outputs = model(inputs_embeds=init_inputs_embeds, use_cache=True)
                 self.prefix_cache = outputs.past_key_values
         
         # ========== get initial loss for the trigger ==========
         model.zero_grad()
         if self.use_prefix_cache:
-            input_embeds = torch.cat([embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
+            inputs_embeds = torch.cat([embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
         else:
-            input_embeds = torch.cat([before_embeds, behavior_embeds, embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
-        loss = self.get_loss(1, input_embeds, target_embeds, target_ids, no_grad=False)
+            inputs_embeds = torch.cat([before_embeds, behavior_embeds, embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
+        loss = self.get_loss(1, inputs_embeds, target_embeds, target_ids, no_grad=False)
         best_loss = loss
         counter = 0
         end_iter = False
@@ -231,18 +231,18 @@ class UAT(SingleBehaviorRedTeamingMethod):
 
                 candidates_embeds = embed_layer(candidates_tokens)
                 if self.use_prefix_cache:
-                    input_embeds_candidates = torch.cat([candidates_embeds,
+                    inputs_embeds_candidates = torch.cat([candidates_embeds,
                                                          after_embeds.repeat(len(candidates), 1, 1),
                                                          target_embeds.repeat(len(candidates), 1, 1)], dim=1)
                 else:
-                    input_embeds_candidates = torch.cat([before_embeds.repeat(len(candidates), 1, 1),
+                    inputs_embeds_candidates = torch.cat([before_embeds.repeat(len(candidates), 1, 1),
                                                          behavior_embeds.repeat(len(candidates), 1, 1),
                                                          candidates_embeds,
                                                          after_embeds.repeat(len(candidates), 1, 1),
                                                          target_embeds.repeat(len(candidates), 1, 1)], dim=1)
 
                 # Auto Find Batch Size for foward candidates (each time go OOM will decay search_batch_size // 2)
-                candidate_losses = find_executable_batch_size(self.get_loss, self.search_batch_size)(input_embeds_candidates, target_embeds, target_ids)
+                candidate_losses = find_executable_batch_size(self.get_loss, self.search_batch_size)(inputs_embeds_candidates, target_embeds, target_ids)
 
                 curr_best_loss = candidate_losses[candidate_losses.argmin()]
                 curr_best_trigger_tokens = candidates_tokens[candidate_losses.argmin()]
@@ -262,10 +262,10 @@ class UAT(SingleBehaviorRedTeamingMethod):
                 model.zero_grad()
 
                 if self.use_prefix_cache:
-                    input_embeds = torch.cat([embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
+                    inputs_embeds = torch.cat([embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
                 else:
-                    input_embeds = torch.cat([before_embeds, behavior_embeds, embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
-                loss = self.get_loss(1, input_embeds, target_embeds, target_ids, no_grad=False)
+                    inputs_embeds = torch.cat([before_embeds, behavior_embeds, embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
+                loss = self.get_loss(1, inputs_embeds, target_embeds, target_ids, no_grad=False)
 
             test_case_ids = torch.cat([behavior_ids, trigger_tokens.unsqueeze(0)], dim=1)
             test_case = tokenizer.decode(test_case_ids[0])

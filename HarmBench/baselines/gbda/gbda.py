@@ -105,18 +105,18 @@ class GBDA(SingleBehaviorRedTeamingMethod):
             coeffs = torch.nn.functional.gumbel_softmax(log_coeffs, hard=False, tau=taus[i]).to(embeddings.dtype) # B x T x V
             optim_embeds = (coeffs @ embeddings[None, :, :]) # B x T x D
 
-            input_embeds = torch.cat([before_embeds.repeat(num_generate, 1, 1), 
+            inputs_embeds = torch.cat([before_embeds.repeat(num_generate, 1, 1), 
                                     behavior_embeds.repeat(num_generate, 1, 1), 
                                     optim_embeds, 
                                     after_embeds.repeat(num_generate, 1, 1), 
                                     target_embeds.repeat(num_generate, 1, 1)], dim=1)
 
-            outputs = model(inputs_embeds=input_embeds)
+            outputs = model(inputs_embeds=inputs_embeds)
             logits = outputs.logits
             
             # ========== compute loss ========== #
             # Shift so that tokens < n predict n
-            tmp = input_embeds.shape[1] - target_embeds.shape[1]
+            tmp = inputs_embeds.shape[1] - target_embeds.shape[1]
             shift_logits = logits[..., tmp-1:-1, :].contiguous()
             shift_labels = target_ids.repeat(num_generate, 1)
             # Flatten the tokens

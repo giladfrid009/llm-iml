@@ -133,9 +133,9 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         
         if self.use_prefix_cache:
             # precompute KV cache for everything before the optimized tokens
-            input_embeds = torch.cat([before_embeds, behavior_embeds], dim=1)
+            inputs_embeds = torch.cat([before_embeds, behavior_embeds], dim=1)
             with torch.no_grad():
-                outputs = model(inputs_embeds=input_embeds, use_cache=True)
+                outputs = model(inputs_embeds=inputs_embeds, use_cache=True)
                 self.prefix_cache = outputs.past_key_values
 
         # ========== run optimization ========== #
@@ -150,17 +150,17 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
 
             # forward pass
             if self.use_prefix_cache:
-                input_embeds = torch.cat([optim_embeds, after_embeds, target_embeds], dim=1)
-                outputs = model(inputs_embeds=input_embeds, past_key_values=self.prefix_cache)
+                inputs_embeds = torch.cat([optim_embeds, after_embeds, target_embeds], dim=1)
+                outputs = model(inputs_embeds=inputs_embeds, past_key_values=self.prefix_cache)
             else:
-                input_embeds = torch.cat([before_embeds, behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
-                outputs = model(inputs_embeds=input_embeds)
+                inputs_embeds = torch.cat([before_embeds, behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
+                outputs = model(inputs_embeds=inputs_embeds)
             
             logits = outputs.logits
 
             # compute loss
             # Shift so that tokens < n predict n
-            tmp = input_embeds.shape[1] - target_embeds.shape[1]
+            tmp = inputs_embeds.shape[1] - target_embeds.shape[1]
             shift_logits = logits[..., tmp-1:-1, :].contiguous()
             shift_labels = target_ids
             # Flatten the tokens
@@ -201,18 +201,18 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
             # create input
             sampled_top_embeds = embed_layer(sampled_top_indices)
             if self.use_prefix_cache:
-                input_embeds = torch.cat([sampled_top_embeds,
+                inputs_embeds = torch.cat([sampled_top_embeds,
                                         after_embeds.repeat(new_search_width, 1, 1),
                                         target_embeds.repeat(new_search_width, 1, 1)], dim=1)
             else:
-                input_embeds = torch.cat([before_embeds.repeat(new_search_width, 1, 1),
+                inputs_embeds = torch.cat([before_embeds.repeat(new_search_width, 1, 1),
                                         behavior_embeds.repeat(new_search_width, 1, 1),
                                         sampled_top_embeds,
                                         after_embeds.repeat(new_search_width, 1, 1),
                                         target_embeds.repeat(new_search_width, 1, 1)], dim=1)
             
             # Auto Find Batch Size for foward candidates (each time go OOM will decay search_batch_size // 2)
-            loss = find_executable_batch_size(self.compute_candidates_loss, self.search_batch_size)(input_embeds, target_ids)
+            loss = find_executable_batch_size(self.compute_candidates_loss, self.search_batch_size)(inputs_embeds, target_ids)
 
             # ========== Update the optim_ids with the best candidate ========== #
             optim_ids = sampled_top_indices[loss.argmin()].unsqueeze(0)
@@ -238,7 +238,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
                 print()
                 break
 
-            del input_embeds, sampled_top_embeds, logits, shift_logits, loss
+            del inputs_embeds, sampled_top_embeds, logits, shift_logits, loss
             torch.cuda.empty_cache()
             gc.collect()
 
@@ -246,7 +246,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
 
         return test_case, logs
 
-    def compute_candidates_loss(self, search_batch_size, input_embeds, target_ids):
+    def compute_candidates_loss(self, search_batch_size, inputs_embeds, target_ids):
         if self.search_batch_size != search_batch_size:
             print(f"INFO: Setting candidates search_batch_size to {search_batch_size})")
             self.search_batch_size = search_batch_size
@@ -254,33 +254,33 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
             gc.collect()
 
         all_loss = []
-        for i in range(0, input_embeds.shape[0], search_batch_size):
+        for i in range(0, inputs_embeds.shape[0], search_batch_size):
             with torch.no_grad():
-                input_embeds_batch = input_embeds[i:i+search_batch_size]
+                inputs_embeds_batch = inputs_embeds[i:i+search_batch_size]
 
                 if self.use_prefix_cache:
                     # Expand prefix cache to match batch size
                     prefix_cache_batch = self.prefix_cache
-                    current_batch_size = input_embeds_batch.shape[0]
+                    current_batch_size = inputs_embeds_batch.shape[0]
                     prefix_cache_batch = []
                     for i in range(len(self.prefix_cache)):
                         prefix_cache_batch.append([])
                         for j in range(len(self.prefix_cache[i])):
                             prefix_cache_batch[i].append(self.prefix_cache[i][j].expand(current_batch_size, -1, -1, -1))
-                    outputs = self.model(inputs_embeds=input_embeds_batch, past_key_values=prefix_cache_batch)
+                    outputs = self.model(inputs_embeds=inputs_embeds_batch, past_key_values=prefix_cache_batch)
                 else:
-                    outputs = self.model(inputs_embeds=input_embeds_batch)
+                    outputs = self.model(inputs_embeds=inputs_embeds_batch)
             logits = outputs.logits
 
             # compute loss
             # Shift so that tokens < n predict n
-            tmp = input_embeds_batch.shape[1] - target_ids.shape[1]
+            tmp = inputs_embeds_batch.shape[1] - target_ids.shape[1]
             shift_logits = logits[..., tmp-1:-1, :].contiguous()
-            shift_labels = target_ids.repeat(input_embeds_batch.shape[0], 1)
+            shift_labels = target_ids.repeat(inputs_embeds_batch.shape[0], 1)
             # Flatten the tokens
             loss_fct = CrossEntropyLoss(reduction='none')
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-            loss = loss.view(input_embeds_batch.shape[0], -1).mean(dim=1)
+            loss = loss.view(inputs_embeds_batch.shape[0], -1).mean(dim=1)
             all_loss.append(loss)
 
         return torch.cat(all_loss, dim=0)

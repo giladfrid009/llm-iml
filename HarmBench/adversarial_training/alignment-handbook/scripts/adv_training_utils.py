@@ -344,9 +344,9 @@ def run_gcg(behavior,
         before_embeds, behavior_embeds, after_embeds, target_embeds = [embed_layer(input_ids) for input_ids in cache_input_ids]
 
         # first precompute and cache states for system prompt and user prompt
-        input_embeds = torch.cat([before_embeds, behavior_embeds], dim=1)
+        inputs_embeds = torch.cat([before_embeds, behavior_embeds], dim=1)
         with torch.no_grad():
-            outputs = model(inputs_embeds=input_embeds, use_cache=True)
+            outputs = model(inputs_embeds=inputs_embeds, use_cache=True)
             prefix_cache = outputs.past_key_values
         
         # Cast prefix_cache to bfloat16 (because the keys and values are cast to fp32 in the forward pass for some reason, but past_key_values can't be fp32)
@@ -366,15 +366,15 @@ def run_gcg(behavior,
             optim_ids_onehot = torch.zeros((1, num_optim_tokens, vocab_size), device=accelerator.device).to(vocab_embeds.dtype)
             optim_ids_onehot.scatter_(2, optim_ids.unsqueeze(2), 1.0).requires_grad_()
             optim_embeds = torch.matmul(optim_ids_onehot.squeeze(0), vocab_embeds).unsqueeze(0)
-            input_embeds = torch.cat([optim_embeds, after_embeds, target_embeds], dim=1)
+            inputs_embeds = torch.cat([optim_embeds, after_embeds, target_embeds], dim=1)
 
             # forward pass
-            outputs = model(inputs_embeds=input_embeds, past_key_values=prefix_cache)
+            outputs = model(inputs_embeds=inputs_embeds, past_key_values=prefix_cache)
             logits = outputs.logits
 
             # compute loss
             # Shift so that tokens < n predict n
-            tmp = input_embeds.shape[1] - target_embeds.shape[1]
+            tmp = inputs_embeds.shape[1] - target_embeds.shape[1]
             shift_logits = logits[..., tmp-1:-1, :].contiguous()
             shift_labels = target_ids
             # Flatten the tokens
@@ -398,7 +398,7 @@ def run_gcg(behavior,
                 # ========== Compute loss on these candidates and take the argmin. ========== #
                 # Create input
                 sampled_top_embeds = embed_layer(sampled_top_indices)
-                input_embeds = torch.cat([sampled_top_embeds,
+                inputs_embeds = torch.cat([sampled_top_embeds,
                                           after_embeds.repeat(search_width, 1, 1),
                                           target_embeds.repeat(search_width, 1, 1)], dim=1)
                 
@@ -407,11 +407,11 @@ def run_gcg(behavior,
                 indices = []
                 for batch_indices in indices_dataloader:
                     # Using the indices, we select the appropriate input embeddings
-                    current_input_embeds = input_embeds[batch_indices]
+                    current_inputs_embeds = inputs_embeds[batch_indices]
 
                     # Forward pass
-                    outputs = model(inputs_embeds=current_input_embeds, past_key_values=prefix_cache_batch)
-                    current_logits = outputs.logits.to(input_embeds.dtype)
+                    outputs = model(inputs_embeds=current_inputs_embeds, past_key_values=prefix_cache_batch)
+                    current_logits = outputs.logits.to(inputs_embeds.dtype)
                     logits.append(current_logits)
                     indices.append(batch_indices.unsqueeze(0))
 
@@ -427,7 +427,7 @@ def run_gcg(behavior,
 
                 # Compute loss
                 # Shift so that tokens < n predict n
-                tmp = input_embeds.shape[1] - target_embeds.shape[1]
+                tmp = inputs_embeds.shape[1] - target_embeds.shape[1]
                 shift_logits = logits[..., tmp-1:-1, :].contiguous()
                 shift_labels = target_ids.repeat(search_width, 1)
                 # Flatten the tokens

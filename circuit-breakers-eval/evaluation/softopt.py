@@ -27,7 +27,7 @@ class SoftOptConfig:
 class SoftOptResult:
     losses: List[float]
     optim_embeds: Tensor
-    input_embeds: Tensor
+    inputs_embeds: Tensor
 
 
 def mellowmax(t: Tensor, alpha=1.0, dim=-1):
@@ -124,14 +124,14 @@ def run(
     i = 0
     while i < max_steps:
         optimizer.zero_grad()
-        input_embeds = torch.cat([optim_embeds, after_embeds.detach(), target_embeds.detach()], dim=1)
+        inputs_embeds = torch.cat([optim_embeds, after_embeds.detach(), target_embeds.detach()], dim=1)
 
-        # output = model(inputs_embeds=input_embeds, past_key_values=prefix_cache, output_hidden_states=True) # TODO: using past prefix_cache bugs out the optimizer gradients 
-        output = model(inputs_embeds=input_embeds, output_hidden_states=True)
+        # output = model(inputs_embeds=inputs_embeds, past_key_values=prefix_cache, output_hidden_states=True) # TODO: using past prefix_cache bugs out the optimizer gradients 
+        output = model(inputs_embeds=inputs_embeds, output_hidden_states=True)
         logits = output.logits
 
         # Shift logits so token n-1 predicts token n
-        shift = input_embeds.shape[1] - target_ids.shape[1]
+        shift = inputs_embeds.shape[1] - target_ids.shape[1]
         shift_logits = logits[..., shift - 1 : -1, :].contiguous()  # (1, num_target_ids, vocab_size)
         shift_labels = target_ids
 
@@ -152,7 +152,7 @@ def run(
             result = SoftOptResult(
                 losses=losses,
                 optim_embeds=optim_embeds.detach().cpu(),
-                input_embeds=torch.cat([before_embeds, optim_embeds, after_embeds], dim=1).detach().cpu(),
+                inputs_embeds=torch.cat([before_embeds, optim_embeds, after_embeds], dim=1).detach().cpu(),
             )
             results.append(result)
             last_added = i
@@ -164,7 +164,7 @@ def run(
                 result = SoftOptResult(
                     losses=losses,
                     optim_embeds=optim_embeds.cpu(),
-                    input_embeds=torch.cat([before_embeds, optim_embeds, after_embeds], dim=1).cpu(),
+                    inputs_embeds=torch.cat([before_embeds, optim_embeds, after_embeds], dim=1).cpu(),
                 )
                 results.append(result)
                 last_added = i

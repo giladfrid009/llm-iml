@@ -97,14 +97,14 @@ class GCGModelWorker:
         
         if self.use_prefix_cache:
             prefix_cache = self.prefix_cache
-            input_embeds = torch.cat([behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
-            outputs = self.model(inputs_embeds=input_embeds, past_key_values=prefix_cache)
+            inputs_embeds = torch.cat([behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
+            outputs = self.model(inputs_embeds=inputs_embeds, past_key_values=prefix_cache)
         else:
-            input_embeds = torch.cat([before_embeds, behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
-            outputs = self.model(inputs_embeds=input_embeds)
+            inputs_embeds = torch.cat([before_embeds, behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
+            outputs = self.model(inputs_embeds=inputs_embeds)
 
         logits = outputs.logits
-        tmp = input_embeds.shape[1] - target_embeds.shape[1]
+        tmp = inputs_embeds.shape[1] - target_embeds.shape[1]
         shift_logits = logits[..., tmp-1:-1, :].contiguous()
         shift_labels = target_ids
         loss_fct = CrossEntropyLoss()
@@ -130,20 +130,20 @@ class GCGModelWorker:
 
         sampled_top_embeds = self.embed_layer(sampled_top_indices)
         if self.use_prefix_cache:
-            input_embeds = torch.cat([behavior_embeds.repeat(search_width, 1, 1),
+            inputs_embeds = torch.cat([behavior_embeds.repeat(search_width, 1, 1),
                                     sampled_top_embeds,
                                     self.after_embeds.repeat(search_width, 1, 1),
                                     target_embeds.repeat(search_width, 1, 1)], dim=1)
         else:
-            input_embeds = torch.cat([self.before_embeds.repeat(search_width, 1, 1),
+            inputs_embeds = torch.cat([self.before_embeds.repeat(search_width, 1, 1),
                                     behavior_embeds.repeat(search_width, 1, 1),
                                     sampled_top_embeds,
                                     self.after_embeds.repeat(search_width, 1, 1),
                                     target_embeds.repeat(search_width, 1, 1)], dim=1)
         
-        logits = find_executable_batch_size(self.compute_candidates_logits, self.search_batch_size)(input_embeds)
+        logits = find_executable_batch_size(self.compute_candidates_logits, self.search_batch_size)(inputs_embeds)
 
-        tmp = input_embeds.shape[1] - target_embeds.shape[1]
+        tmp = inputs_embeds.shape[1] - target_embeds.shape[1]
         shift_logits = logits[..., tmp-1:-1, :].contiguous()
         shift_labels = target_ids.repeat(search_width, 1)
         loss_fct = CrossEntropyLoss(reduction='none')
@@ -151,7 +151,7 @@ class GCGModelWorker:
 
         return loss.view(search_width, -1).mean(dim=1)
     
-    def compute_candidates_logits(self, search_batch_size, input_embeds):
+    def compute_candidates_logits(self, search_batch_size, inputs_embeds):
         if self.search_batch_size != search_batch_size:
             print(f"INFO: Setting candidates search_batch_size to {search_batch_size})")
             self.search_batch_size = search_batch_size
@@ -159,21 +159,21 @@ class GCGModelWorker:
             torch.cuda.empty_cache() 
 
         logits = []
-        for i in range(0, input_embeds.shape[0], search_batch_size):
+        for i in range(0, inputs_embeds.shape[0], search_batch_size):
             with torch.no_grad():
-                input_embeds_batch = input_embeds[i:i+search_batch_size]
+                inputs_embeds_batch = inputs_embeds[i:i+search_batch_size]
 
                 if self.use_prefix_cache:
                     prefix_cache = self.prefix_cache
-                    current_batch_size = input_embeds_batch.shape[0]
+                    current_batch_size = inputs_embeds_batch.shape[0]
                     prefix_cache_batch = []
                     for i in range(len(prefix_cache)):
                         prefix_cache_batch.append([])
                         for j in range(len(prefix_cache[i])):
                             prefix_cache_batch[i].append(prefix_cache[i][j].expand(current_batch_size, -1, -1, -1))
-                    outputs = self.model(inputs_embeds=input_embeds_batch, past_key_values=prefix_cache_batch)
+                    outputs = self.model(inputs_embeds=inputs_embeds_batch, past_key_values=prefix_cache_batch)
                 else:
-                    outputs = self.model(inputs_embeds=input_embeds_batch)
+                    outputs = self.model(inputs_embeds=inputs_embeds_batch)
             logits.append(outputs.logits)
         logits = torch.cat(logits, dim=0)
         return logits

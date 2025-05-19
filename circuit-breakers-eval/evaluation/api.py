@@ -12,7 +12,7 @@ class EvalInstance:
     final_loss: Optional[float] = None
     final_string: Optional[str] = None
     generation: Optional[str] = None
-    input_embeds: Optional[list] = None
+    inputs_embeds: Optional[list] = None
     losses: Optional[list] = None
     messages: Optional[str] = None
     method: Optional[str] = None
