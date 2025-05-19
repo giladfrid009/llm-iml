@@ -36,35 +36,27 @@ class EmbedInjector(nn.Module):
         self.embed_dim = model.get_input_embeddings().weight.shape[1]
         self.dtype = model.get_input_embeddings().weight.dtype
 
-    def tokenize_input_target(self, input_texts: list[str], target_texts: list[str]):
+    def tokenize(
+        self,
+        input_texts: list[str],
+        target_texts: list[str] | None = None,
+    ) -> dict[str, torch.Tensor]:
         """
         Tokenize the input and target texts.
         This function pads the input and target texts such that the adversarial tokens are aligned across all samples.
 
         Args:
             input_texts (list[str]): List of input texts.
-            target_texts (list[str]): List of target texts.
+            target_texts (list[str] | None): List of target texts. If None, only input texts are tokenized.
 
         Returns:
             dict: Dictionary containing the tokenized input and target texts, with the following keys:
-                - input_ids: Token IDs of the input texts.
-                - attention_mask: Attention mask for the input texts.
+                - input_ids: Token IDs of the entire tokenized texts.
+                - attention_mask: Attention mask of the entire tokenized texts.
                 - adv_mask: Mask for the adversarial tokens.
-                - target_mask: Mask for the target texts.
+                - const_mask: Mask for the constant tokens for KV-cache.
+                - target_mask: Mask for the target tokens, if provided.
         """
-
-        # we pad from input and target side, such that the adv tokens are aligned across all samples
-        # this allows us to use KV-cache efficiently for all samples, and ease of access to adv embedding
-
-        # example (P - padding, I - input, A - adv, T - target):
-        # [P][P][P][I][I] [A][A][A] [T][T][P][P]
-        # [P][I][I][I][I] [A][A][A] [T][T][T][T]
-        # [I][I][I][I][I] [A][A][A] [T][P][P][P]
-
-        # tested on:
-        # - meta-llama/Llama-3.2-1B-Instruct
-        # - Qwen/Qwen3-0.6B
-        # - samwit/koala-7b - target should begin with <think> token
 
         input_messeges = []
         for inp_txt in input_texts:
@@ -82,81 +74,125 @@ class EmbedInjector(nn.Module):
             enable_thinking=False,
         ).to(self.device)
 
-        self.tokenizer.padding_side = "right"
-        target_tokens = self.tokenizer(
-            target_texts,
-            padding=True,
-            padding_side="right",
-            return_tensors="pt",
-            return_attention_mask=True,
-        ).to(self.device)
+        token_ids = input_tokens["input_ids"]
+        attn_mask = input_tokens["attention_mask"]
 
-        # check if BOS was added to target, if yes remove it
-        if self.tokenizer.bos_token and target_tokens["input_ids"][0][0] == self.tokenizer.bos_token_id:
-            target_tokens["input_ids"] = target_tokens["input_ids"][:, 1:]
-            target_tokens["attention_mask"] = target_tokens["attention_mask"][:, 1:]
+        if target_texts is not None:
 
-        # combine input and target tokens
-        token_ids = torch.cat([input_tokens["input_ids"], target_tokens["input_ids"]], dim=1)
-        attn_mask = torch.cat([input_tokens["attention_mask"], target_tokens["attention_mask"]], dim=1)
+            # NOTE:
+            # we pad from input and target side, such that the adv tokens are aligned across all samples
+            # this allows us to use KV-cache efficiently for all samples, and ease of access to adv embedding
+
+            # example (P - padding, I - input, A - adv, T - target):
+            # [P][P][P][I][I] [A][A][A] [T][T][P][P]
+            # [P][I][I][I][I] [A][A][A] [T][T][T][T]
+            # [I][I][I][I][I] [A][A][A] [T][P][P][P]
+
+            # tested on:
+            # - meta-llama/Llama-3.2-1B-Instruct
+            # - Qwen/Qwen3-0.6B
+            # - samwit/koala-7b - target should begin with <think> token
+
+            self.tokenizer.padding_side = "right"
+            target_tokens = self.tokenizer(
+                target_texts,
+                padding=True,
+                padding_side="right",
+                return_tensors="pt",
+                return_attention_mask=True,
+            ).to(self.device)
+
+            # check if BOS was added to target, if yes remove it
+            if self.tokenizer.bos_token and target_tokens["input_ids"][0][0] == self.tokenizer.bos_token_id:
+                target_tokens["input_ids"] = target_tokens["input_ids"][:, 1:]
+                target_tokens["attention_mask"] = target_tokens["attention_mask"][:, 1:]
+
+            # combine input and target tokens
+            token_ids = torch.cat([token_ids, target_tokens["input_ids"]], dim=1)
+            attn_mask = torch.cat([attn_mask, target_tokens["attention_mask"]], dim=1)
+
+            # create target mask
+            target_mask = torch.zeros_like(token_ids, dtype=torch.bool)
+            target_mask[:, -target_tokens["input_ids"].shape[1] :] = True
+            target_mask = torch.logical_and(target_mask, attn_mask == 1)
 
         # create adv token mask
         adv_token_id = self.tokenizer.convert_tokens_to_ids(self.adv_token)
         adv_mask = token_ids == adv_token_id
 
-        # create target mask
-        target_mask = torch.zeros_like(token_ids, dtype=torch.bool, device=self.device)
-        target_mask[:, -target_tokens["input_ids"].shape[1] :] = True
-        target_mask = torch.logical_and(target_mask, attn_mask == 1)
+        # create const mask, parts of the input batch that does not change
+        const_mask = torch.zeros_like(token_ids, dtype=torch.bool, device=self.device)
+        const_mask[:, : torch.argmax(adv_mask.int(), dim=1).min()] = True
 
-        return {
+        result_dict = {
             "input_ids": token_ids,
             "attention_mask": attn_mask,
             "adv_mask": adv_mask,
-            "target_mask": target_mask,
+            "const_mask": const_mask,
         }
 
-    def tokenize_input(self, input_texts: list[str]):
+        if target_texts is not None:
+            result_dict["target_mask"] = target_mask
+
+        return result_dict
+
+    def embed(
+        self,
+        inputs: list[str],
+        targets: list[str] | None = None,
+    ) -> dict:
         """
-        Tokenize the input texts.
+        Embed the input and target texts using the model's input embeddings.
 
         Args:
-            input_texts (list[str]): List of input texts.
+            inputs (list[str]): List of input texts.
+            targets (list[str] | None): List of target texts. If None, only input texts are embedded.
 
         Returns:
-            dict: Dictionary containing the tokenized input texts with the following keys:
-                - input_ids: Token IDs of the input texts.
-                - attention_mask: Attention mask for the input texts.
+            dict[str, torch.Tensor]: Dictionary containing the embedded input and target texts, with the following keys:
+                - input_ids: Token IDs of the entire tokenized texts.
+                - attention_mask: Attention mask of the entire tokenized texts.
                 - adv_mask: Mask for the adversarial tokens.
-
+                - const_mask: Mask for the constant tokens for KV-cache.
+                - target_mask: Mask for the target tokens, if provided.
+                - inputs_embeds: Input embeddings of the entire tokenized texts.
         """
-        input_messeges = []
-        for inp_txt in input_texts:
-            msg = [
-                {"role": "user", "content": inp_txt + (self.adv_token * self.num_tokens)},
-            ]
-            input_messeges.append(msg)
+        tokenize_result = self.tokenize(inputs, targets)
+        embedder = self.model.get_input_embeddings()
+        inputs_embeds = embedder(tokenize_result["input_ids"])
+        tokenize_result["inputs_embeds"] = inputs_embeds
+        return tokenize_result
 
-        self.tokenizer.padding_side = "left"
-        input_tokens = self.tokenizer.apply_chat_template(
-            input_messeges,
-            add_generation_prompt=True,
-            padding=True,
-            padding_side="left",
-            return_dict=True,
-            return_tensors="pt",
-            enable_thinking=False,
-        ).to(self.device)
+    def inject_embed(
+        self,
+        input_embeds: torch.Tensor,
+        adver_embeds: torch.Tensor,
+        adver_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Inject the adversarial embedding into the input embeddings.
+        """
+        assert input_embeds.ndim == adver_embeds.ndim
+        assert input_embeds.size(0) == adver_embeds.size(0) == adver_mask.size(0)  # same batch size
+        assert input_embeds.size(-1) == adver_embeds.size(-1)  # same embedding size
 
-        # create adv token mask
-        adv_token_id = self.tokenizer.convert_tokens_to_ids(self.adv_token)
-        adv_mask = input_tokens["input_ids"] == adv_token_id
+        if input_embeds.ndim == adver_mask.ndim + 1:
+            adver_mask = adver_mask.unsqueeze(-1)
 
-        return {
-            "input_ids": input_tokens["input_ids"],
-            "attention_mask": input_tokens["attention_mask"],
-            "adv_mask": adv_mask,
-        }
+        return input_embeds.masked_scatter(mask=adver_mask, source=adver_embeds)
+
+    def forward(
+        self,
+        input_embeds: torch.Tensor,
+        attn_mask: torch.Tensor,
+        **kwargs,
+    ):
+        return self.model(
+            input_ids=None,
+            inputs_embeds=input_embeds,
+            attention_mask=attn_mask,
+            **kwargs,
+        )
 
     @torch.no_grad()
     def generate(self, input_texts: list[str], adv_embed: torch.Tensor, max_length: int = 100) -> list[str]:
@@ -171,13 +207,17 @@ class EmbedInjector(nn.Module):
         Returns:
             list[str]: List of generated adversarial texts.
         """
-        token_dict = self.tokenize_input(input_texts)
-        inputs_embeds = self.embed(token_dict["input_ids"])
-        inputs_embeds = inputs_embeds.masked_scatter(mask=token_dict["adv_mask"].unsqueeze(-1), source=adv_embed)
+        token_dict = self.embed(input_texts)
+
+        inj_embeds = self.inject_embed(
+            input_embeds=token_dict["inputs_embeds"],
+            adver_embeds=adv_embed,
+            adver_mask=token_dict["adv_mask"],
+        )
 
         result = self.model.generate(
             input_ids=None,
-            inputs_embeds=inputs_embeds,
+            inputs_embeds=inj_embeds,
             attention_mask=token_dict["attention_mask"],
             do_sample=True,
             max_length=max_length,
