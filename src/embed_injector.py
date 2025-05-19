@@ -5,7 +5,7 @@ from transformers import PreTrainedModel, PreTrainedTokenizer
 from tqdm.auto import tqdm
 import abc
 
-import utils
+from src import utils
 
 
 class EmbedInjector(nn.Module):
@@ -16,10 +16,12 @@ class EmbedInjector(nn.Module):
         num_tokens: int = 10,
         adv_token: str = "[ADV]",
     ):
+
+        super().__init__()
+
         # model
         self.model = model.eval()
         self.model.requires_grad_(False)
-        self.device = extract_device(model)
 
         # tokenizer
         self.tokenizer = tokenizer
@@ -27,10 +29,12 @@ class EmbedInjector(nn.Module):
         if self.adv_token not in tokenizer.get_vocab():
             tokenizer.add_special_tokens({"additional_special_tokens": [self.adv_token]})
             self.model.resize_token_embeddings(len(tokenizer))
-            
-        # attack params
-        self.num_tokens = num_tokens
 
+        # params
+        self.device = utils.extract_device(model)
+        self.num_tokens = num_tokens
+        self.embed_dim = model.get_input_embeddings().weight.shape[1]
+        self.dtype = model.get_input_embeddings().weight.dtype
 
     def tokenize_input_target(self, input_texts: list[str], target_texts: list[str]):
         """
@@ -67,7 +71,7 @@ class EmbedInjector(nn.Module):
             msg = [{"role": "user", "content": inp_txt + (self.adv_token * self.num_tokens)}]
             input_messeges.append(msg)
 
-        tokenizer.padding_side = "left"
+        self.tokenizer.padding_side = "left"
         input_tokens = self.tokenizer.apply_chat_template(
             input_messeges,
             add_generation_prompt=True,
@@ -78,7 +82,7 @@ class EmbedInjector(nn.Module):
             enable_thinking=False,
         ).to(self.device)
 
-        tokenizer.padding_side = "right"
+        self.tokenizer.padding_side = "right"
         target_tokens = self.tokenizer(
             target_texts,
             padding=True,
@@ -112,7 +116,6 @@ class EmbedInjector(nn.Module):
             "target_mask": target_mask,
         }
 
-
     def tokenize_input(self, input_texts: list[str]):
         """
         Tokenize the input texts.
@@ -134,7 +137,7 @@ class EmbedInjector(nn.Module):
             ]
             input_messeges.append(msg)
 
-        tokenizer.padding_side = "left"
+        self.tokenizer.padding_side = "left"
         input_tokens = self.tokenizer.apply_chat_template(
             input_messeges,
             add_generation_prompt=True,
@@ -154,7 +157,7 @@ class EmbedInjector(nn.Module):
             "attention_mask": input_tokens["attention_mask"],
             "adv_mask": adv_mask,
         }
-        
+
     @torch.no_grad()
     def generate(self, input_texts: list[str], adv_embed: torch.Tensor, max_length: int = 100) -> list[str]:
         """

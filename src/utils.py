@@ -2,6 +2,7 @@ import torch
 import numpy
 import random
 import gc
+from pathlib import Path as Path
 
 
 def set_seed(seed: int) -> None:
@@ -64,3 +65,24 @@ def sample_lp_ball(length: int, norm: float = 2.0, device: torch.device | None =
     vec = vec / (torch.norm(vec, p=norm) + torch.finfo(vec.dtype).eps)
     rad = torch.exp(torch.log(torch.rand(1, device=device)) / length)
     return rad * vec
+
+
+def api_key_from_file(path: str) -> str:
+    """
+    Read an API key from a file.
+
+    Args:
+        path (str): Path to the file containing the API key.
+
+    Returns:
+        str: The API key.
+
+    Raises:
+        FileNotFoundError: If the file is not found.
+    """
+    key_file = Path(path)
+    if key_file.exists():
+        with key_file.open("r", encoding="utf-8") as f:
+            return f.read().strip()
+    else:
+        raise FileNotFoundError("API key file not found")
