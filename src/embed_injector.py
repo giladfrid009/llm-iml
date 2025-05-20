@@ -139,7 +139,7 @@ class EmbedInjector(nn.Module):
 
         return result_dict
 
-    def embed(
+    def embed_text(
         self,
         inputs: list[str],
         targets: list[str] | None = None,
@@ -166,38 +166,38 @@ class EmbedInjector(nn.Module):
         tokenize_result["inputs_embeds"] = inputs_embeds
         return tokenize_result
 
-    def inject_embed(
+    def inject_embedding(
         self,
-        inputs_embeds: torch.Tensor,
-        adver_embeds: torch.Tensor,
-        adver_mask: torch.Tensor,
+        inp_embeds: torch.Tensor,
+        adv_embeds: torch.Tensor,
+        adv_mask: torch.Tensor,
     ) -> torch.Tensor:
         """
         Inject the adversarial embedding into the input embeddings.
         """
-        assert inputs_embeds.ndim == adver_embeds.ndim
-        assert inputs_embeds.size(0) == adver_embeds.size(0) == adver_mask.size(0)  # same batch size
-        assert inputs_embeds.size(-1) == adver_embeds.size(-1)  # same embedding size
+        assert inp_embeds.ndim == adv_embeds.ndim
+        assert inp_embeds.size(0) == adv_embeds.size(0) == adv_mask.size(0)  # same batch size
+        assert inp_embeds.size(-1) == adv_embeds.size(-1)  # same embedding size
 
-        if inputs_embeds.ndim == adver_mask.ndim + 1:
-            adver_mask = adver_mask.unsqueeze(-1)
+        if inp_embeds.ndim == adv_mask.ndim + 1:
+            adv_mask = adv_mask.unsqueeze(-1)
 
-        return inputs_embeds.masked_scatter(mask=adver_mask, source=adver_embeds)
+        return inp_embeds.masked_scatter(mask=adv_mask, source=adv_embeds)
 
     def forward(
         self,
         inputs_embeds: torch.Tensor,
-        attn_mask: torch.Tensor,
+        attention_mask: torch.Tensor,
         **kwargs,
     ):
         return self.model(
             input_ids=None,
             inputs_embeds=inputs_embeds,
-            attention_mask=attn_mask,
+            attention_mask=attention_mask,
             **kwargs,
         )
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def generate(self, input_texts: list[str], adv_embed: torch.Tensor, max_length: int = 100) -> list[str]:
         """
         Generate adversarial text using the fitted model.
@@ -210,22 +210,24 @@ class EmbedInjector(nn.Module):
         Returns:
             list[str]: List of generated adversarial texts.
         """
-        token_dict = self.embed(input_texts)
+        token_dict = self.embed_text(input_texts)
 
-        inj_embeds = self.inject_embed(
-            inputs_embeds=token_dict["inputs_embeds"],
-            adver_embeds=adv_embed,
-            adver_mask=token_dict["adv_mask"],
+        inj_embeds = self.inject_embedding(
+            inp_embeds=token_dict["inputs_embeds"],
+            adv_embeds=adv_embed,
+            adv_mask=token_dict["adv_mask"],
         )
 
-        result = self.model.generate(
-            input_ids=None,
-            inputs_embeds=inj_embeds,
-            attention_mask=token_dict["attention_mask"],
-            do_sample=True,
-            max_length=max_length,
-            num_return_sequences=1,
-            pad_token_id=self.tokenizer.pad_token_id,
-        )
+        with torch.autocast(device_type=self.device.type, enabled=True):
+            
+            result = self.model.generate(
+                input_ids=None,
+                inputs_embeds=inj_embeds,
+                attention_mask=token_dict["attention_mask"],
+                do_sample=True,
+                max_length=max_length,
+                num_return_sequences=1,
+                pad_token_id=self.tokenizer.pad_token_id,
+            )
 
         return self.tokenizer.batch_decode(result, skip_special_tokens=True)
