@@ -13,7 +13,7 @@ class OptimAttack(Attack):
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
         mixed_precision: bool = True,
-        caching: bool = True,
+        kv_caching: bool = True,
         silent: bool = False,
     ):
         super().__init__(adv_model, silent)
@@ -21,7 +21,7 @@ class OptimAttack(Attack):
         self.steps = steps
         self.optim_factory = optim_factory
         self.mixed_precision = mixed_precision
-        self.caching = caching # TODO: implement switch to turn on or off kv-caching
+        self.kv_caching = kv_caching  # TODO: implement switch to turn on or off kv-caching
 
     def fit(
         self,
@@ -32,18 +32,9 @@ class OptimAttack(Attack):
 
         token_dict = self.adv_model.tokenize(input_texts, target_texts)
 
-        with (
-            torch.no_grad(),
-            torch.autocast(device_type=self.device.type, enabled=self.mixed_precision),
-        ):
-            # construct kv-cache for the constant, first part of the batch
-            kv_idx = token_dict["const_idx"].min().item()
-            kv_result = self.adv_model.forward(
-                token_dict["input_ids"][:, :kv_idx],
-                token_dict["attention_mask"][:, :kv_idx],
-                use_cache=True,
-            )
-            kv_cache = copy.deepcopy(kv_result.past_key_values)
+        if self.kv_caching:
+            with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+                token_dict = self.compute_cache(token_dict)
 
         if adv_embeds is not None:
             adv_embeds = adv_embeds.clone().detach()
@@ -61,18 +52,23 @@ class OptimAttack(Attack):
 
                 with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
+                    past_keys_values = None
+                    if self.kv_caching:
+                        # NOTE: need to copy since forward modifies in in-place
+                        past_keys_values = copy.deepcopy(token_dict["kv_cache"])
+
                     result = self.adv_model.forward(
-                        input_ids=token_dict["input_ids"][:, kv_idx:],
+                        input_ids=token_dict["input_ids"],
                         attention_mask=token_dict["attention_mask"],
-                        past_key_values=copy.deepcopy(kv_cache),  # NOTE: important to copy as forwrd modifies the cache in-place
+                        past_key_values=past_keys_values,
                         adv_embeds=adv_embeds,
-                        adv_mask=token_dict["adv_mask"][:, kv_idx:],
+                        adv_mask=token_dict["adv_mask"],
                     )
 
                     pred_logits, target_ids = self.align_preds(
-                        result.logits,
-                        token_dict["input_ids"][:, kv_idx:],
-                        token_dict["target_mask"][:, kv_idx:],
+                        logits=result.logits,
+                        input_ids=token_dict["input_ids"],
+                        target_mask=token_dict["target_mask"],
                     )
 
                     loss = torch.nn.functional.cross_entropy(pred_logits, target_ids)

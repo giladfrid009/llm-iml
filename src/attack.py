@@ -1,6 +1,7 @@
 from src.adver_model import AdverModel
 import torch
 from abc import ABC, abstractmethod
+import copy
 
 
 class Attack(ABC):
@@ -72,6 +73,44 @@ class Attack(ABC):
             dtype=self.embed_dtype,
             requires_grad=True,
         )
+
+    @torch.no_grad()
+    def compute_cache(self, token_dict: dict[str, torch.Tensor]) -> dict:
+        """
+        Compute the kv-cache for the constant part of the input.
+
+        Args:
+            token_dict (dict[str, torch.Tensor]): Dictionary containing input tokens and masks,
+                as returned from `self.adv_model.tokenize()`.
+
+        Returns:
+            dict: Dictionary containing the kv-cache for the constant part of the input,
+                as well as the remaining input tokens and masks. The remaining input tokens
+                and masks are only the variable (non-cached) part of the input.
+        """
+
+        kv_idx = token_dict["const_idx"].min().item()
+
+        kv_result = self.adv_model.forward(
+            token_dict["input_ids"][:, :kv_idx],
+            token_dict["attention_mask"][:, :kv_idx],
+            use_cache=True,
+        )
+
+        kv_cache = copy.deepcopy(kv_result.past_key_values)
+
+        new_token_dict = {
+            "input_ids": token_dict["input_ids"][:, kv_idx:],
+            "attention_mask": token_dict["attention_mask"], # we need the full attention mask
+            "adv_mask": token_dict["adv_mask"][:, kv_idx:],
+            "const_idx": token_dict["const_idx"],
+            "kv_cache": kv_cache,
+        }
+
+        if "target_mask" in token_dict:
+            new_token_dict["target_mask"] = token_dict["target_mask"][:, kv_idx:]
+
+        return new_token_dict
 
     @abstractmethod
     def fit(
