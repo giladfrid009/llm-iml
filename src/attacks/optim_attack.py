@@ -35,8 +35,22 @@ class OptimAttack(Attack):
         init_embedding: torch.Tensor | None = None,
     ) -> torch.Tensor:
 
+        # TODO: KV-Cache doesnt work with the inputs_embeds for some reason
+        # figure out how to make it work, or is it a lost cause?
+        # if kv-cache doesnt work, then we should try to find a more packed way to store the
+        # input embeddings
+
         embed_dict = self.embed_injector.embed_text(input_texts, target_texts)
         orig_embeds = embed_dict["inputs_embeds"]
+
+        with torch.no_grad():
+            kv_idx = embed_dict["const_idx"].min()
+            kv_result = self.embed_injector.forward(
+                orig_embeds[:, :kv_idx],
+                embed_dict["attention_mask"][:, :kv_idx],
+                use_cache=True,
+            )
+            kv_cache = kv_result.past_key_values
 
         if init_embedding is not None:
             adv_embed = init_embedding.clone().detach()
@@ -61,7 +75,14 @@ class OptimAttack(Attack):
                         adv_mask=embed_dict["adv_mask"],
                     )
 
-                    result = self.embed_injector.forward(inputs_embeds=inj_embeds, attention_mask=embed_dict["attention_mask"])
+                    result = self.embed_injector.forward(
+                        # input_ids=embed_dict["input_ids"][:, :kv_idx],
+                        inputs_embeds=inj_embeds[:, :kv_idx],
+                        labels=embed_dict["input_ids"],
+                        attention_mask=embed_dict["attention_mask"],
+                        past_key_values=kv_cache,
+                    )
+
                     pred_logits, target_ids = self.align_preds(result.logits, embed_dict["input_ids"], embed_dict["target_mask"])
                     loss = torch.nn.functional.cross_entropy(pred_logits, target_ids)
 
