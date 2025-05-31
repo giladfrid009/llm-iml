@@ -96,6 +96,7 @@ class AdverModel(nn.Module):
         self,
         input_texts: list[str],
         target_texts: list[str] | None = None,
+        system_texts: list[str] | None = None,
     ) -> dict[str, torch.Tensor]:
         """
         Tokenize the input and target texts.
@@ -104,6 +105,7 @@ class AdverModel(nn.Module):
         Args:
             input_texts (list[str]): List of input texts.
             target_texts (list[str] | None): List of target texts. If None, only input texts are tokenized.
+            system_texts (list[str] | None): List of system prompts. If None, default system prompt is used.
 
         Returns:
             dict: Dictionary containing the tokenized input and target texts, with the following keys:
@@ -118,6 +120,10 @@ class AdverModel(nn.Module):
         for inp_txt in input_texts:
             msg = [{"role": "user", "content": inp_txt + (self.adv_token * self.num_tokens)}]
             input_messeges.append(msg)
+            
+        if system_texts is not None:
+            for msg, sys_txt in zip(input_messeges, system_texts):
+                msg.insert(0, {"role": "system", "content": sys_txt})
 
         self.tokenizer.padding_side = "left"
         input_tokens = self.tokenizer.apply_chat_template(
@@ -147,7 +153,6 @@ class AdverModel(nn.Module):
             # tested on:
             # - meta-llama/Llama-3.2-1B-Instruct
             # - Qwen/Qwen3-0.6B
-            # - samwit/koala-7b - target should begin with <think> token
 
             self.tokenizer.padding_side = "right"
             target_tokens = self.tokenizer(
@@ -251,6 +256,7 @@ class AdverModel(nn.Module):
         input_texts: list[str],
         adv_embeds: torch.Tensor,
         max_length: int = 100,
+        system_texts: list[str] | None = None,
         **kwargs,
     ) -> list[str]:
         """
@@ -260,11 +266,12 @@ class AdverModel(nn.Module):
             input_texts (list[str]): List of input texts.
             adv_embeds (torch.Tensor): Adversarial embedding.
             max_length (int): Maximum length of the generated text.
+            system_texts (list[str] | None): List of system prompts. If None, default system prompt is used.
 
         Returns:
             list[str]: List of generated adversarial texts.
         """
-        token_dict = self.tokenize(input_texts)
+        token_dict = self.tokenize(input_texts, system_texts=system_texts)
 
         with torch.autocast(device_type=self.device.type, enabled=True):
 

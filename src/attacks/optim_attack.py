@@ -27,7 +27,7 @@ class OptimAttack(Attack):
         self,
         input_texts: list[str],
         target_texts: list[str],
-        adv_embeds: torch.Tensor | None = None,
+        embeds_init: torch.Tensor | None = None,
     ) -> torch.Tensor:
 
         token_dict = self.adv_model.tokenize(input_texts, target_texts)
@@ -36,11 +36,13 @@ class OptimAttack(Attack):
             with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                 token_dict = self.compute_cache(token_dict)
 
+        adv_embeds = embeds_init
         if adv_embeds is not None:
             adv_embeds = adv_embeds.clone().detach()
             adv_embeds.requires_grad_(True)
         else:
             adv_embeds = self.init_embedding(num_inputs=len(input_texts))
+            adv_embeds.requires_grad_(True)
 
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory([adv_embeds])

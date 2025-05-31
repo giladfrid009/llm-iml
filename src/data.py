@@ -1,0 +1,175 @@
+import random
+from collections import namedtuple
+from typing import Any, Generator, List, Optional, Tuple
+import pandas as pd
+
+
+class DF_Batcher:
+    """
+    Iterate over a pandas DataFrame in column-wise batches.
+
+    Standatd columns which are expected to be present in the DataFrame:
+    - 'prompt' (str): Input prompt for the model.
+    - 'response' (str): Model response or output, should be present for evaluation.
+    - 'target' (str): Target response of the model, should be present for training.
+    - 'system' (str): System prompt or context, can be omitted, and then the model-default system prompt is used.
+    """
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        batch_size: int,
+        columns: List[str] | None = None,
+        shuffle: bool = True,
+        drop_last: bool = False,
+    ) -> None:
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be > 0, got {batch_size}")
+
+        if columns is None:
+            columns = df.columns.tolist()
+
+        self.df = df
+        self.columns = columns[:]
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.drop_last = drop_last
+
+        # Validate constructor-time columns immediately
+        self.validate(self.columns)
+
+        # Precompute index list and number of samples
+        self._indices = list(df.index)
+        self._n_samples = len(self._indices)
+        self._n_batches = self._compute_num_batches()
+
+    def validate(self, columns: Optional[List[str]] = None) -> None:
+        """
+        Public method: check that each column in `columns` exists in self.df.columns.
+        If `columns` is None, it defaults to self.columns (the ones provided at __init__).
+
+        Raises:
+            ValueError: if any requested column is not found in self.df.
+        """
+        if columns is None:
+            columns_to_check = self.columns
+        else:
+            columns_to_check = columns
+
+        for col in columns_to_check:
+            if col not in self.df.columns:
+                raise ValueError(f"Column '{col}' not found in DataFrame")
+
+    def _compute_num_batches(self) -> int:
+        if self.drop_last:
+            return self._n_samples // self.batch_size
+        else:
+            # include a final smaller batch if necessary
+            return (self._n_samples + self.batch_size - 1) // self.batch_size
+
+    def __len__(self) -> int:
+        """
+        Number of batches (independent of which columns you slice out).
+        """
+        return self._n_batches
+
+    def iter_batches(self, columns: Optional[List[str]] = None) -> Generator[Tuple[List[Any], ...], None, None]:
+        """
+        Yield one batch at a time as a namedtuple whose fields are given by `columns`.
+        If `columns` is None, we fall back to `self.columns` (the ones provided at __init__).
+
+        Yields:
+            A namedtuple of length = len(columns_to_use), where each field is a list of values
+            (one list per column).  In typing terms, this is Tuple[List[Any], ...].
+
+        Example usage:
+            # 1. Default (using the constructor’s columns):
+            for batch in batcher.iter_batches():
+                # batch has attributes batch.x, batch.y, etc...
+
+            # 2. Override with a new set of columns at iteration time:
+            for batch in batcher.iter_batches(columns=["y", "z"]):
+                # now 'batch.y' and 'batch.z' exist, instead of 'batch.x'
+        """
+        # Determine which set of columns to use for this iteration
+        if columns is None:
+            columns_to_use = self.columns
+        else:
+            # Validate the provided columns list
+            self.validate(columns)
+            columns_to_use = columns
+
+        # Create a namedtuple type called "Batch" with fields = columns_to_use.
+        # rename=True ensures invalid identifiers get renamed (_0, _1, etc.)
+        Batch = namedtuple("Batch", columns_to_use, rename=True)
+
+        # Make a copy of the indices and shuffle if requested
+        idxs = self._indices.copy()
+        if self.shuffle:
+            random.shuffle(idxs)
+
+        # Now slice out row‐indices batch by batch
+        for batch_idx in range(self._n_batches):
+            start = batch_idx * self.batch_size
+            end = start + self.batch_size
+            batch_idxs = idxs[start:end]
+
+            # If drop_last=True and the final batch is too small, stop early
+            if len(batch_idxs) < self.batch_size and self.drop_last:
+                break
+
+            # Gather each selected column's values into a Python list
+            column_lists: List[List[Any]] = [self.df.loc[batch_idxs, col].tolist() for col in columns_to_use]
+
+            # Yield a namedtuple( column_lists... )
+            yield Batch(*column_lists)
+
+    def __iter__(self) -> Generator[Tuple[List[Any], ...], None, None]:
+        """
+        “for batch in batcher:” is exactly the same as “for batch in batcher.iter_batches():”
+        i.e. uses whatever was provided in self.columns at construction time.
+        """
+        return self.iter_batches()
+
+    def copy(self, **kwargs) -> "DF_Batcher":
+        """
+        Create and return a shallow-copy of this DF_Batcher. The new instance
+        wraps the same DataFrame (no deep copy of df), but has its own attributes
+        (columns, batch_size, shuffle, drop_last).
+
+        Args:
+            **kwargs: Additional keyword arguments to override attributes in the new instance.
+        """
+        attrs = {
+            "df": self.df,
+            "columns": self.columns,
+            "batch_size": self.batch_size,
+            "shuffle": self.shuffle,
+            "drop_last": self.drop_last,
+        }
+
+        for key, value in kwargs.items():
+            if key in attrs:
+                attrs[key] = value
+            else:
+                raise ValueError(f"Invalid attribute '{key}' for DF_Batcher")
+
+        return DF_Batcher(**attrs)
+
+    def add_column(self, col_name: str, values: List[Any]) -> None:
+        """
+        Add or override a column in the DataFrame with the specified name and values.
+
+        Args:
+            col_name (str): Name of the new column.
+            values (List[Any]): Values to be added in the new column.
+        """
+
+        if self.shuffle or self.drop_last:
+            raise ValueError("Cannot add column while `shuffle` or `drop_last` is enabled")
+
+        if len(values) != len(self.df):
+            raise ValueError(f"Length of values ({len(values)}) does not match DataFrame length ({len(self.df)})")
+
+        self.df[col_name] = values
+        self.columns.append(col_name)

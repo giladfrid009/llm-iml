@@ -117,7 +117,7 @@ class Attack(ABC):
         self,
         input_texts: list[str],
         target_texts: list[str],
-        adv_embeds: torch.Tensor | None = None,
+        embeds_init: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Fit the attack model to the input and target texts.
@@ -125,7 +125,7 @@ class Attack(ABC):
         Args:
             input_texts (list[str]): List of input texts.
             target_texts (list[str]): List of target texts.
-            adv_embeds (torch.Tensor | None): Initial adversarial embedding.
+            embeds_init (torch.Tensor | None): Initial adversarial embedding.
 
         Returns:
             torch.Tensor: Adversarial embedding of shape (batch_size, num_tokens, embedding_dim).

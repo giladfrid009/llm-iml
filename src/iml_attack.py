@@ -1,11 +1,14 @@
 from src.attack import Attack
 from src.adver_model import AdverModel
+from src.data import DF_Batcher
+from src.eval.evaluator import Evaluator
 
+from typing import Any
 import torch
 from tqdm.auto import tqdm
 import time
 from typing import Iterable, Callable
-
+import warnings
 
 class StopCriteria:
     def __init__(
@@ -80,11 +83,12 @@ class StopCriteria:
         self._epoch = epoch
         self._total_evals += 1
 
-        if value is not None and (value - self._best_value) >= self.patience_delta:
-            self._best_value = value
-            self._patience_counter = 0
-        else:
-            self._patience_counter += 1
+        if value is not None:
+            if (value - self._best_value) >= self.patience_delta:
+                self._best_value = value
+                self._patience_counter = 0
+            else:
+                self._patience_counter += 1
 
     def should_stop(self) -> bool:
         """Check if any stopping condition is met."""
@@ -118,15 +122,20 @@ class IML_Attack:
         internal_attack: Attack,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         mixed_precision: bool = True,
+        evaluators: list[Evaluator] | None = None,
+        pred_kwargs: dict[str, Any] | None = None,
     ):
         self.adv_model = adv_model
         self.internal_attack = internal_attack
 
+        self.mixed_precision = mixed_precision
         self.grad_scaler = torch.GradScaler(enabled=mixed_precision)
-        self.autocast = torch.autocast(device_type=self.device.type, enabled=mixed_precision)
 
         self.univ_embeds = self.init_embedding()
         self.optimizer = optim_factory([self.univ_embeds])
+
+        self.evaluators = evaluators
+        self.pred_kwargs = pred_kwargs if pred_kwargs is not None else {}
 
     @property
     def num_tokens(self) -> int:
@@ -151,36 +160,90 @@ class IML_Attack:
     def get_univ_embed(self) -> torch.Tensor:
         return self.univ_embeds.clone().detach()
 
-    def autocast_context(self, enabled: bool = True) -> torch.autocast:
+    @torch.inference_mode()
+    def predict(
+        self,
+        dl_eval: DF_Batcher,
+        **kwargs: Any,
+    ) -> list[str]:
         """
-        Returns an autocast context manager with the given enabled state.
-        - If `enabled=True` then autocast will be enabled only if `self.autocast.is_enabled()` is True.
-        - If `enabled=False` then autocast will be disabled.
+        Generates model responses for the evaluation data loader.
 
         Args:
-            enabled (bool): Whether to enable autocast.
+            dl_eval (DF_Batcher): Data loader for evaluation.
+            **kwargs (dict): Additional keyword arguments for `AdverModel.generate_text`.
 
         Returns:
-            torch.autocast: Autocast context manager.
+            list[str]: List of generated responses.
         """
-        if enabled:
-            return self.autocast
-        else:
-            return torch.autocast(device_type=self.autocast.device, enabled=False)
+
+        kwargs = kwargs if kwargs else self.pred_kwargs
+        dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
+        adv_embeds = self.get_univ_embed()
+
+        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+
+            all_responses = []
+            for batch_data in tqdm(dl_eval, desc="Generating", leave=False):
+                prompts = batch_data.prompt
+                system_text = batch_data.system if hasattr(batch_data, "system") else None
+
+                adv_embeds_broad = adv_embeds.broadcast_to((len(prompts), *adv_embeds.shape[1:]))
+
+                responses = self.adv_model.generate_text(
+                    prompts,
+                    adv_embeds=adv_embeds_broad,
+                    system_text=system_text,
+                    **kwargs,
+                )
+
+                all_responses.extend(responses)
+
+        return all_responses
+
+    @torch.inference_mode()
+    def evaluate(
+        self,
+        evalers: list[Evaluator],
+        dl_eval: DF_Batcher,
+    ) -> dict[str, float]:
+        """
+        Evaluates the model using the provided evaluators and data loader.
+
+        Args:
+            evalers (list[Evaluator]): List of evaluators to use for evaluation.
+            dl_eval (DF_Batcher): Data loader for evaluation.
+
+        Returns:
+            dict[str, float]: Dictionary containing evaluation metrics.
+        """
+        dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
+
+        all_responses = self.predict(dl_eval)
+        dl_eval.add_column("response", all_responses)
+
+        metrics = {}
+        for evaluator in evalers:
+            metrics[evaluator.name] = evaluator.evaluate(dl_eval)
+        return metrics
 
     def fit(
         self,
-        dl_train: Iterable,
-        dl_eval: Iterable | None = None,
+        dl_train: DF_Batcher,
+        dl_eval: DF_Batcher | None = None,
         stop_criteria: StopCriteria | None = None,
     ) -> torch.Tensor:
 
-        if dl_eval is None:
-            dl_eval = dl_train
+        if dl_eval is not None and self.evaluators is None:
+            warnings.warn("Evaluation data loader provided but no evaluators specified. Skipping evaluation.")
+
+        # must have these columns at least
+        dl_train.validate(["prompt", "target"])
 
         if stop_criteria is None:
             stop_criteria = StopCriteria()
 
+        loss_value = None
         stop_criteria.reset()
         should_stop = stop_criteria.should_stop()
 
@@ -194,59 +257,57 @@ class IML_Attack:
                         if should_stop:
                             break
 
-                        loss = self.process_batch(batch_data, batch_num, epoch_num)
-                        stop_criteria.update(epoch_num, None)
-                        batch_pbar.set_postfix({"loss": loss})
+                        self.optimizer.zero_grad()
 
-                stop_criteria.update(epoch_num, None)
-                epoch_pbar.set_postfix({"loss": loss})
+                        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+                            loss = self.compute_loss(batch_data)
+
+                        if loss is not None:
+                            self.grad_scaler.scale(loss).backward()
+                            self.grad_scaler.step(self.optimizer)
+                            self.grad_scaler.update()
+
+                        loss_value = loss.item() if loss is not None else None
+                        stop_criteria.update(epoch_num, None)
+                        batch_pbar.set_postfix({"loss": loss_value})
+
+                # evaluate after each epoch
+                if dl_eval is not None and self.evaluators is not None:
+                    metrics = self.evaluate(self.evaluators, dl_eval)
+                    stop_criteria.update(epoch_num, metrics[self.evaluators[0].name])
+                    epoch_pbar.set_postfix(metrics)
+
+                else:
+                    stop_criteria.update(epoch_num, None)
+                    epoch_pbar.set_postfix({"loss": loss_value})
+
+        # final evaluation
+        if dl_eval is not None and self.evaluators is not None:
+            metrics = self.evaluate(self.evaluators, dl_eval)
+            for name, value in metrics.items():
+                print(f"Final metric {name}: {value:.6f}")
 
         return self.get_univ_embed()
 
-    def process_batch(self, data: tuple[torch.Tensor, ...], batch_num: int, epoch_num: int) -> float | None:
-        """
-        Runs a single training step on the given batch of data.
-
-        Args:
-            data (tuple[torch.Tensor, ...]): Batch data, already moved to the device.
-            batch_num (int): Current batch number.
-            epoch_num (int): Current epoch number.
-
-        Returns:
-            float: Computed loss value for the batch, or None if invalid.
-        """
-        self.optimizer.zero_grad()
-
-        with self.autocast_context():
-            loss = self.compute_loss(data, batch_num, epoch_num)
-
-        if loss is not None:
-            self.grad_scaler.scale(loss).backward()
-            self.grad_scaler.step(self.optimizer)
-            self.grad_scaler.update()
-
-        return None if loss is None else loss.item()
-
-    def compute_loss(self, data: tuple[torch.Tensor, ...], batch_num: int, epoch_num: int) -> torch.Tensor | None:
+    def compute_loss(self, data: tuple[list[Any], ...]) -> torch.Tensor | None:
         """
         Computes the loss on the given batch of data.
         The computed loss must be a scalar tensor that allows gradients to be backpropagated.
 
         Args:
-            data (tuple[torch.Tensor, ...]): Batch data, already moved to the device.
-            batch_num (int): Current batch number.
-            epoch_num (int): Current epoch number.
+            data (tuple[list[Any], ...]): Batch data containing input and target text
+                via attributes `data.prompt` and `data.target`.
 
         Returns:
             torch.Tensor: Loss tensor, or None if invalid.
         """
-        input_text, target_text = data
+        input_text, target_text = data.prompt, data.target
         token_dict = self.adv_model.tokenize(input_text, target_text)
         univ_embeds = torch.broadcast_to(self.univ_embeds, (len(input_text), *self.univ_embeds.shape[1:]))
 
         # locally disable autocast for per-sample attack
-        with self.autocast_context(enabled=False):
-            sample_embed = self.internal_attack.fit(input_text, target_text, adv_embeds=univ_embeds)
+        with torch.autocast(device_type=self.device.type, enabled=False):
+            sample_embed = self.internal_attack.fit(input_text, target_text, embeds_init=univ_embeds)
 
         # compute logits for per-sample and univ embedding
         univ_logits = self.compute_logits(token_dict, univ_embeds)
