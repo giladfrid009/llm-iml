@@ -86,7 +86,6 @@ class HarmbenchEvaluator(Evaluator):
 
         self.model = LLM(model=model_name, dtype="bfloat16", tensor_parallel_size=1, **llm_kwargs)
         self.model.set_tokenizer(tokenizer)
-        self.device = self.model.device
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str], contex_texts: list[str] = None) -> list[str]:
         """

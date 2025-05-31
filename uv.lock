@@ -2264,6 +2264,7 @@ dependencies = [
     { name = "tqdm" },
     { name = "transformers" },
     { name = "vllm" },
+    { name = "vllm-flash-attn" },
 ]
 
 [package.metadata]
@@ -2302,6 +2303,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "transformers", specifier = ">=4.51.3" },
     { name = "vllm", specifier = ">=0.3.0" },
+    { name = "vllm-flash-attn", specifier = ">=2.5.9" },
 ]
 
 [[package]]

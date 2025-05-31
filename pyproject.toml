@@ -39,4 +39,5 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers>=4.51.3",
     "vllm>=0.3.0",
+    "vllm-flash-attn>=2.5.9",
 ]
