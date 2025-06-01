@@ -10,6 +10,7 @@ import time
 from typing import Iterable, Callable
 import warnings
 
+
 class StopCriteria:
     def __init__(
         self,
@@ -127,7 +128,7 @@ class IML_Attack:
     ):
         self.adv_model = adv_model
         self.internal_attack = internal_attack
-        
+
         self.evaluators = evaluators
         self.pred_kwargs = pred_kwargs if pred_kwargs is not None else {}
 
@@ -136,7 +137,7 @@ class IML_Attack:
 
         self.univ_embeds = self.init_embedding()
         self.optimizer = optim_factory([self.univ_embeds])
-        
+
         self.best_metric = -float("inf")
         self.best_embeds = self.univ_embeds.clone().detach()
 
@@ -166,6 +167,7 @@ class IML_Attack:
     @torch.inference_mode()
     def predict(
         self,
+        adv_model: AdverModel,
         dl_eval: DF_Batcher,
         **kwargs: Any,
     ) -> list[str]:
@@ -173,6 +175,7 @@ class IML_Attack:
         Generates model responses for the evaluation data loader.
 
         Args:
+            adv_model (AdverModel): The adversarial model to use for text generation.
             dl_eval (DF_Batcher): Data loader for evaluation.
             **kwargs (dict): Additional keyword arguments for `AdverModel.generate_text`.
 
@@ -182,20 +185,16 @@ class IML_Attack:
 
         kwargs = kwargs if kwargs else self.pred_kwargs
         dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
-        adv_embeds = self.get_univ_embed()
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
             all_responses = []
-            for batch_data in tqdm(dl_eval, desc="Generating", leave=False):
+            for batch_data in tqdm(dl_eval, desc="Predict", leave=False):
                 prompts = batch_data.prompt
                 system_text = batch_data.system if hasattr(batch_data, "system") else None
 
-                adv_embeds_broad = self.univ_embeds.broadcast_to((len(prompts), *adv_embeds.shape[1:]))
-
-                responses = self.adv_model.generate_text(
+                responses = adv_model.generate_text(
                     prompts,
-                    adv_embeds=adv_embeds_broad,
                     system_text=system_text,
                     **kwargs,
                 )
@@ -207,36 +206,45 @@ class IML_Attack:
     @torch.inference_mode()
     def evaluate(
         self,
+        adv_model: AdverModel,
         evalers: list[Evaluator],
         dl_eval: DF_Batcher,
+        update_best: bool = False,
     ) -> dict[str, float]:
         """
         Evaluates the model using the provided evaluators and data loader.
 
         Args:
+            adv_model (AdverModel): The adversarial model to evaluate.
             evalers (list[Evaluator]): List of evaluators to use for evaluation.
             dl_eval (DF_Batcher): Data loader for evaluation.
+            update_embeds (bool): If True, updates the universal embeddings with the best ones found during evaluation.
 
         Returns:
             dict[str, float]: Dictionary containing evaluation metrics.
         """
         dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
 
-        all_responses = self.predict(dl_eval)
+        all_responses = self.predict(adv_model, dl_eval)
         dl_eval.set_column("response", all_responses)
 
         metrics = {}
         for evaluator in evalers:
             metrics[evaluator.name] = evaluator.evaluate(dl_eval)
+
+        if update_best:
+            if self.best_metric < metrics[evalers[0].name]:
+                self.best_metric = metrics[evalers[0].name]
+                self.best_embeds = self.adv_model.get_embeddings(clone=True)
+
         return metrics
 
-    
     # TODO: CLEAN UP AND SPLIT INTO SMALLER FUNTIONS
     # ITS BECOMING A MESS AND NON-MAINTANABLE, only after AdverModel refactor
-    
-    # TODO: probably we need to make the evaluators mandatory 
+
+    # TODO: probably we need to make the evaluators mandatory
     # in order for IML to only use succesful attacks
-    
+
     # TODO: after this point i feel we can practically use the same code as we use in ulib
     # including all the logging, etc...
     def fit(
@@ -244,7 +252,7 @@ class IML_Attack:
         dl_train: DF_Batcher,
         dl_eval: DF_Batcher | None = None,
         stop_criteria: StopCriteria | None = None,
-    ) -> torch.Tensor:
+    ) -> AdverModel:
 
         if dl_eval is not None and self.evaluators is None:
             warnings.warn("Evaluation data loader provided but no evaluators specified. Skipping evaluation.")
@@ -260,18 +268,20 @@ class IML_Attack:
         should_stop = stop_criteria.should_stop()
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
-            
+
             # initial evaluation
             if dl_eval is not None and self.evaluators is not None:
-                metrics = self.evaluate(self.evaluators[:1], dl_eval)
+                self.adv_model.set_embeddings(self.univ_embeds)
+                metrics = self.evaluate(
+                    adv_model=self.adv_model,
+                    evalers=self.evaluators[:1],
+                    dl_eval=dl_eval,
+                    update_best=True,
+                )
+
                 stop_criteria.update(0, metrics[self.evaluators[0].name])
                 epoch_pbar.set_postfix(metrics)
-                
-                # update best metric and embedding if applicable
-                if self.best_metric < metrics[self.evaluators[0].name]:
-                    self.best_metric = metrics[self.evaluators[0].name]
-                    self.best_embeds = self.univ_embeds.clone().detach()
-            
+
             # main training loop
             for epoch_num in epoch_pbar:
                 if should_stop:
@@ -282,80 +292,89 @@ class IML_Attack:
                         if should_stop:
                             break
 
-                        self.optimizer.zero_grad()
+                        loss_value = self.optim_step(batch_data, epoch_num, batch_num)
 
-                        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-                            loss = self.compute_loss(batch_data)
-
-                        if loss is not None:
-                            self.grad_scaler.scale(loss).backward()
-                            self.grad_scaler.step(self.optimizer)
-                            self.grad_scaler.update()
-
-                        loss_value = loss.item() if loss is not None else None
                         stop_criteria.update(epoch_num, None)
                         batch_pbar.set_postfix({"loss": loss_value})
 
                 # evaluate after each epoch
                 if dl_eval is not None and self.evaluators is not None:
-                    metrics = self.evaluate(self.evaluators, dl_eval)
+                    self.adv_model.set_embeddings(self.univ_embeds)
+                    metrics = self.evaluate(
+                        adv_model=self.adv_model,
+                        evalers=self.evaluators,
+                        dl_eval=dl_eval,
+                        update_best=True,
+                    )
+
                     stop_criteria.update(epoch_num, metrics[self.evaluators[0].name])
                     epoch_pbar.set_postfix(metrics)
-                    
-                    # update best metric and embedding if applicable
-                    if self.best_metric < metrics[self.evaluators[0].name]:
-                        self.best_metric = metrics[self.evaluators[0].name]
-                        self.best_embeds = self.univ_embeds.clone().detach()
 
                 else:
                     stop_criteria.update(epoch_num, None)
                     epoch_pbar.set_postfix({"loss": loss_value})
 
+        # set to best
+        self.adv_model.set_embeddings(self.best_embeds)
+
         # final evaluation
         if dl_eval is not None and self.evaluators is not None:
-            metrics = self.evaluate(self.evaluators, dl_eval)
+            metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval)
             for name, value in metrics.items():
                 print(f"Final metric {name}: {value:.6f}")
 
-        return self.get_univ_embed()
+        return self.adv_model
 
-    def compute_loss(self, data: tuple[list[Any], ...]) -> torch.Tensor | None:
+    def optim_step(self, data: tuple[list[Any], ...], epoch_num: int, batch_num: int) -> float | None:
         """
-        Computes the loss on the given batch of data.
-        The computed loss must be a scalar tensor that allows gradients to be backpropagated.
+        Perform a single optimization step on the given batch of data.
 
         Args:
             data (tuple[list[Any], ...]): Batch data containing input and target text
                 via attributes `data.prompt` and `data.target`.
+            epoch_num (int): Current epoch number.
+            batch_num (int): Current batch number.
 
         Returns:
-            torch.Tensor: Loss tensor, or None if invalid.
+            float | None: Loss value for the optimization step, or None if no loss is computed.
+
         """
-        input_text, target_text = data.prompt, data.target
-        token_dict = self.adv_model.tokenize(input_text, target_text)
-        univ_embeds = torch.broadcast_to(self.univ_embeds, (len(input_text), *self.univ_embeds.shape[1:]))
+        self.optimizer.zero_grad()
 
-        # locally disable autocast for per-sample attack
-        with torch.autocast(device_type=self.device.type, enabled=False):
-            sample_embed = self.internal_attack.fit(input_text, target_text, embeds_init=univ_embeds)
+        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
-        # compute logits for per-sample and univ embedding
-        univ_logits = self.compute_logits(token_dict, univ_embeds)
-        with torch.inference_mode():
-            sample_logits = self.compute_logits(token_dict, sample_embed)
+            input_text, target_text = data.prompt, data.target
+            token_dict = self.adv_model.tokenize(input_text, target_text)
 
-        # compute loss
-        univ_logits = univ_logits.view(-1, univ_logits.size(-1))
-        sample_logits = sample_logits.view(-1, sample_logits.size(-1))
-        loss = 1 - torch.cosine_similarity(univ_logits, sample_logits, dim=-1).mean()
-        return loss
+            # compute universal logits
+            univ_embeds = self.univ_embeds.expand(len(input_text), -1, -1)
+            self.adv_model.set_embeddings(univ_embeds)
+            univ_logits = self.compute_logits(token_dict, self.adv_model)
 
-    def compute_logits(self, token_dict: dict, adv_embeds: torch.Tensor) -> torch.Tensor:
+            # compute per-sample logits
+            with torch.autocast(device_type=self.device.type, enabled=False):
+                sample_embed = self.internal_attack.fit(input_text, target_text, embeds_init=univ_embeds)
+            with torch.inference_mode():
+                self.adv_model.set_embeddings(sample_embed)
+                sample_logits = self.compute_logits(token_dict, self.adv_model)
 
-        result = self.adv_model.forward(
+            # compute loss
+            univ_logits = univ_logits.view(-1, univ_logits.size(-1))
+            sample_logits = sample_logits.view(-1, sample_logits.size(-1))
+            loss = 1 - torch.cosine_similarity(univ_logits, sample_logits, dim=-1).mean()
+
+        if loss is not None:
+            self.grad_scaler.scale(loss).backward()
+            self.grad_scaler.step(self.optimizer)
+            self.grad_scaler.update()
+
+        return loss.item() if loss is not None else None
+
+    def compute_logits(self, token_dict: dict, adv_model: AdverModel) -> torch.Tensor:
+
+        result = adv_model.forward(
             input_ids=token_dict["input_ids"],
             attention_mask=token_dict["attention_mask"],
-            adv_embeds=adv_embeds,
             adv_mask=token_dict["adv_mask"],
         )
 

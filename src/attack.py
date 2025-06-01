@@ -32,14 +32,14 @@ class Attack(ABC):
         """
         Returns the embedding dimension of the model.
         """
-        return self.adv_model.embed_dim
+        return self.adv_model.adv_embedder.embed_dim
 
     @property
     def embed_dtype(self) -> torch.dtype:
         """
         Returns the embedding dtype of the model.
         """
-        return self.adv_model.embed_dtype
+        return self.adv_model.adv_embedder.embed_dtype
 
     def align_preds(
         self,

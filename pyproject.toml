@@ -20,6 +20,7 @@ dependencies = [
     "ipywidgets>=8.1.7",
     "jupyter>=1.1.1",
     "jupyterlab>=4.4.2",
+    "liger-kernel>=0.3.1",
     "matplotlib>=3.10.3",
     "mistralai>=1.7.0",
     "ninja>=1.11.1.4",

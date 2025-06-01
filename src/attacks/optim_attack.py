@@ -44,11 +44,13 @@ class OptimAttack(Attack):
         else:
             adv_embeds = self.init_embedding(num_inputs=len(input_texts))
             adv_embeds.requires_grad_(True)
+            
+        self.adv_model.set_embeddings(adv_embeds)
 
         scaler = torch.GradScaler(enabled=self.mixed_precision)
-        optim = self.optim_factory([adv_embeds])
+        optim = self.optim_factory(self.adv_model.parameters())
 
-        with tqdm(range(self.steps), disable=self.silent, leave=False, desc="Attacking") as pbar:
+        with tqdm(range(self.steps), disable=self.silent, leave=False, desc="Attack") as pbar:
             for step in pbar:
 
                 optim.zero_grad()
@@ -64,7 +66,6 @@ class OptimAttack(Attack):
                         input_ids=token_dict["input_ids"],
                         attention_mask=token_dict["attention_mask"],
                         past_key_values=past_keys_values,
-                        adv_embeds=adv_embeds,
                         adv_mask=token_dict["adv_mask"],
                     )
 
