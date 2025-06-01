@@ -1,6 +1,6 @@
 import random
 from collections import namedtuple
-from typing import Any, Generator, List, Optional, Tuple
+from typing import Any, Generator, List, Tuple
 import pandas as pd
 
 
@@ -19,44 +19,30 @@ class DF_Batcher:
         self,
         df: pd.DataFrame,
         batch_size: int,
-        columns: List[str] | None = None,
         shuffle: bool = True,
         drop_last: bool = False,
     ) -> None:
         if batch_size <= 0:
             raise ValueError(f"batch_size must be > 0, got {batch_size}")
 
-        if columns is None:
-            columns = df.columns.tolist()
-
         self.df = df
-        self.columns = columns[:]
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.drop_last = drop_last
-
-        # Validate constructor-time columns immediately
-        self.validate(self.columns)
 
         # Precompute index list and number of samples
         self._indices = list(df.index)
         self._n_samples = len(self._indices)
         self._n_batches = self._compute_num_batches()
 
-    def validate(self, columns: Optional[List[str]] = None) -> None:
+    def validate(self, columns: List[str]) -> None:
         """
-        Public method: check that each column in `columns` exists in self.df.columns.
-        If `columns` is None, it defaults to self.columns (the ones provided at __init__).
+        Public method: check that each column in `columns` exists in `self.df.columns`.
 
         Raises:
             ValueError: if any requested column is not found in self.df.
         """
-        if columns is None:
-            columns_to_check = self.columns
-        else:
-            columns_to_check = columns
-
-        for col in columns_to_check:
+        for col in columns:
             if col not in self.df.columns:
                 raise ValueError(f"Column '{col}' not found in DataFrame")
 
@@ -73,35 +59,10 @@ class DF_Batcher:
         """
         return self._n_batches
 
-    def iter_batches(self, columns: Optional[List[str]] = None) -> Generator[Tuple[List[Any], ...], None, None]:
-        """
-        Yield one batch at a time as a namedtuple whose fields are given by `columns`.
-        If `columns` is None, we fall back to `self.columns` (the ones provided at __init__).
+    def __iter__(self) -> Generator[Tuple[List[Any], ...], None, None]:
+        columns = self.df.columns.tolist()
 
-        Yields:
-            A namedtuple of length = len(columns_to_use), where each field is a list of values
-            (one list per column).  In typing terms, this is Tuple[List[Any], ...].
-
-        Example usage:
-            # 1. Default (using the constructor’s columns):
-            for batch in batcher.iter_batches():
-                # batch has attributes batch.x, batch.y, etc...
-
-            # 2. Override with a new set of columns at iteration time:
-            for batch in batcher.iter_batches(columns=["y", "z"]):
-                # now 'batch.y' and 'batch.z' exist, instead of 'batch.x'
-        """
-        # Determine which set of columns to use for this iteration
-        if columns is None:
-            columns_to_use = self.columns
-        else:
-            # Validate the provided columns list
-            self.validate(columns)
-            columns_to_use = columns
-
-        # Create a namedtuple type called "Batch" with fields = columns_to_use.
-        # rename=True ensures invalid identifiers get renamed (_0, _1, etc.)
-        Batch = namedtuple("Batch", columns_to_use, rename=True)
+        Batch = namedtuple("Batch", columns, rename=True)
 
         # Make a copy of the indices and shuffle if requested
         idxs = self._indices.copy()
@@ -119,17 +80,10 @@ class DF_Batcher:
                 break
 
             # Gather each selected column's values into a Python list
-            column_lists: List[List[Any]] = [self.df.loc[batch_idxs, col].tolist() for col in columns_to_use]
+            column_lists: List[List[Any]] = [self.df.loc[batch_idxs, col].tolist() for col in columns]
 
             # Yield a namedtuple( column_lists... )
             yield Batch(*column_lists)
-
-    def __iter__(self) -> Generator[Tuple[List[Any], ...], None, None]:
-        """
-        “for batch in batcher:” is exactly the same as “for batch in batcher.iter_batches():”
-        i.e. uses whatever was provided in self.columns at construction time.
-        """
-        return self.iter_batches()
 
     def copy(self, **kwargs) -> "DF_Batcher":
         """
@@ -142,7 +96,6 @@ class DF_Batcher:
         """
         attrs = {
             "df": self.df,
-            "columns": self.columns,
             "batch_size": self.batch_size,
             "shuffle": self.shuffle,
             "drop_last": self.drop_last,
@@ -156,7 +109,7 @@ class DF_Batcher:
 
         return DF_Batcher(**attrs)
 
-    def add_column(self, col_name: str, values: List[Any]) -> None:
+    def set_column(self, col_name: str, values: List[Any]) -> None:
         """
         Add or override a column in the DataFrame with the specified name and values.
 
@@ -172,4 +125,3 @@ class DF_Batcher:
             raise ValueError(f"Length of values ({len(values)}) does not match DataFrame length ({len(self.df)})")
 
         self.df[col_name] = values
-        self.columns.append(col_name)

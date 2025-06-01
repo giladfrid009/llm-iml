@@ -23,6 +23,7 @@ class OptimAttack(Attack):
         self.mixed_precision = mixed_precision
         self.kv_caching = kv_caching  # TODO: implement switch to turn on or off kv-caching
 
+
     def fit(
         self,
         input_texts: list[str],
@@ -47,7 +48,7 @@ class OptimAttack(Attack):
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory([adv_embeds])
 
-        with tqdm(range(self.steps), disable=self.silent, leave=False) as pbar:
+        with tqdm(range(self.steps), disable=self.silent, leave=False, desc="Attacking") as pbar:
             for step in pbar:
 
                 optim.zero_grad()

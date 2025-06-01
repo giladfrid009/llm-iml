@@ -127,15 +127,18 @@ class IML_Attack:
     ):
         self.adv_model = adv_model
         self.internal_attack = internal_attack
+        
+        self.evaluators = evaluators
+        self.pred_kwargs = pred_kwargs if pred_kwargs is not None else {}
 
         self.mixed_precision = mixed_precision
         self.grad_scaler = torch.GradScaler(enabled=mixed_precision)
 
         self.univ_embeds = self.init_embedding()
         self.optimizer = optim_factory([self.univ_embeds])
-
-        self.evaluators = evaluators
-        self.pred_kwargs = pred_kwargs if pred_kwargs is not None else {}
+        
+        self.best_metric = -float("inf")
+        self.best_embeds = self.univ_embeds.clone().detach()
 
     @property
     def num_tokens(self) -> int:
@@ -188,7 +191,7 @@ class IML_Attack:
                 prompts = batch_data.prompt
                 system_text = batch_data.system if hasattr(batch_data, "system") else None
 
-                adv_embeds_broad = adv_embeds.broadcast_to((len(prompts), *adv_embeds.shape[1:]))
+                adv_embeds_broad = self.univ_embeds.broadcast_to((len(prompts), *adv_embeds.shape[1:]))
 
                 responses = self.adv_model.generate_text(
                     prompts,
@@ -220,13 +223,22 @@ class IML_Attack:
         dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
 
         all_responses = self.predict(dl_eval)
-        dl_eval.add_column("response", all_responses)
+        dl_eval.set_column("response", all_responses)
 
         metrics = {}
         for evaluator in evalers:
             metrics[evaluator.name] = evaluator.evaluate(dl_eval)
         return metrics
 
+    
+    # TODO: CLEAN UP AND SPLIT INTO SMALLER FUNTIONS
+    # ITS BECOMING A MESS AND NON-MAINTANABLE, only after AdverModel refactor
+    
+    # TODO: probably we need to make the evaluators mandatory 
+    # in order for IML to only use succesful attacks
+    
+    # TODO: after this point i feel we can practically use the same code as we use in ulib
+    # including all the logging, etc...
     def fit(
         self,
         dl_train: DF_Batcher,
@@ -248,6 +260,19 @@ class IML_Attack:
         should_stop = stop_criteria.should_stop()
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
+            
+            # initial evaluation
+            if dl_eval is not None and self.evaluators is not None:
+                metrics = self.evaluate(self.evaluators[:1], dl_eval)
+                stop_criteria.update(0, metrics[self.evaluators[0].name])
+                epoch_pbar.set_postfix(metrics)
+                
+                # update best metric and embedding if applicable
+                if self.best_metric < metrics[self.evaluators[0].name]:
+                    self.best_metric = metrics[self.evaluators[0].name]
+                    self.best_embeds = self.univ_embeds.clone().detach()
+            
+            # main training loop
             for epoch_num in epoch_pbar:
                 if should_stop:
                     break
@@ -276,6 +301,11 @@ class IML_Attack:
                     metrics = self.evaluate(self.evaluators, dl_eval)
                     stop_criteria.update(epoch_num, metrics[self.evaluators[0].name])
                     epoch_pbar.set_postfix(metrics)
+                    
+                    # update best metric and embedding if applicable
+                    if self.best_metric < metrics[self.evaluators[0].name]:
+                        self.best_metric = metrics[self.evaluators[0].name]
+                        self.best_embeds = self.univ_embeds.clone().detach()
 
                 else:
                     stop_criteria.update(epoch_num, None)

@@ -13,53 +13,59 @@ class AdverEmbedding(nn.Module):
         self.embedder = embedder
         self.device = utils.extract_device(embedder)
 
-        self.adv_embeds = None
-        self.adv_mask = None
+        self.adv_embeds: torch.Tensor = None
+        self.adv_mask: torch.Tensor = None
+
+        self._embed_dim: int = None
+        self._embed_dtype: torch.dtype = None
 
     def _verify(self, adv_emb: torch.Tensor | None, adv_mask: torch.Tensor | None):
         if (adv_emb is None) != (adv_mask is None):
             raise ValueError("Both adv_emb and adv_mask should be None or not None")
 
+    @property
     def embed_dim(self) -> int:
+        if self._embed_dim is not None:
+            return self._embed_dim
         test_input = torch.zeros(1, 1, dtype=torch.long, device=self.device)
-        return self.embedder(test_input).size(-1)
+        dim = self.embedder(test_input).size(-1)
+        self._embed_dim = dim
+        return dim
 
+    @property
     def embed_dtype(self) -> torch.dtype:
+        if self._embed_dtype is not None:
+            return self._embed_dtype
         test_input = torch.zeros(1, 1, dtype=torch.long, device=self.device)
-        return self.embedder(test_input).dtype
+        dtype = self.embedder(test_input).dtype
+        self._embed_dtype = dtype
+        return dtype
 
     def set_adver(self, adv_embeds: torch.Tensor | None = None, adv_mask: torch.Tensor | None = None):
         self._verify(adv_embeds, adv_mask)
         self.adv_embeds = adv_embeds
         self.adv_mask = adv_mask
 
-    def forward(
-        self,
-        input: torch.Tensor,
-        adv_embeds: torch.Tensor | None = None,
-        adv_mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        self._verify(adv_embeds, adv_mask)
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        adv_embeds = self.adv_embeds
+        adv_mask = self.adv_mask
 
-        if adv_embeds is None:  # use the stored values
-            adv_embeds = self.adv_embeds
-            adv_mask = self.adv_mask
+        if adv_mask is None:
+            return self.embedder(inputs)
 
-        embedded: torch.Tensor = self.embedder(input)
+        assert inputs.shape == adv_mask.shape, f"Shape mismatch: input {inputs.shape}, adv_mask {adv_mask.shape}"
+        assert inputs.ndim + 1 == adv_embeds.ndim
+        assert inputs.size(0) == adv_embeds.size(0)
+        assert inputs.ndim == adv_mask.ndim
 
-        if adv_embeds is None:
-            return embedded
-
-        assert embedded.ndim == adv_embeds.ndim  # same number of dimensions
-        assert embedded.size(0) == adv_embeds.size(0)  # same batch size
-        assert embedded.size(-1) == adv_embeds.size(-1)  # same embedding size
-
-        if adv_mask.ndim == adv_embeds.ndim - 1:
-            adv_mask = adv_mask.unsqueeze(-1)  # we assume the mask is over the tokens
-
-        return embedded.masked_scatter(mask=adv_mask, source=adv_embeds)
+        embedded_clean = self.embedder(inputs[~adv_mask])
+        embedded = torch.zeros(*inputs.shape, self.embed_dim, dtype=self.embed_dtype, device=self.device)        
+        embedded = embedded.masked_scatter(mask=~adv_mask.unsqueeze(-1), source=embedded_clean)
+        return embedded.masked_scatter(mask=adv_mask.unsqueeze(-1), source=adv_embeds)
 
 
+# TODO: add functionality of assigning adv_embedding to AdverModel
+# and remove adv_embeds from the arguments, only the adv_mask should be passed
 class AdverModel(nn.Module):
     def __init__(
         self,
@@ -79,18 +85,23 @@ class AdverModel(nn.Module):
         self.adv_token = adv_token
         if self.adv_token not in tokenizer.get_vocab():
             tokenizer.add_special_tokens({"additional_special_tokens": [self.adv_token]})
-            model.resize_token_embeddings(len(tokenizer))
 
         # adv embedder
         orig_embedder = self.model.get_input_embeddings()
         self.adv_embedder = AdverEmbedding(orig_embedder)
         self.model.set_input_embeddings(self.adv_embedder)
-        self.embed_dim = self.adv_embedder.embed_dim()
-        self.embed_dtype = self.adv_embedder.embed_dtype()
 
         # params
         self.device = utils.extract_device(model)
         self.num_tokens = num_tokens
+
+    @property
+    def embed_dim(self) -> int:
+        return self.adv_embedder.embed_dim
+    
+    @property
+    def embed_dtype(self) -> torch.dtype:
+        return self.adv_embedder.embed_dtype
 
     def tokenize(
         self,
@@ -120,7 +131,7 @@ class AdverModel(nn.Module):
         for inp_txt in input_texts:
             msg = [{"role": "user", "content": inp_txt + (self.adv_token * self.num_tokens)}]
             input_messeges.append(msg)
-            
+
         if system_texts is not None:
             for msg, sys_txt in zip(input_messeges, system_texts):
                 msg.insert(0, {"role": "system", "content": sys_txt})
@@ -206,8 +217,12 @@ class AdverModel(nn.Module):
     ):
 
         self.adv_embedder.set_adver(adv_embeds, adv_mask)
+        inputs_embeds = self.adv_embedder.forward(input_ids)
+        self.adv_embedder.set_adver(None, None)
+
         return self.model(
-            input_ids=input_ids,
+            input_ids=None,
+            inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             **kwargs,
         )
@@ -221,34 +236,21 @@ class AdverModel(nn.Module):
         max_length: int = 100,
         **kwargs,
     ):
+
         self.adv_embedder.set_adver(adv_embeds, adv_mask)
+        inputs_embeds = self.adv_embedder.forward(input_ids)
+        self.adv_embedder.set_adver(None, None)
 
-        if adv_embeds is None:
-            # standard generation
-            return self.model.generate(
-                inputs=input_ids,
-                attention_mask=attention_mask,
-                do_sample=True,
-                max_length=max_length,
-                num_return_sequences=1,
-                pad_token_id=self.tokenizer.pad_token_id,
-                **kwargs,
-            )
-
-        else:
-            # adversarial generation
-            inputs_embeds = self.adv_embedder.forward(input_ids, adv_embeds, adv_mask)
-            self.adv_embedder.set_adver(None, None)  # reset the adv embeds and mask
-            return self.model.generate(
-                inputs=None, # NOTE: if set to input_ids then result will also contain the input prompt
-                inputs_embeds=inputs_embeds,
-                attention_mask=attention_mask,
-                do_sample=True,
-                max_length=max_length,
-                num_return_sequences=1,
-                pad_token_id=self.tokenizer.pad_token_id,
-                **kwargs,
-            )
+        return self.model.generate(
+            inputs=None,  # NOTE: if set to input_ids then result will also contain the input prompt
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            do_sample=True,
+            max_length=max_length,
+            num_return_sequences=1,
+            pad_token_id=self.tokenizer.pad_token_id,
+            **kwargs,
+        )
 
     @torch.inference_mode()
     def generate_text(
