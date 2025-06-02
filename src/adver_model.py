@@ -317,14 +317,12 @@ class AdverModel(nn.Module):
         """
         token_dict = self.tokenize(input_texts, system_texts=system_texts)
 
-        with torch.autocast(device_type=self.device.type, enabled=True):
-
-            result = self.generate(
-                input_ids=token_dict["input_ids"],
-                attention_mask=token_dict["attention_mask"],
-                adv_mask=token_dict["adv_mask"],
-                max_length=max_length,
-                **kwargs,
-            )
+        result = self.generate(
+            input_ids=token_dict["input_ids"],
+            attention_mask=token_dict["attention_mask"],
+            adv_mask=token_dict["adv_mask"],
+            max_length=max_length,
+            **kwargs,
+        )
 
         return self.tokenizer.batch_decode(result, skip_special_tokens=True)

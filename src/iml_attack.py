@@ -2,6 +2,7 @@ from src.attack import Attack
 from src.adver_model import AdverModel
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
+from src.activation_extractor import ActivationExtractor
 
 from typing import Any
 import torch
@@ -121,6 +122,7 @@ class IML_Attack:
         self,
         adv_model: AdverModel,
         internal_attack: Attack,
+        activ_extractor: ActivationExtractor,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         mixed_precision: bool = True,
         evaluators: list[Evaluator] | None = None,
@@ -128,7 +130,8 @@ class IML_Attack:
     ):
         self.adv_model = adv_model
         self.internal_attack = internal_attack
-
+        self.activ_extractor = activ_extractor
+        
         self.evaluators = evaluators
         self.pred_kwargs = pred_kwargs if pred_kwargs is not None else {}
 
@@ -160,9 +163,6 @@ class IML_Attack:
             dtype=self.internal_attack.embed_dtype,
             requires_grad=True,
         )
-
-    def get_univ_embed(self) -> torch.Tensor:
-        return self.univ_embeds.clone().detach()
 
     @torch.inference_mode()
     def predict(
@@ -240,7 +240,7 @@ class IML_Attack:
         return metrics
 
     # TODO: CLEAN UP AND SPLIT INTO SMALLER FUNTIONS
-    # ITS BECOMING A MESS AND NON-MAINTANABLE, only after AdverModel refactor
+    # ITS BECOMING A MESS AND NON-MAINTANABLE
 
     # TODO: probably we need to make the evaluators mandatory
     # in order for IML to only use succesful attacks
@@ -348,15 +348,20 @@ class IML_Attack:
 
             # compute universal logits
             univ_embeds = self.univ_embeds.expand(len(input_text), -1, -1)
-            self.adv_model.set_embeddings(univ_embeds)
-            univ_logits = self.compute_logits(token_dict, self.adv_model)
+            
+            with self.activ_extractor.capture():
+                self.adv_model.set_embeddings(univ_embeds)
+                univ_logits = self.compute_logits(token_dict, self.adv_model)
+                univ_activs = self.activ_extractor.get_activations()
 
             # compute per-sample logits
             with torch.autocast(device_type=self.device.type, enabled=False):
                 sample_embed = self.internal_attack.fit(input_text, target_text, embeds_init=univ_embeds)
-            with torch.inference_mode():
+            
+            with self.activ_extractor.capture(), torch.inference_mode():
                 self.adv_model.set_embeddings(sample_embed)
                 sample_logits = self.compute_logits(token_dict, self.adv_model)
+                sample_activs = self.activ_extractor.get_activations()
 
             # compute loss
             univ_logits = univ_logits.view(-1, univ_logits.size(-1))
