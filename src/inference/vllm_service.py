@@ -287,10 +287,10 @@ class VLLMService:
         max_tokens: int = 16,
         repetition_penalty: float = 1.0,
         stop: Optional[List[str]] = None,
-    ) -> List[str]:
+    ) -> List[List[str]]:
         """
-        Batched chat. Returns a list of M strings (one per conversation).
-        Raises if not started.
+        Batched chat.
+        Returns a list of lists, each sub-list corresponds to number of outputs (n).
         """
         if self.client is None:
             raise RuntimeError("Service not started. Call .start() first.")
@@ -317,9 +317,10 @@ class VLLMService:
         max_tokens: int = 16,
         repetition_penalty: float = 1.0,
         stop: Optional[List[str]] = None,
-    ) -> List[str]:
+    ) -> List[List[str]]:
         """
-        Batched generate. Returns a list of N strings (one per prompt).
+        Batched generate.
+        Returns a list of lists, each sub-list corresponds to number of outputs (n).
         Raises if not started.
         """
         if self.client is None:

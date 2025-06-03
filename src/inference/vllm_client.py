@@ -1,6 +1,7 @@
 import requests
 from requests.exceptions import RequestException
 from typing import List, Dict, Optional
+from src.inference.vllm_server import ResponseOutput
 
 
 class VLLMClient:
@@ -81,7 +82,7 @@ class VLLMClient:
         max_tokens: int = 16,
         repetition_penalty: float = 1.0,
         stop: Optional[List[str]] = None,
-    ) -> List[str]:
+    ) -> List[List[str]]:
         """
         Send a batch of M conversations to POST /chat, return a list of M generated strings.
 
@@ -113,17 +114,8 @@ class VLLMClient:
         except ValueError as e:
             raise RuntimeError(f"Invalid JSON in /chat response: {e!r}")
 
-        if not isinstance(data, list):
-            raise RuntimeError(f"Malformed /chat response (expected JSON list): {data!r}")
-
-        # Each item should be a string
-        outputs: List[str] = []
-        for item in data:
-            if not isinstance(item, str):
-                raise RuntimeError(f"Malformed /chat response item (not a string): {item!r}")
-            outputs.append(item)
-
-        return outputs
+        output = ResponseOutput.model_validate(data)
+        return output.outputs
 
     def generate(
         self,
@@ -136,7 +128,7 @@ class VLLMClient:
         max_tokens: int = 16,
         repetition_penalty: float = 1.0,
         stop: Optional[List[str]] = None,
-    ) -> List[str]:
+    ) -> List[List[str]]:
         """
         Send a batch of N prompts to POST /generate, return a list of N generated strings.
 
@@ -168,14 +160,5 @@ class VLLMClient:
         except ValueError as e:
             raise RuntimeError(f"Invalid JSON in /generate response: {e!r}")
 
-        if not isinstance(data, list):
-            raise RuntimeError(f"Malformed /generate response (expected JSON list): {data!r}")
-
-        # Each item should be a string
-        outputs: List[str] = []
-        for item in data:
-            if not isinstance(item, str):
-                raise RuntimeError(f"Malformed /generate response item (not a string): {item!r}")
-            outputs.append(item)
-
-        return outputs
+        output = ResponseOutput.model_validate(data)
+        return output.outputs

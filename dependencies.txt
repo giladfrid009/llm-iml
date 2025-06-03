@@ -13,7 +13,7 @@ optimum
 
 # attn
 vllm-flash-attn
-flash-attn
+flash-attn # DOESNT WORK, FIGURE OUT HOW TO INSTALL
 ninja
 packaging
 xformers

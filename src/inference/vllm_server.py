@@ -52,6 +52,15 @@ class GenerateRequest(BaseModel):
     max_tokens: int = 16
     repetition_penalty: float = 1.0
     stop: Optional[List[str]] = None
+    
+class ResponseOutput(BaseModel):
+    """
+    Response output model for chat and generate endpoints.
+    - outputs: The output sequences of the request. 
+        Each distinct output is represented as a list of strings, where the number of items
+        in the list corresponds to the number of outputs generated for each input.
+    """
+    outputs: List[List[str]]
 
 
 @app.get("/health")
@@ -62,8 +71,8 @@ async def health_check() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/chat", response_model=List[str])
-async def chat_endpoint(request: ChatRequest) -> List[str]:
+@app.post("/chat", response_model=ResponseOutput)
+async def chat_endpoint(request: ChatRequest) -> ResponseOutput:
     """
     Batched chat endpoint. Expects JSON matching ChatRequest, calls `llm.chat(...)`
     on the entire batch, and returns a list of M generated strings.
@@ -83,27 +92,19 @@ async def chat_endpoint(request: ChatRequest) -> List[str]:
         stop=request.stop,
     )
 
-    # TODO: FIX, no such thing as chat, probably becaue very old version of vllm
-    # ugh, need to update dependencies.
-
     try:
-        outputs = _llm_instance.chat(request.conversations, sampling_params=sampling_params)
+        req_outputs = _llm_instance.chat(request.conversations, sampling_params=sampling_params)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error during vLLM inference: {e!r}")
-
-    # Extract `.text` from each ChatOutput
-    result: List[str] = []
-    for out in outputs:
-        txt = getattr(out, "text", None)
-        if not isinstance(txt, str):
-            raise HTTPException(status_code=500, detail="Malformed vLLM output: missing `.text` field.")
-        result.append(txt)
-
-    return result
+    
+    responses = []
+    for res in req_outputs:
+        responses.append([o.text for o in res.outputs])
+    return ResponseOutput(outputs=responses)
 
 
-@app.post("/generate", response_model=List[str])
-async def generate_endpoint(request: GenerateRequest) -> List[str]:
+@app.post("/generate", response_model=ResponseOutput)
+async def generate_endpoint(request: GenerateRequest) -> ResponseOutput:
     """
     Batched generate endpoint. Expects JSON matching GenerateRequest, calls
     `llm.generate(...)` on the entire batch of N prompts, and returns a list of N strings.
@@ -124,19 +125,14 @@ async def generate_endpoint(request: GenerateRequest) -> List[str]:
     )
 
     try:
-        outputs = _llm_instance.generate(request.prompts, sampling_params=sampling_params, use_tqdm=False)
+        req_outputs = _llm_instance.generate(request.prompts, sampling_params=sampling_params, use_tqdm=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error during vLLM inference: {e!r}")
 
-    # Extract `.text` from each GenerationOutput
-    result: List[str] = []
-    for out in outputs:
-        txt = getattr(out, "text", None)
-        if not isinstance(txt, str):
-            raise HTTPException(status_code=500, detail="Malformed vLLM output: missing `.text` field.")
-        result.append(txt)
-
-    return result
+    responses = []
+    for res in req_outputs:
+        responses.append([o.text for o in res.outputs])
+    return ResponseOutput(outputs=responses)
 
 
 def server_main(
