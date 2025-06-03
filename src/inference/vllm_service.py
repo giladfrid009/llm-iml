@@ -1,4 +1,5 @@
 import os
+from re import S
 import sys
 import socket
 import time
@@ -6,6 +7,7 @@ import subprocess
 import atexit
 from typing import List, Dict, Optional
 import requests
+from vllm import SamplingParams
 
 from src.inference.vllm_client import VLLMClient
 
@@ -22,7 +24,7 @@ class VLLMServer:
     and answers /health, /chat, and /generate.
 
     Usage:
-    
+
         server = VLLMServer(
             model_name="meta-llama/Llama-3.2-1b-Instruct",
             gpu_ids=[0,1],
@@ -279,14 +281,7 @@ class VLLMService:
     def chat(
         self,
         conversations: List[List[Dict[str, str]]],
-        n: int = 1,
-        temperature: float = 1.0,
-        top_p: float = 1.0,
-        top_k: int = -1,
-        min_p: float = 0.0,
-        max_tokens: int = 16,
-        repetition_penalty: float = 1.0,
-        stop: Optional[List[str]] = None,
+        sampling_params: SamplingParams | None = None,
     ) -> List[List[str]]:
         """
         Batched chat.
@@ -294,29 +289,14 @@ class VLLMService:
         """
         if self.client is None:
             raise RuntimeError("Service not started. Call .start() first.")
-        return self.client.chat(
-            conversations=conversations,
-            n=n,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            min_p=min_p,
-            max_tokens=max_tokens,
-            repetition_penalty=repetition_penalty,
-            stop=stop,
-        )
+        if sampling_params is None:
+            sampling_params = SamplingParams()
+        return self.client.chat(conversations, sampling_params)
 
     def generate(
         self,
         prompts: List[str],
-        n: int = 1,
-        temperature: float = 1.0,
-        top_p: float = 1.0,
-        top_k: int = -1,
-        min_p: float = 0.0,
-        max_tokens: int = 16,
-        repetition_penalty: float = 1.0,
-        stop: Optional[List[str]] = None,
+        sampling_params: SamplingParams | None = None,
     ) -> List[List[str]]:
         """
         Batched generate.
@@ -325,17 +305,9 @@ class VLLMService:
         """
         if self.client is None:
             raise RuntimeError("Service not started. Call .start() first.")
-        return self.client.generate(
-            prompts=prompts,
-            n=n,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            min_p=min_p,
-            max_tokens=max_tokens,
-            repetition_penalty=repetition_penalty,
-            stop=stop,
-        )
+        if sampling_params is None:
+            sampling_params = SamplingParams()
+        return self.client.generate(prompts, sampling_params)
 
     def shutdown(self) -> None:
         """Shut down the server subprocess. Idempotent."""
