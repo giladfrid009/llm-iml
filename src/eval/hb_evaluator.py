@@ -88,7 +88,6 @@ class HarmbenchEvaluator(Evaluator):
         self.sampling_params = sampling_params
 
         # vllm service
-        # TODO: accept kwargs which will be passed to vllm constructor
         self.model = VLLMService(
             model_name=model_name,
             gpu_ids=gpu_ids,
@@ -96,6 +95,9 @@ class HarmbenchEvaluator(Evaluator):
             dtype="bfloat16",
             startup_timeout=5 * 60,
         )
+
+        # start vllm service        
+        self.model.start()
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str], contex_texts: list[str] = None) -> list[str]:
         """
