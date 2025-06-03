@@ -1,21 +1,24 @@
 torch
 vllm
-vllm-flash-attn
 numpy
+matplotlib
+pandas
+tqdm
 
+# hf
 transformers
 huggingface_hub
 accelerate
 optimum
 
+# attn
+vllm-flash-attn
 flash-attn
 ninja
 packaging
 xformers
 
-pandas
-tqdm
-
+# serving
 requests
 uvicorn
 pydantic
