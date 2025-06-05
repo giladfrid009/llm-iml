@@ -142,11 +142,11 @@ class HarmbenchEvaluator(Evaluator):
         responses = self.model.generate(eval_inputs, sampling_params=self.sampling_params)
 
         eval_results = []
-        for resp in responses:
-            text = resp[0].stip().lower()
+        for resp, inp_text in zip(responses, input_texts):
+            resp_text = resp[0].stip().lower()
 
-            if not text in ["yes", "no"]:
-                warnings.warn(f"Unexpected response: {text} for input: {text}")
+            if not resp_text in ["yes", "no"]:
+                warnings.warn(f"Unexpected response: {resp_text} for input: {inp_text}")
                 continue
 
             eval_results.append(1.0 if "yes" in resp_text else 0.0)
