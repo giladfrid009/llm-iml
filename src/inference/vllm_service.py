@@ -25,8 +25,22 @@ class LLMConfig:
     """Configuration for the underlying vLLM model."""
 
     model_name: str
-    dtype: str = "bfloat16"
+    tokenizer: Optional[str] = None
+    tokenizer_mode: str = "auto"
+    skip_tokenizer_init: bool = False
+    trust_remote_code: bool = False
     tensor_parallel_size: int = 1
+    dtype: str = "bfloat16"
+    quantization: Optional[str] = None
+    revision: Optional[str] = None
+    tokenizer_revision: Optional[str] = None
+    seed: int = 0
+    gpu_memory_utilization: Optional[float] = None
+    swap_space: Optional[int] = None
+    cpu_offload_gb: Optional[int] = None
+    enforce_eager: bool = False
+    max_seq_len_to_capture: Optional[int] = None
+    disable_custom_all_reduce: bool = False
     max_model_len: Optional[int] = None
     download_dir: Optional[str] = None
     llm_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -152,8 +166,22 @@ class VLLMServer:
         ]
         llm_args = {
             "tensor_parallel_size": self.llm_config.tensor_parallel_size,
+            "tokenizer": self.llm_config.tokenizer,
+            "tokenizer_mode": self.llm_config.tokenizer_mode,
+            "skip_tokenizer_init": self.llm_config.skip_tokenizer_init,
+            "trust_remote_code": self.llm_config.trust_remote_code,
             "max_model_len": self.llm_config.max_model_len,
             "download_dir": self.llm_config.download_dir,
+            "quantization": self.llm_config.quantization,
+            "revision": self.llm_config.revision,
+            "tokenizer_revision": self.llm_config.tokenizer_revision,
+            "seed": self.llm_config.seed,
+            "gpu_memory_utilization": self.llm_config.gpu_memory_utilization,
+            "swap_space": self.llm_config.swap_space,
+            "cpu_offload_gb": self.llm_config.cpu_offload_gb,
+            "enforce_eager": self.llm_config.enforce_eager,
+            "max_seq_len_to_capture": self.llm_config.max_seq_len_to_capture,
+            "disable_custom_all_reduce": self.llm_config.disable_custom_all_reduce,
             **self.llm_config.llm_kwargs,
         }
         llm_args = {k: v for k, v in llm_args.items() if v is not None}
