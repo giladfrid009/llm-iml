@@ -2,11 +2,12 @@ import requests
 from requests.exceptions import RequestException
 from vllm import SamplingParams
 from typing import List, Dict
+import msgspec
+
 from src.inference.vllm_server import (
     ResponseOutput,
     ChatRequest,
     GenerateRequest,
-    SamplingConfig,
 )
 
 
@@ -30,9 +31,13 @@ class VLLMClient:
         try:
             resp = requests.get(health_url, timeout=self.timeout)
             if resp.status_code != 200:
-                raise RuntimeError(f"Health check returned HTTP {resp.status_code}")
+                raise RuntimeError(
+                    f"Health check returned HTTP {resp.status_code}"
+                )
         except Exception as e:
-            raise RuntimeError(f"Cannot reach vLLM server at {health_url}: {e!r}")
+            raise RuntimeError(
+                f"Cannot reach vLLM server at {health_url}: {e!r}"
+            )
 
     def chat(
         self,
@@ -46,26 +51,37 @@ class VLLMClient:
         """
         url = f"{self.base_url}/chat"
 
-        params = SamplingConfig.model_validate(vars(sampling_params))
         payload = ChatRequest(
             conversations=conversations,
-            params=params,
+            params=sampling_params,
         )
 
         try:
-            response = requests.post(url, json=payload.model_dump(mode="json"), timeout=self.timeout)
+            # ``requests.post(json=...)`` would re-encode using ``json.dumps``.
+            # Here we pre-encode with msgspec for speed and pass the raw bytes.
+            response = requests.post(
+                url,
+                data=msgspec.json.encode(payload),
+                headers={"Content-Type": "application/json"},
+                timeout=self.timeout,
+            )
         except RequestException as e:
-            raise RuntimeError(f"Failed to POST /chat → {e!r}")
+            raise RuntimeError(
+                f"Failed to POST /chat → {e!r}"
+            )
 
         if response.status_code != 200:
-            raise RuntimeError(f"/chat returned HTTP {response.status_code}: {response.text}")
+            raise RuntimeError(
+                f"/chat returned HTTP {response.status_code}: {response.text}"
+            )
 
         try:
-            data = response.json()
-        except ValueError as e:
-            raise RuntimeError(f"Invalid JSON in /chat response: {e!r}")
+            output = msgspec.json.decode(response.content, type=ResponseOutput)
+        except msgspec.DecodeError as e:
+            raise RuntimeError(
+                f"Invalid JSON in /chat response: {e!r}"
+            )
 
-        output = ResponseOutput.model_validate(data)
         return output.outputs
 
     def generate(
@@ -80,24 +96,36 @@ class VLLMClient:
         """
         url = f"{self.base_url}/generate"
 
-        params = SamplingConfig.model_validate(vars(sampling_params))
         payload = GenerateRequest(
             prompts=prompts,
-            params=params,
+            params=sampling_params,
         )
 
         try:
-            response = requests.post(url, json=payload.model_dump(mode="json"), timeout=self.timeout)
+            # Pre-encode with msgspec rather than letting ``requests`` call
+            # ``json.dumps`` internally.
+            response = requests.post(
+                url,
+                data=msgspec.json.encode(payload),
+                headers={"Content-Type": "application/json"},
+                timeout=self.timeout,
+            )
         except RequestException as e:
-            raise RuntimeError(f"Failed to POST /generate → {e!r}")
+            raise RuntimeError(
+                f"Failed to POST /generate → {e!r}"
+            )
 
         if response.status_code != 200:
-            raise RuntimeError(f"/generate returned HTTP {response.status_code}: {response.text}")
+            raise RuntimeError(
+                f"/generate returned HTTP {response.status_code}: "
+                f"{response.text}"
+            )
 
         try:
-            data = response.json()
-        except ValueError as e:
-            raise RuntimeError(f"Invalid JSON in /generate response: {e!r}")
+            output = msgspec.json.decode(response.content, type=ResponseOutput)
+        except msgspec.DecodeError as e:
+            raise RuntimeError(
+                f"Invalid JSON in /generate response: {e!r}"
+            )
 
-        output = ResponseOutput.model_validate(data)
         return output.outputs

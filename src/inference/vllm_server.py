@@ -4,9 +4,9 @@ import argparse
 import json
 from typing import List, Dict, Optional
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict
+from fastapi import FastAPI, HTTPException, Request, Response
 import uvicorn
+import msgspec
 
 from vllm import LLM, SamplingParams
 
@@ -16,46 +16,24 @@ app = FastAPI(title="vLLM Batched‐Chat & Generate Server")
 _llm_instance: Optional[LLM] = None
 
 
-class SamplingConfig(BaseModel):
-    """Schema mirroring :class:`vllm.SamplingParams`."""
-
-    model_config = ConfigDict(extra="allow")
-
-    n: int = 1
-    temperature: float = 1.0
-    top_p: float = 1.0
-    top_k: int = -1
-    min_p: float = 0.0
-    max_tokens: int = 16
-    repetition_penalty: float = 1.0
-    stop: Optional[List[str]] = None
-
-    def to_sampling_params(self) -> SamplingParams:
-        return SamplingParams(**self.model_dump())
-
-
-class ChatRequest(BaseModel):
-    """
-    JSON schema for batched chat requests.
-    - conversations: list of M conversations; each conversation is a list of messages,
-      where each message is {"role": str, "content": str}.
-    """
+class ChatRequest(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=True):
+    """Payload for batched chat requests."""
 
     conversations: List[List[Dict[str, str]]]
-    params: SamplingConfig
+    params: SamplingParams
 
 
-class GenerateRequest(BaseModel):
+class GenerateRequest(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=True):
     """
     JSON schema for batched generation (text completion) requests.
     - prompts: list of N prompt strings.
     """
 
     prompts: List[str]
-    params: SamplingConfig
+    params: SamplingParams
 
 
-class ResponseOutput(BaseModel):
+class ResponseOutput(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=True):
     """
     Response output model for chat and generate endpoints.
     - outputs: The output sequences of the request.
@@ -74,50 +52,79 @@ async def health_check() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/chat", response_model=ResponseOutput)
-async def chat_endpoint(request: ChatRequest) -> ResponseOutput:
+@app.post("/chat")
+async def chat_endpoint(request: Request) -> Response:
     """
     Batched chat endpoint. Expects JSON matching ChatRequest, calls `llm.chat(...)`
     on the entire batch, and returns a list of M generated strings.
     """
-    global _llm_instance
     if _llm_instance is None:
         raise HTTPException(status_code=500, detail="LLM not initialized.")
 
-    sampling_params = request.params.to_sampling_params()
+    data = await request.body()
+    try:
+        req = msgspec.json.decode(data, type=ChatRequest)
+    except msgspec.DecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid request: {e}")
+    sampling_params = req.params
 
     try:
-        req_outputs = _llm_instance.chat(request.conversations, sampling_params=sampling_params)
+        req_outputs = _llm_instance.chat(
+            req.conversations,
+            sampling_params=sampling_params,
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error during vLLM inference: {e!r}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error during vLLM inference: {e!r}",
+        )
 
     responses = []
     for res in req_outputs:
         responses.append([o.text for o in res.outputs])
-    return ResponseOutput(outputs=responses)
+    resp_obj = ResponseOutput(outputs=responses)
+    return Response(
+        content=msgspec.json.encode(resp_obj),
+        media_type="application/json",
+    )
 
 
-@app.post("/generate", response_model=ResponseOutput)
-async def generate_endpoint(request: GenerateRequest) -> ResponseOutput:
+@app.post("/generate")
+async def generate_endpoint(request: Request) -> Response:
     """
     Batched generate endpoint. Expects JSON matching GenerateRequest, calls
     `llm.generate(...)` on the entire batch of N prompts, and returns a list of N strings.
     """
-    global _llm_instance
     if _llm_instance is None:
         raise HTTPException(status_code=500, detail="LLM not initialized.")
 
-    sampling_params = request.params.to_sampling_params()
+    data = await request.body()
+    try:
+        req = msgspec.json.decode(data, type=GenerateRequest)
+    except msgspec.DecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid request: {e}")
+    sampling_params = req.params
 
     try:
-        req_outputs = _llm_instance.generate(request.prompts, sampling_params=sampling_params, use_tqdm=False)
+        req_outputs = _llm_instance.generate(
+            req.prompts,
+            sampling_params=sampling_params,
+            use_tqdm=False,
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error during vLLM inference: {e!r}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error during vLLM inference: {e!r}",
+        )
 
     responses = []
     for res in req_outputs:
         responses.append([o.text for o in res.outputs])
-    return ResponseOutput(outputs=responses)
+    resp_obj = ResponseOutput(outputs=responses)
+    return Response(
+        content=msgspec.json.encode(resp_obj),
+        media_type="application/json",
+    )
 
 
 def server_main(
