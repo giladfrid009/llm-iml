@@ -1,11 +1,11 @@
 import os
-from re import S
 import sys
 import socket
 import time
 import subprocess
 import atexit
 from typing import List, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor
 import requests
 from vllm import SamplingParams
 
@@ -76,7 +76,9 @@ class VLLMServer:
             self.server_script = server_script_path
 
         if not os.path.isfile(self.server_script):
-            raise FileNotFoundError(f"Cannot find server script at: {self.server_script}")
+            raise FileNotFoundError(
+                f"Cannot find server script at: {self.server_script}"
+            )
 
         self._process: Optional[subprocess.Popen] = None
         self._is_shut_down = False
@@ -145,7 +147,10 @@ class VLLMServer:
             # 1) If subprocess died, capture logs and error
             if self._process.poll() is not None:
                 out, err = self._process.communicate(timeout=1)
-                raise RuntimeError("[VLLMServer] Subprocess terminated prematurely.\n" f"STDOUT:\n{out}\nSTDERR:\n{err}")
+                raise RuntimeError(
+                    "[VLLMServer] Subprocess terminated prematurely.\n"
+                    f"STDOUT:\n{out}\nSTDERR:\n{err}"
+                )
             # 2) Try health endpoint
             try:
                 resp = requests.get(health_url, timeout=1.0)
@@ -158,7 +163,9 @@ class VLLMServer:
             # 3) Timeout?
             if time.time() - t0 > self.startup_timeout:
                 self._terminate_process()
-                raise RuntimeError(f"[VLLMServer] Timeout ({self.startup_timeout}s) waiting for health check.")
+                raise RuntimeError(
+                    f"[VLLMServer] Timeout ({self.startup_timeout}s) waiting for health check."
+                )
             time.sleep(0.1)
 
     def is_running(self) -> bool:
@@ -242,41 +249,107 @@ class VLLMService:
         startup_timeout: float = 15.0,
         client_timeout: float = 30.0,
         server_script_path: Optional[str] = None,
+        num_gpu_clones: int | None = None,
+        num_same_gpu_clones: int = 1,
     ):
         """
         Args:
             model_name: HF model ID (e.g. 'meta-llama/Llama-3.2-1b-Instruct').
-            gpu_ids: List of GPU indices visible to server (e.g. [0], [0,1]).
+            gpu_ids: List of GPU indices available for use.
             host: Host for the server (default '127.0.0.1').
-            port: If None, auto-pick a free port. Otherwise bind exactly to this port.
+            port: Base port. If None, each server auto-picks a free port. If provided
+                and more than one server is created, subsequent servers will use
+                consecutive port numbers starting from this value.
             dtype: Data type for model weights (e.g. 'bfloat16', 'float16', 'float32').
             startup_timeout: Wait time (s) for server health check.
             client_timeout: HTTP timeout (s) for client operations.
             server_script_path: Path to `vllm_server.py`. If None, assume same directory.
+            num_gpu_clones: Number of model copies on distinct GPUs. Must be <= len(gpu_ids).
+                Defaults to using all provided GPU IDs.
+            num_same_gpu_clones: Number of copies of the model to launch on each GPU.
+                Useful for load balancing when a single GPU has enough memory for multiple
+                instances.
         """
-        self.server = VLLMServer(
-            model_name=model_name,
-            gpu_ids=gpu_ids,
-            host=host,
-            port=port,
-            dtype=dtype,
-            startup_timeout=startup_timeout,
-            server_script_path=server_script_path,
-        )
-        self.client: Optional[VLLMClient] = None
-        self.client_timeout = client_timeout
+        if num_gpu_clones is None:
+            num_gpu_clones = len(gpu_ids)
+        if num_gpu_clones > len(gpu_ids):
+            raise ValueError("num_gpu_clones cannot exceed number of gpu_ids")
+        if num_same_gpu_clones < 1:
+            raise ValueError("num_same_gpu_clones must be >= 1")
+
+        self._model_name = model_name
+        self._dtype = dtype
+        self._startup_timeout = startup_timeout
+        self._server_script_path = server_script_path
+        self._client_timeout = client_timeout
+        self._host = host
+        self._base_port = port
+
+        self._gpu_ids = gpu_ids[:num_gpu_clones]
+        self._num_same_gpu_clones = num_same_gpu_clones
+
+        self.servers: List[VLLMServer] = []
+        self.clients: List[VLLMClient] = []
 
     def start(self) -> None:
-        """
-        1) Start the server subprocess (loads model on GPUs, polls health).
-        2) Instantiate VLLMClient pointing to that server.
-        """
-        self.server.start()
-        self.client = VLLMClient(host=self.server.host, port=self.server.port, timeout=self.client_timeout)
+        """Start all server subprocesses concurrently and create clients."""
+        if self.servers:
+            raise RuntimeError("Service already started")
+
+        servers: List[VLLMServer] = []
+        port_counter = self._base_port
+        for gpu_id in self._gpu_ids:
+            for _ in range(self._num_same_gpu_clones):
+                srv = VLLMServer(
+                    model_name=self._model_name,
+                    gpu_ids=[gpu_id],
+                    host=self._host,
+                    port=port_counter,
+                    dtype=self._dtype,
+                    startup_timeout=self._startup_timeout,
+                    server_script_path=self._server_script_path,
+                )
+                servers.append(srv)
+                if port_counter is not None:
+                    port_counter += 1
+
+        started: List[VLLMServer] = []
+        try:
+            with ThreadPoolExecutor(max_workers=len(servers)) as ex:
+                futures = {ex.submit(s.start): s for s in servers}
+                for fut, srv in futures.items():
+                    try:
+                        fut.result()
+                        started.append(srv)
+                    except Exception as e:
+                        logger.error(
+                            "[VLLMService] Failed to start server on %s:%s: %s",
+                            srv.host,
+                            srv.port,
+                            e,
+                        )
+                        raise
+
+            for srv in started:
+                client = VLLMClient(
+                    host=srv.host,
+                    port=srv.port,
+                    timeout=self._client_timeout,
+                )
+                self.clients.append(client)
+
+            self.servers = started
+        except Exception:
+            for srv in started:
+                try:
+                    srv.shutdown()
+                except Exception:
+                    pass
+            raise
 
     def is_running(self) -> bool:
-        """Return True if the server subprocess is still alive."""
-        return self.server.is_running()
+        """Return True if at least one server subprocess is still alive."""
+        return any(server.is_running() for server in self.servers)
 
     def chat(
         self,
@@ -287,11 +360,39 @@ class VLLMService:
         Batched chat.
         Returns a list of lists, each sub-list corresponds to number of outputs (n).
         """
-        if self.client is None:
+        if not self.clients:
             raise RuntimeError("Service not started. Call .start() first.")
         if sampling_params is None:
             sampling_params = SamplingParams()
-        return self.client.chat(conversations, sampling_params)
+
+        num_servers = len(self.clients)
+        total = len(conversations)
+        if total == 0:
+            return []
+
+        base = total // num_servers
+        extras = total % num_servers
+
+        batches = []
+        start = 0
+        for i in range(num_servers):
+            size = base + (1 if i < extras else 0)
+            batches.append(conversations[start : start + size])
+            start += size
+
+        results: List[List[List[str]]] = []
+        with ThreadPoolExecutor(max_workers=num_servers) as ex:
+            futures = [
+                ex.submit(client.chat, batch, sampling_params)
+                for client, batch in zip(self.clients, batches)
+            ]
+            for fut in futures:
+                results.append(fut.result())
+
+        merged: List[List[str]] = []
+        for res in results:
+            merged.extend(res)
+        return merged
 
     def generate(
         self,
@@ -303,18 +404,62 @@ class VLLMService:
         Returns a list of lists, each sub-list corresponds to number of outputs (n).
         Raises if not started.
         """
-        if self.client is None:
+        if not self.clients:
             raise RuntimeError("Service not started. Call .start() first.")
         if sampling_params is None:
             sampling_params = SamplingParams()
-        return self.client.generate(prompts, sampling_params)
+
+        num_servers = len(self.clients)
+        total = len(prompts)
+        if total == 0:
+            return []
+
+        base = total // num_servers
+        extras = total % num_servers
+
+        batches = []
+        start = 0
+        for i in range(num_servers):
+            size = base + (1 if i < extras else 0)
+            batches.append(prompts[start : start + size])
+            start += size
+
+        results: List[List[List[str]]] = []
+        with ThreadPoolExecutor(max_workers=num_servers) as ex:
+            futures = [
+                ex.submit(client.generate, batch, sampling_params)
+                for client, batch in zip(self.clients, batches)
+            ]
+            for fut in futures:
+                results.append(fut.result())
+
+        merged: List[List[str]] = []
+        for res in results:
+            merged.extend(res)
+        return merged
 
     def shutdown(self) -> None:
-        """Shut down the server subprocess. Idempotent."""
-        self.server.shutdown()
+        """Shut down all servers concurrently. Idempotent."""
+        servers = self.servers[:]
+        self.servers.clear()
+        self.clients.clear()
+
+        if not servers:
+            return
+
+        with ThreadPoolExecutor(max_workers=len(servers)) as ex:
+            futures = [ex.submit(s.shutdown) for s in servers]
+            for fut in futures:
+                try:
+                    fut.result()
+                except Exception as e:
+                    logger.error("[VLLMService] Error shutting down server: %s", e)
 
     def __del__(self):
         try:
             self.shutdown()
         except Exception:
             pass
+
+
+VLLMBatchedService = VLLMService
