@@ -1,20 +1,24 @@
 import os
-from re import S
 import sys
 import socket
 import time
 import subprocess
 import atexit
-from typing import List, Dict, Optional
+import json
+from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 from vllm import SamplingParams
 
 from src.inference.vllm_client import VLLMClient
+from src.inference.configs import LLMConfig, ServeConfig
 
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 
 class VLLMServer:
@@ -26,10 +30,8 @@ class VLLMServer:
     Usage:
 
         server = VLLMServer(
-            model_name="meta-llama/Llama-3.2-1b-Instruct",
-            gpu_ids=[0,1],
-            host="127.0.0.1",
-            port=None  # auto‐pick a free port
+            llm_config=LLMConfig(model_name="meta-llama/Llama-3.2-1b-Instruct"),
+            gpu_ids=[0],
         )
         server.start()
         # Now /health, /chat, /generate are available at server.host:server.port
@@ -38,28 +40,25 @@ class VLLMServer:
 
     def __init__(
         self,
-        model_name: str,
+        llm_config: LLMConfig,
         gpu_ids: List[int],
         host: str = "127.0.0.1",
         port: Optional[int] = None,
-        dtype: str = "bfloat16",
         startup_timeout: float = 15.0,
         server_script_path: Optional[str] = None,
     ):
         """
         Args:
-            model_name: HF model ID (e.g. "meta-llama/Llama-3.2-1b-Instruct").
-            gpu_ids: List of GPU indices (e.g. [0], or [0,1]).
+            llm_config: Configuration for the LLM instance.
+            gpu_ids: GPUs visible to this server process.
             host: Host/IP for the server (default "127.0.0.1").
             port: If None, auto-pick a free port; otherwise bind exactly to this port.
-            dtype: Data type for model weights (e.g. "bfloat16", "float16", "float32").
             startup_timeout: Seconds to wait for GET /health to return 200.
             server_script_path: Path to vllm_server.py. If None, assume same directory.
         """
-        self.model_name = model_name
+        self.llm_config = llm_config
         self.gpu_ids = gpu_ids.copy()
         self.host = host
-        self.dtype = dtype
         self.startup_timeout = startup_timeout
 
         # Determine port
@@ -98,7 +97,7 @@ class VLLMServer:
         Launch a subprocess:
             python vllm_server.py --serve --model <model_name>
                 --host <host> --port <port> --gpus <comma-joined gpu_ids>
-                --dtype <dtype>
+                --llm_kwargs <json-encoded dict of additional args>
 
         Then poll GET /health until HTTP 200 or timeout. Raises RuntimeError on failure.
         """
@@ -115,16 +114,32 @@ class VLLMServer:
             self.server_script,
             "--serve",
             "--model",
-            self.model_name,
+            self.llm_config.model_name,
             "--host",
             self.host,
             "--port",
             str(self.port),
             "--gpus",
             ",".join(str(g) for g in self.gpu_ids),
-            "--dtype",
-            self.dtype,
         ]
+        llm_args = {
+            "dtype": self.llm_config.dtype,
+            "tokenizer": self.llm_config.tokenizer,
+            "tokenizer_mode": self.llm_config.tokenizer_mode,
+            "trust_remote_code": self.llm_config.trust_remote_code,
+            "max_model_len": self.llm_config.max_model_len,
+            "download_dir": self.llm_config.download_dir,
+            "quantization": self.llm_config.quantization,
+            "revision": self.llm_config.revision,
+            "tokenizer_revision": self.llm_config.tokenizer_revision,
+            "seed": self.llm_config.seed,
+            "gpu_memory_utilization": self.llm_config.gpu_memory_utilization,
+            "enforce_eager": self.llm_config.enforce_eager,
+            **self.llm_config.llm_kwargs,
+        }
+        llm_args = {k: v for k, v in llm_args.items() if v is not None}
+        if llm_args:
+            cmd.extend(["--llm_kwargs", json.dumps(llm_args)])
         logger.info(f"[VLLMServer] Launching subprocess:\n    {' '.join(cmd)}")
 
         try:
@@ -234,49 +249,85 @@ class VLLMService:
 
     def __init__(
         self,
-        model_name: str,
-        gpu_ids: List[int],
-        host: str = "127.0.0.1",
-        port: Optional[int] = None,
-        dtype: str = "bfloat16",
-        startup_timeout: float = 15.0,
-        client_timeout: float = 30.0,
-        server_script_path: Optional[str] = None,
+        llm_config: LLMConfig,
+        serve_config: ServeConfig,
     ):
         """
         Args:
-            model_name: HF model ID (e.g. 'meta-llama/Llama-3.2-1b-Instruct').
-            gpu_ids: List of GPU indices visible to server (e.g. [0], [0,1]).
-            host: Host for the server (default '127.0.0.1').
-            port: If None, auto-pick a free port. Otherwise bind exactly to this port.
-            dtype: Data type for model weights (e.g. 'bfloat16', 'float16', 'float32').
-            startup_timeout: Wait time (s) for server health check.
-            client_timeout: HTTP timeout (s) for client operations.
-            server_script_path: Path to `vllm_server.py`. If None, assume same directory.
+            llm_config: Configuration of the model to serve.
+            serve_config: Parameters controlling how the service runs.
         """
-        self.server = VLLMServer(
-            model_name=model_name,
-            gpu_ids=gpu_ids,
-            host=host,
-            port=port,
-            dtype=dtype,
-            startup_timeout=startup_timeout,
-            server_script_path=server_script_path,
-        )
-        self.client: Optional[VLLMClient] = None
-        self.client_timeout = client_timeout
+
+        if serve_config.replicas_per_gpu < 1:
+            raise ValueError("replicas_per_gpu must be >= 1")
+
+        self._llm_config = llm_config
+        self._serve_config = serve_config
+
+        self._gpu_ids = serve_config.gpu_ids
+        self._replicas_per_gpu = serve_config.replicas_per_gpu
+
+        self.servers: List[VLLMServer] = []
+        self.clients: List[VLLMClient] = []
 
     def start(self) -> None:
-        """
-        1) Start the server subprocess (loads model on GPUs, polls health).
-        2) Instantiate VLLMClient pointing to that server.
-        """
-        self.server.start()
-        self.client = VLLMClient(host=self.server.host, port=self.server.port, timeout=self.client_timeout)
+        """Start all server subprocesses concurrently and create clients."""
+        if self.servers:
+            raise RuntimeError("Service already started")
+
+        servers: List[VLLMServer] = []
+        port_counter = self._serve_config.port
+        for gpu_id in self._gpu_ids:
+            for _ in range(self._replicas_per_gpu):
+                srv = VLLMServer(
+                    llm_config=self._llm_config,
+                    gpu_ids=[gpu_id],
+                    host=self._serve_config.host,
+                    port=port_counter,
+                    startup_timeout=self._serve_config.startup_timeout,
+                    server_script_path=self._serve_config.server_script_path,
+                )
+                servers.append(srv)
+                if port_counter is not None:
+                    port_counter += 1
+
+        started: List[VLLMServer] = []
+        try:
+            with ThreadPoolExecutor(max_workers=len(servers)) as ex:
+                futures = {ex.submit(s.start): s for s in servers}
+                for fut, srv in futures.items():
+                    try:
+                        fut.result()
+                        started.append(srv)
+                    except Exception as e:
+                        logger.error(
+                            "[VLLMService] Failed to start server on %s:%s: %s",
+                            srv.host,
+                            srv.port,
+                            e,
+                        )
+                        raise
+
+            for srv in started:
+                client = VLLMClient(
+                    host=srv.host,
+                    port=srv.port,
+                    timeout=self._serve_config.client_timeout,
+                )
+                self.clients.append(client)
+
+            self.servers = started
+        except Exception:
+            for srv in started:
+                try:
+                    srv.shutdown()
+                except Exception:
+                    pass
+            raise
 
     def is_running(self) -> bool:
-        """Return True if the server subprocess is still alive."""
-        return self.server.is_running()
+        """Return True if at least one server subprocess is still alive."""
+        return any(server.is_running() for server in self.servers)
 
     def chat(
         self,
@@ -287,11 +338,36 @@ class VLLMService:
         Batched chat.
         Returns a list of lists, each sub-list corresponds to number of outputs (n).
         """
-        if self.client is None:
+        if not self.clients:
             raise RuntimeError("Service not started. Call .start() first.")
         if sampling_params is None:
             sampling_params = SamplingParams()
-        return self.client.chat(conversations, sampling_params)
+
+        num_servers = len(self.clients)
+        total = len(conversations)
+        if total == 0:
+            return []
+
+        base = total // num_servers
+        extras = total % num_servers
+
+        batches = []
+        start = 0
+        for i in range(num_servers):
+            size = base + (1 if i < extras else 0)
+            batches.append(conversations[start : start + size])
+            start += size
+
+        results: List[List[List[str]]] = []
+        with ThreadPoolExecutor(max_workers=num_servers) as ex:
+            futures = [ex.submit(client.chat, batch, sampling_params) for client, batch in zip(self.clients, batches)]
+            for fut in futures:
+                results.append(fut.result())
+
+        merged: List[List[str]] = []
+        for res in results:
+            merged.extend(res)
+        return merged
 
     def generate(
         self,
@@ -303,18 +379,59 @@ class VLLMService:
         Returns a list of lists, each sub-list corresponds to number of outputs (n).
         Raises if not started.
         """
-        if self.client is None:
+        if not self.clients:
             raise RuntimeError("Service not started. Call .start() first.")
         if sampling_params is None:
             sampling_params = SamplingParams()
-        return self.client.generate(prompts, sampling_params)
+
+        num_servers = len(self.clients)
+        total = len(prompts)
+        if total == 0:
+            return []
+
+        base = total // num_servers
+        extras = total % num_servers
+
+        batches = []
+        start = 0
+        for i in range(num_servers):
+            size = base + (1 if i < extras else 0)
+            batches.append(prompts[start : start + size])
+            start += size
+
+        results: List[List[List[str]]] = []
+        with ThreadPoolExecutor(max_workers=num_servers) as ex:
+            futures = [ex.submit(client.generate, batch, sampling_params) for client, batch in zip(self.clients, batches)]
+            for fut in futures:
+                results.append(fut.result())
+
+        merged: List[List[str]] = []
+        for res in results:
+            merged.extend(res)
+        return merged
 
     def shutdown(self) -> None:
-        """Shut down the server subprocess. Idempotent."""
-        self.server.shutdown()
+        """Shut down all servers concurrently. Idempotent."""
+        servers = self.servers[:]
+        self.servers.clear()
+        self.clients.clear()
+
+        if not servers:
+            return
+
+        with ThreadPoolExecutor(max_workers=len(servers)) as ex:
+            futures = [ex.submit(s.shutdown) for s in servers]
+            for fut in futures:
+                try:
+                    fut.result()
+                except Exception as e:
+                    logger.error("[VLLMService] Error shutting down server: %s", e)
 
     def __del__(self):
         try:
             self.shutdown()
         except Exception:
             pass
+
+
+VLLMBatchedService = VLLMService

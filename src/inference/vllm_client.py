@@ -2,7 +2,12 @@ import requests
 from requests.exceptions import RequestException
 from vllm import SamplingParams
 from typing import List, Dict
-from src.inference.vllm_server import ResponseOutput, ChatRequest, GenerateRequest
+from src.inference.vllm_server import (
+    ResponseOutput,
+    ChatRequest,
+    GenerateRequest,
+    SamplingConfig,
+)
 
 
 class VLLMClient:
@@ -41,16 +46,10 @@ class VLLMClient:
         """
         url = f"{self.base_url}/chat"
 
+        params = SamplingConfig.model_validate(vars(sampling_params))
         payload = ChatRequest(
             conversations=conversations,
-            n=sampling_params.n,
-            temperature=sampling_params.temperature,
-            top_p=sampling_params.top_p,
-            top_k=sampling_params.top_k,
-            min_p=sampling_params.min_p,
-            max_tokens=sampling_params.max_tokens,
-            repetition_penalty=sampling_params.repetition_penalty,
-            stop=sampling_params.stop,
+            params=params,
         )
 
         try:
@@ -81,16 +80,10 @@ class VLLMClient:
         """
         url = f"{self.base_url}/generate"
 
+        params = SamplingConfig.model_validate(vars(sampling_params))
         payload = GenerateRequest(
             prompts=prompts,
-            n=sampling_params.n,
-            temperature=sampling_params.temperature,
-            top_p=sampling_params.top_p,
-            top_k=sampling_params.top_k,
-            min_p=sampling_params.min_p,
-            max_tokens=sampling_params.max_tokens,
-            repetition_penalty=sampling_params.repetition_penalty,
-            stop=sampling_params.stop,
+            params=params,
         )
 
         try:
