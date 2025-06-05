@@ -10,7 +10,7 @@ import msgspec
 
 from vllm import LLM, SamplingParams
 
-app = FastAPI(title="vLLM Batched‐Chat & Generate Server")
+app = FastAPI(title="vLLM Batched-Chat & Generate Server")
 
 # This will hold the single LLM instance once we call `server_main(...)`
 _llm_instance: Optional[LLM] = None
@@ -47,7 +47,7 @@ class ResponseOutput(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=T
 @app.get("/health")
 async def health_check() -> Dict[str, str]:
     """
-    Simple health‐check. Returns 200 OK if the server is up.
+    Simple health-check. Returns 200 OK if the server is up.
     """
     return {"status": "ok"}
 

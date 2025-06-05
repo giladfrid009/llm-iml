@@ -31,13 +31,9 @@ class VLLMClient:
         try:
             resp = requests.get(health_url, timeout=self.timeout)
             if resp.status_code != 200:
-                raise RuntimeError(
-                    f"Health check returned HTTP {resp.status_code}"
-                )
+                raise RuntimeError(f"Health check returned HTTP {resp.status_code}")
         except Exception as e:
-            raise RuntimeError(
-                f"Cannot reach vLLM server at {health_url}: {e!r}"
-            )
+            raise RuntimeError(f"Cannot reach vLLM server at {health_url}: {e!r}")
 
     def chat(
         self,
@@ -47,7 +43,7 @@ class VLLMClient:
         """
         Send a batch of M conversations to POST /chat, return a list of M generated strings.
 
-        Raises RuntimeError on HTTP errors, non‐200 responses, or malformed JSON.
+        Raises RuntimeError on HTTP errors, non-200 responses, or malformed JSON.
         """
         url = f"{self.base_url}/chat"
 
@@ -66,21 +62,15 @@ class VLLMClient:
                 timeout=self.timeout,
             )
         except RequestException as e:
-            raise RuntimeError(
-                f"Failed to POST /chat → {e!r}"
-            )
+            raise RuntimeError(f"Failed to POST /chat → {e!r}")
 
         if response.status_code != 200:
-            raise RuntimeError(
-                f"/chat returned HTTP {response.status_code}: {response.text}"
-            )
+            raise RuntimeError(f"/chat returned HTTP {response.status_code}: {response.text}")
 
         try:
             output = msgspec.json.decode(response.content, type=ResponseOutput)
         except msgspec.DecodeError as e:
-            raise RuntimeError(
-                f"Invalid JSON in /chat response: {e!r}"
-            )
+            raise RuntimeError(f"Invalid JSON in /chat response: {e!r}")
 
         return output.outputs
 
@@ -111,21 +101,14 @@ class VLLMClient:
                 timeout=self.timeout,
             )
         except RequestException as e:
-            raise RuntimeError(
-                f"Failed to POST /generate → {e!r}"
-            )
+            raise RuntimeError(f"Failed to POST /generate → {e!r}")
 
         if response.status_code != 200:
-            raise RuntimeError(
-                f"/generate returned HTTP {response.status_code}: "
-                f"{response.text}"
-            )
+            raise RuntimeError(f"/generate returned HTTP {response.status_code}: " f"{response.text}")
 
         try:
             output = msgspec.json.decode(response.content, type=ResponseOutput)
         except msgspec.DecodeError as e:
-            raise RuntimeError(
-                f"Invalid JSON in /generate response: {e!r}"
-            )
+            raise RuntimeError(f"Invalid JSON in /generate response: {e!r}")
 
         return output.outputs

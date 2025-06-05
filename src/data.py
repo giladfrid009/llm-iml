@@ -69,7 +69,7 @@ class DF_Batcher:
         if self.shuffle:
             random.shuffle(idxs)
 
-        # Now slice out row‐indices batch by batch
+        # Now slice out row-indices batch by batch
         for batch_idx in range(self._n_batches):
             start = batch_idx * self.batch_size
             end = start + self.batch_size
