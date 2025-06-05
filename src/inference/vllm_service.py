@@ -426,6 +426,3 @@ class VLLMService:
             self.shutdown()
         except Exception:
             pass
-
-
-VLLMBatchedService = VLLMService
