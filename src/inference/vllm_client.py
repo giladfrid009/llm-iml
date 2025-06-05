@@ -6,7 +6,7 @@ from src.inference.vllm_server import (
     ResponseOutput,
     ChatRequest,
     GenerateRequest,
-    SamplingParamsModel,
+    SamplingConfig,
 )
 
 
@@ -46,23 +46,19 @@ class VLLMClient:
         """
         url = f"{self.base_url}/chat"
 
-        params = SamplingParamsModel.model_validate(vars(sampling_params))
+        params = SamplingConfig.model_validate(vars(sampling_params))
         payload = ChatRequest(
             conversations=conversations,
             params=params,
         )
 
         try:
-            response = requests.post(
-                url, json=payload.model_dump(mode="json"), timeout=self.timeout
-            )
+            response = requests.post(url, json=payload.model_dump(mode="json"), timeout=self.timeout)
         except RequestException as e:
             raise RuntimeError(f"Failed to POST /chat → {e!r}")
 
         if response.status_code != 200:
-            raise RuntimeError(
-                f"/chat returned HTTP {response.status_code}: {response.text}"
-            )
+            raise RuntimeError(f"/chat returned HTTP {response.status_code}: {response.text}")
 
         try:
             data = response.json()
@@ -84,23 +80,19 @@ class VLLMClient:
         """
         url = f"{self.base_url}/generate"
 
-        params = SamplingParamsModel.model_validate(vars(sampling_params))
+        params = SamplingConfig.model_validate(vars(sampling_params))
         payload = GenerateRequest(
             prompts=prompts,
             params=params,
         )
 
         try:
-            response = requests.post(
-                url, json=payload.model_dump(mode="json"), timeout=self.timeout
-            )
+            response = requests.post(url, json=payload.model_dump(mode="json"), timeout=self.timeout)
         except RequestException as e:
             raise RuntimeError(f"Failed to POST /generate → {e!r}")
 
         if response.status_code != 200:
-            raise RuntimeError(
-                f"/generate returned HTTP {response.status_code}: {response.text}"
-            )
+            raise RuntimeError(f"/generate returned HTTP {response.status_code}: {response.text}")
 
         try:
             data = response.json()

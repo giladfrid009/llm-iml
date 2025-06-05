@@ -5,7 +5,6 @@ import time
 import subprocess
 import atexit
 import json
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,50 +12,13 @@ import requests
 from vllm import SamplingParams
 
 from src.inference.vllm_client import VLLMClient
+from src.inference.configs import LLMConfig, ServeConfig
 
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class LLMConfig:
-    """Configuration for the underlying vLLM model."""
-
-    model_name: str
-    tokenizer: Optional[str] = None
-    tokenizer_mode: str = "auto"
-    skip_tokenizer_init: bool = False
-    trust_remote_code: bool = False
-    tensor_parallel_size: int = 1
-    dtype: str = "bfloat16"
-    quantization: Optional[str] = None
-    revision: Optional[str] = None
-    tokenizer_revision: Optional[str] = None
-    seed: int = 0
-    gpu_memory_utilization: Optional[float] = None
-    swap_space: Optional[int] = None
-    cpu_offload_gb: Optional[int] = None
-    enforce_eager: bool = False
-    max_seq_len_to_capture: Optional[int] = None
-    disable_custom_all_reduce: bool = False
-    max_model_len: Optional[int] = None
-    download_dir: Optional[str] = None
-    llm_kwargs: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class ServeConfig:
-    """Configuration for serving logic."""
-
-    gpu_ids: List[int]
-    replicas_per_gpu: int = 1
-    host: str = "127.0.0.1"
-    port: Optional[int] = None
-    startup_timeout: float = 15.0
-    client_timeout: float = 30.0
-    server_script_path: Optional[str] = None
 
 
 class VLLMServer:
@@ -113,9 +75,7 @@ class VLLMServer:
             self.server_script = server_script_path
 
         if not os.path.isfile(self.server_script):
-            raise FileNotFoundError(
-                f"Cannot find server script at: {self.server_script}"
-            )
+            raise FileNotFoundError(f"Cannot find server script at: {self.server_script}")
 
         self._process: Optional[subprocess.Popen] = None
         self._is_shut_down = False
@@ -137,7 +97,7 @@ class VLLMServer:
         Launch a subprocess:
             python vllm_server.py --serve --model <model_name>
                 --host <host> --port <port> --gpus <comma-joined gpu_ids>
-                --dtype <dtype>
+                --llm_kwargs <json-encoded dict of additional args>
 
         Then poll GET /health until HTTP 200 or timeout. Raises RuntimeError on failure.
         """
@@ -161,14 +121,11 @@ class VLLMServer:
             str(self.port),
             "--gpus",
             ",".join(str(g) for g in self.gpu_ids),
-            "--dtype",
-            self.llm_config.dtype,
         ]
         llm_args = {
-            "tensor_parallel_size": self.llm_config.tensor_parallel_size,
+            "dtype": self.llm_config.dtype,
             "tokenizer": self.llm_config.tokenizer,
             "tokenizer_mode": self.llm_config.tokenizer_mode,
-            "skip_tokenizer_init": self.llm_config.skip_tokenizer_init,
             "trust_remote_code": self.llm_config.trust_remote_code,
             "max_model_len": self.llm_config.max_model_len,
             "download_dir": self.llm_config.download_dir,
@@ -177,11 +134,7 @@ class VLLMServer:
             "tokenizer_revision": self.llm_config.tokenizer_revision,
             "seed": self.llm_config.seed,
             "gpu_memory_utilization": self.llm_config.gpu_memory_utilization,
-            "swap_space": self.llm_config.swap_space,
-            "cpu_offload_gb": self.llm_config.cpu_offload_gb,
             "enforce_eager": self.llm_config.enforce_eager,
-            "max_seq_len_to_capture": self.llm_config.max_seq_len_to_capture,
-            "disable_custom_all_reduce": self.llm_config.disable_custom_all_reduce,
             **self.llm_config.llm_kwargs,
         }
         llm_args = {k: v for k, v in llm_args.items() if v is not None}
@@ -207,10 +160,7 @@ class VLLMServer:
             # 1) If subprocess died, capture logs and error
             if self._process.poll() is not None:
                 out, err = self._process.communicate(timeout=1)
-                raise RuntimeError(
-                    "[VLLMServer] Subprocess terminated prematurely.\n"
-                    f"STDOUT:\n{out}\nSTDERR:\n{err}"
-                )
+                raise RuntimeError("[VLLMServer] Subprocess terminated prematurely.\n" f"STDOUT:\n{out}\nSTDERR:\n{err}")
             # 2) Try health endpoint
             try:
                 resp = requests.get(health_url, timeout=1.0)
@@ -223,9 +173,7 @@ class VLLMServer:
             # 3) Timeout?
             if time.time() - t0 > self.startup_timeout:
                 self._terminate_process()
-                raise RuntimeError(
-                    f"[VLLMServer] Timeout ({self.startup_timeout}s) waiting for health check."
-                )
+                raise RuntimeError(f"[VLLMServer] Timeout ({self.startup_timeout}s) waiting for health check.")
             time.sleep(0.1)
 
     def is_running(self) -> bool:
@@ -412,10 +360,7 @@ class VLLMService:
 
         results: List[List[List[str]]] = []
         with ThreadPoolExecutor(max_workers=num_servers) as ex:
-            futures = [
-                ex.submit(client.chat, batch, sampling_params)
-                for client, batch in zip(self.clients, batches)
-            ]
+            futures = [ex.submit(client.chat, batch, sampling_params) for client, batch in zip(self.clients, batches)]
             for fut in futures:
                 results.append(fut.result())
 
@@ -456,10 +401,7 @@ class VLLMService:
 
         results: List[List[List[str]]] = []
         with ThreadPoolExecutor(max_workers=num_servers) as ex:
-            futures = [
-                ex.submit(client.generate, batch, sampling_params)
-                for client, batch in zip(self.clients, batches)
-            ]
+            futures = [ex.submit(client.generate, batch, sampling_params) for client, batch in zip(self.clients, batches)]
             for fut in futures:
                 results.append(fut.result())
 

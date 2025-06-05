@@ -16,7 +16,7 @@ app = FastAPI(title="vLLM Batched‐Chat & Generate Server")
 _llm_instance: Optional[LLM] = None
 
 
-class SamplingParamsModel(BaseModel):
+class SamplingConfig(BaseModel):
     """Schema mirroring :class:`vllm.SamplingParams`."""
 
     model_config = ConfigDict(extra="allow")
@@ -42,7 +42,7 @@ class ChatRequest(BaseModel):
     """
 
     conversations: List[List[Dict[str, str]]]
-    params: SamplingParamsModel
+    params: SamplingConfig
 
 
 class GenerateRequest(BaseModel):
@@ -52,7 +52,7 @@ class GenerateRequest(BaseModel):
     """
 
     prompts: List[str]
-    params: SamplingParamsModel
+    params: SamplingConfig
 
 
 class ResponseOutput(BaseModel):
@@ -87,13 +87,9 @@ async def chat_endpoint(request: ChatRequest) -> ResponseOutput:
     sampling_params = request.params.to_sampling_params()
 
     try:
-        req_outputs = _llm_instance.chat(
-            request.conversations, sampling_params=sampling_params
-        )
+        req_outputs = _llm_instance.chat(request.conversations, sampling_params=sampling_params)
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error during vLLM inference: {e!r}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error during vLLM inference: {e!r}")
 
     responses = []
     for res in req_outputs:
@@ -114,13 +110,9 @@ async def generate_endpoint(request: GenerateRequest) -> ResponseOutput:
     sampling_params = request.params.to_sampling_params()
 
     try:
-        req_outputs = _llm_instance.generate(
-            request.prompts, sampling_params=sampling_params, use_tqdm=False
-        )
+        req_outputs = _llm_instance.generate(request.prompts, sampling_params=sampling_params, use_tqdm=False)
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error during vLLM inference: {e!r}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error during vLLM inference: {e!r}")
 
     responses = []
     for res in req_outputs:
@@ -133,7 +125,6 @@ def server_main(
     host: str,
     port: int,
     gpus: str,
-    dtype: str,
     llm_kwargs: Optional[str] = None,
 ) -> None:
     """
@@ -147,7 +138,6 @@ def server_main(
     extra = json.loads(llm_kwargs) if llm_kwargs else {}
     _llm_instance = LLM(
         model=model_name,
-        dtype=dtype,
         **extra,
     )
     uvicorn.run(app, host=host, port=port, log_level="info")
@@ -172,20 +162,12 @@ if __name__ == "__main__":
         default="127.0.0.1",
         help="Host IP to bind the FastAPI server to.",
     )
-    parser.add_argument(
-        "--port", type=int, default=8000, help="Port to bind the FastAPI server to."
-    )
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind the FastAPI server to.")
     parser.add_argument(
         "--gpus",
         type=str,
         default="0",
         help="Comma-separated GPU indices visible to this process (e.g. '0' or '0,1').",
-    )
-    parser.add_argument(
-        "--dtype",
-        type=str,
-        default="bfloat16",
-        help="Data type for model weights (e.g. 'bfloat16', 'float16', 'float32').",
     )
     parser.add_argument(
         "--llm_kwargs",
@@ -197,9 +179,7 @@ if __name__ == "__main__":
 
     if args.serve:
         if args.model is None:
-            print(
-                "ERROR: --model must be specified when using --serve", file=sys.stderr
-            )
+            print("ERROR: --model must be specified when using --serve", file=sys.stderr)
             sys.exit(1)
 
         server_main(
@@ -207,7 +187,6 @@ if __name__ == "__main__":
             host=args.host,
             port=args.port,
             gpus=args.gpus,
-            dtype=args.dtype,
             llm_kwargs=args.llm_kwargs,
         )
 
