@@ -27,7 +27,6 @@ class ServeConfig:
     """Configuration for serving logic."""
 
     gpu_ids: List[int]
-    replicas_per_gpu: int = 1
     host: str = "127.0.0.1"
     port: Optional[int] = None
     startup_timeout: float = 15.0

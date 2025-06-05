@@ -20,7 +20,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-
 class VLLMServer:
     """
     Spawns a subprocess running `python vllm_server.py --serve ...`.
@@ -258,14 +257,10 @@ class VLLMService:
             serve_config: Parameters controlling how the service runs.
         """
 
-        if serve_config.replicas_per_gpu < 1:
-            raise ValueError("replicas_per_gpu must be >= 1")
-
         self._llm_config = llm_config
         self._serve_config = serve_config
 
         self._gpu_ids = serve_config.gpu_ids
-        self._replicas_per_gpu = serve_config.replicas_per_gpu
 
         self.servers: List[VLLMServer] = []
         self.clients: List[VLLMClient] = []
@@ -278,18 +273,17 @@ class VLLMService:
         servers: List[VLLMServer] = []
         port_counter = self._serve_config.port
         for gpu_id in self._gpu_ids:
-            for _ in range(self._replicas_per_gpu):
-                srv = VLLMServer(
-                    llm_config=self._llm_config,
-                    gpu_ids=[gpu_id],
-                    host=self._serve_config.host,
-                    port=port_counter,
-                    startup_timeout=self._serve_config.startup_timeout,
-                    server_script_path=self._serve_config.server_script_path,
-                )
-                servers.append(srv)
-                if port_counter is not None:
-                    port_counter += 1
+            srv = VLLMServer(
+                llm_config=self._llm_config,
+                gpu_ids=[gpu_id],
+                host=self._serve_config.host,
+                port=port_counter,
+                startup_timeout=self._serve_config.startup_timeout,
+                server_script_path=self._serve_config.server_script_path,
+            )
+            servers.append(srv)
+            if port_counter is not None:
+                port_counter += 1
 
         started: List[VLLMServer] = []
         try:
