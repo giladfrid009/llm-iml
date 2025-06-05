@@ -4,8 +4,11 @@ import socket
 import time
 import subprocess
 import atexit
-from typing import List, Dict, Optional
+import json
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
+
 import requests
 from vllm import SamplingParams
 
@@ -17,6 +20,31 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class LLMConfig:
+    """Configuration for the underlying vLLM model."""
+
+    model_name: str
+    dtype: str = "bfloat16"
+    tensor_parallel_size: int = 1
+    max_model_len: Optional[int] = None
+    download_dir: Optional[str] = None
+    llm_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ServeConfig:
+    """Configuration for serving logic."""
+
+    gpu_ids: List[int]
+    replicas_per_gpu: int = 1
+    host: str = "127.0.0.1"
+    port: Optional[int] = None
+    startup_timeout: float = 15.0
+    client_timeout: float = 30.0
+    server_script_path: Optional[str] = None
+
+
 class VLLMServer:
     """
     Spawns a subprocess running `python vllm_server.py --serve ...`.
@@ -26,10 +54,8 @@ class VLLMServer:
     Usage:
 
         server = VLLMServer(
-            model_name="meta-llama/Llama-3.2-1b-Instruct",
-            gpu_ids=[0,1],
-            host="127.0.0.1",
-            port=None  # auto‐pick a free port
+            llm_config=LLMConfig(model_name="meta-llama/Llama-3.2-1b-Instruct"),
+            gpu_ids=[0],
         )
         server.start()
         # Now /health, /chat, /generate are available at server.host:server.port
@@ -38,28 +64,25 @@ class VLLMServer:
 
     def __init__(
         self,
-        model_name: str,
+        llm_config: LLMConfig,
         gpu_ids: List[int],
         host: str = "127.0.0.1",
         port: Optional[int] = None,
-        dtype: str = "bfloat16",
         startup_timeout: float = 15.0,
         server_script_path: Optional[str] = None,
     ):
         """
         Args:
-            model_name: HF model ID (e.g. "meta-llama/Llama-3.2-1b-Instruct").
-            gpu_ids: List of GPU indices (e.g. [0], or [0,1]).
+            llm_config: Configuration for the LLM instance.
+            gpu_ids: GPUs visible to this server process.
             host: Host/IP for the server (default "127.0.0.1").
             port: If None, auto-pick a free port; otherwise bind exactly to this port.
-            dtype: Data type for model weights (e.g. "bfloat16", "float16", "float32").
             startup_timeout: Seconds to wait for GET /health to return 200.
             server_script_path: Path to vllm_server.py. If None, assume same directory.
         """
-        self.model_name = model_name
+        self.llm_config = llm_config
         self.gpu_ids = gpu_ids.copy()
         self.host = host
-        self.dtype = dtype
         self.startup_timeout = startup_timeout
 
         # Determine port
@@ -117,7 +140,7 @@ class VLLMServer:
             self.server_script,
             "--serve",
             "--model",
-            self.model_name,
+            self.llm_config.model_name,
             "--host",
             self.host,
             "--port",
@@ -125,8 +148,17 @@ class VLLMServer:
             "--gpus",
             ",".join(str(g) for g in self.gpu_ids),
             "--dtype",
-            self.dtype,
+            self.llm_config.dtype,
         ]
+        llm_args = {
+            "tensor_parallel_size": self.llm_config.tensor_parallel_size,
+            "max_model_len": self.llm_config.max_model_len,
+            "download_dir": self.llm_config.download_dir,
+            **self.llm_config.llm_kwargs,
+        }
+        llm_args = {k: v for k, v in llm_args.items() if v is not None}
+        if llm_args:
+            cmd.extend(["--llm_kwargs", json.dumps(llm_args)])
         logger.info(f"[VLLMServer] Launching subprocess:\n    {' '.join(cmd)}")
 
         try:
@@ -241,52 +273,23 @@ class VLLMService:
 
     def __init__(
         self,
-        model_name: str,
-        gpu_ids: List[int],
-        host: str = "127.0.0.1",
-        port: Optional[int] = None,
-        dtype: str = "bfloat16",
-        startup_timeout: float = 15.0,
-        client_timeout: float = 30.0,
-        server_script_path: Optional[str] = None,
-        num_gpu_clones: int | None = None,
-        num_same_gpu_clones: int = 1,
+        llm_config: LLMConfig,
+        serve_config: ServeConfig,
     ):
         """
         Args:
-            model_name: HF model ID (e.g. 'meta-llama/Llama-3.2-1b-Instruct').
-            gpu_ids: List of GPU indices available for use.
-            host: Host for the server (default '127.0.0.1').
-            port: Base port. If None, each server auto-picks a free port. If provided
-                and more than one server is created, subsequent servers will use
-                consecutive port numbers starting from this value.
-            dtype: Data type for model weights (e.g. 'bfloat16', 'float16', 'float32').
-            startup_timeout: Wait time (s) for server health check.
-            client_timeout: HTTP timeout (s) for client operations.
-            server_script_path: Path to `vllm_server.py`. If None, assume same directory.
-            num_gpu_clones: Number of model copies on distinct GPUs. Must be <= len(gpu_ids).
-                Defaults to using all provided GPU IDs.
-            num_same_gpu_clones: Number of copies of the model to launch on each GPU.
-                Useful for load balancing when a single GPU has enough memory for multiple
-                instances.
+            llm_config: Configuration of the model to serve.
+            serve_config: Parameters controlling how the service runs.
         """
-        if num_gpu_clones is None:
-            num_gpu_clones = len(gpu_ids)
-        if num_gpu_clones > len(gpu_ids):
-            raise ValueError("num_gpu_clones cannot exceed number of gpu_ids")
-        if num_same_gpu_clones < 1:
-            raise ValueError("num_same_gpu_clones must be >= 1")
 
-        self._model_name = model_name
-        self._dtype = dtype
-        self._startup_timeout = startup_timeout
-        self._server_script_path = server_script_path
-        self._client_timeout = client_timeout
-        self._host = host
-        self._base_port = port
+        if serve_config.replicas_per_gpu < 1:
+            raise ValueError("replicas_per_gpu must be >= 1")
 
-        self._gpu_ids = gpu_ids[:num_gpu_clones]
-        self._num_same_gpu_clones = num_same_gpu_clones
+        self._llm_config = llm_config
+        self._serve_config = serve_config
+
+        self._gpu_ids = serve_config.gpu_ids
+        self._replicas_per_gpu = serve_config.replicas_per_gpu
 
         self.servers: List[VLLMServer] = []
         self.clients: List[VLLMClient] = []
@@ -297,17 +300,16 @@ class VLLMService:
             raise RuntimeError("Service already started")
 
         servers: List[VLLMServer] = []
-        port_counter = self._base_port
+        port_counter = self._serve_config.port
         for gpu_id in self._gpu_ids:
-            for _ in range(self._num_same_gpu_clones):
+            for _ in range(self._replicas_per_gpu):
                 srv = VLLMServer(
-                    model_name=self._model_name,
+                    llm_config=self._llm_config,
                     gpu_ids=[gpu_id],
-                    host=self._host,
+                    host=self._serve_config.host,
                     port=port_counter,
-                    dtype=self._dtype,
-                    startup_timeout=self._startup_timeout,
-                    server_script_path=self._server_script_path,
+                    startup_timeout=self._serve_config.startup_timeout,
+                    server_script_path=self._serve_config.server_script_path,
                 )
                 servers.append(srv)
                 if port_counter is not None:
@@ -334,7 +336,7 @@ class VLLMService:
                 client = VLLMClient(
                     host=srv.host,
                     port=srv.port,
-                    timeout=self._client_timeout,
+                    timeout=self._serve_config.client_timeout,
                 )
                 self.clients.append(client)
 

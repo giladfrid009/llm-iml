@@ -2,7 +2,12 @@ import requests
 from requests.exceptions import RequestException
 from vllm import SamplingParams
 from typing import List, Dict
-from src.inference.vllm_server import ResponseOutput, ChatRequest, GenerateRequest
+from src.inference.vllm_server import (
+    ResponseOutput,
+    ChatRequest,
+    GenerateRequest,
+    SamplingParamsModel,
+)
 
 
 class VLLMClient:
@@ -41,25 +46,23 @@ class VLLMClient:
         """
         url = f"{self.base_url}/chat"
 
+        params = SamplingParamsModel.model_validate(vars(sampling_params))
         payload = ChatRequest(
             conversations=conversations,
-            n=sampling_params.n,
-            temperature=sampling_params.temperature,
-            top_p=sampling_params.top_p,
-            top_k=sampling_params.top_k,
-            min_p=sampling_params.min_p,
-            max_tokens=sampling_params.max_tokens,
-            repetition_penalty=sampling_params.repetition_penalty,
-            stop=sampling_params.stop,
+            params=params,
         )
 
         try:
-            response = requests.post(url, json=payload.model_dump(mode="json"), timeout=self.timeout)
+            response = requests.post(
+                url, json=payload.model_dump(mode="json"), timeout=self.timeout
+            )
         except RequestException as e:
             raise RuntimeError(f"Failed to POST /chat → {e!r}")
 
         if response.status_code != 200:
-            raise RuntimeError(f"/chat returned HTTP {response.status_code}: {response.text}")
+            raise RuntimeError(
+                f"/chat returned HTTP {response.status_code}: {response.text}"
+            )
 
         try:
             data = response.json()
@@ -81,25 +84,23 @@ class VLLMClient:
         """
         url = f"{self.base_url}/generate"
 
+        params = SamplingParamsModel.model_validate(vars(sampling_params))
         payload = GenerateRequest(
             prompts=prompts,
-            n=sampling_params.n,
-            temperature=sampling_params.temperature,
-            top_p=sampling_params.top_p,
-            top_k=sampling_params.top_k,
-            min_p=sampling_params.min_p,
-            max_tokens=sampling_params.max_tokens,
-            repetition_penalty=sampling_params.repetition_penalty,
-            stop=sampling_params.stop,
+            params=params,
         )
 
         try:
-            response = requests.post(url, json=payload.model_dump(mode="json"), timeout=self.timeout)
+            response = requests.post(
+                url, json=payload.model_dump(mode="json"), timeout=self.timeout
+            )
         except RequestException as e:
             raise RuntimeError(f"Failed to POST /generate → {e!r}")
 
         if response.status_code != 200:
-            raise RuntimeError(f"/generate returned HTTP {response.status_code}: {response.text}")
+            raise RuntimeError(
+                f"/generate returned HTTP {response.status_code}: {response.text}"
+            )
 
         try:
             data = response.json()
