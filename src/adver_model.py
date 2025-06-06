@@ -142,6 +142,9 @@ class AdverModel(nn.Module):
         """
         return self.adv_embeds.clone().detach() if clone else self.adv_embeds
 
+    # TODO: low priority: instead of recieving input_texts and target_texts, we can recieve list[list[dict]], a list of messeges
+    # and simply tokenize them using the apply_chat_template.
+    # TODO: low priority: in all places, switch to using list[list[dict]] for inputs. 
     def tokenize(
         self,
         input_texts: list[str],
@@ -288,13 +291,13 @@ class AdverModel(nn.Module):
             inputs=None,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            do_sample=True,
             max_length=max_length,
             num_return_sequences=1,
             pad_token_id=self.tokenizer.pad_token_id,
             **kwargs,
         )
 
+    # TODO: low priority: rename to chat and use list[list[dict]] for inputs
     @torch.inference_mode()
     def generate_text(
         self,

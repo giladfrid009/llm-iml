@@ -2,7 +2,7 @@ import os
 import sys
 import argparse
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 from fastapi import FastAPI, HTTPException, Request, Response
 import uvicorn
@@ -19,7 +19,7 @@ _llm_instance: Optional[LLM] = None
 class ChatRequest(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=True):
     """Payload for batched chat requests."""
 
-    conversations: List[List[Dict[str, str]]]
+    conversations: List[List[Dict[str, Any]]]
     params: SamplingParams
 
 
@@ -72,6 +72,8 @@ async def chat_endpoint(request: Request) -> Response:
         req_outputs = _llm_instance.chat(
             req.conversations,
             sampling_params=sampling_params,
+            add_generation_prompt=True,
+            continue_final_message=False,
         )
     except Exception as e:
         raise HTTPException(

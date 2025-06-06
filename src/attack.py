@@ -112,6 +112,11 @@ class Attack(ABC):
 
         return new_token_dict
 
+    # TODO: low priority: input texts should be transformed into list[list[dict]] messeges 
+    # and then if the system prompt is provided, it will be used. 
+    
+    # TODO: low priority - if some attacks do not support system prompt of conveersation length > 1 they can simply
+    # raise and exception at that case. 
     @abstractmethod
     def fit(
         self,
