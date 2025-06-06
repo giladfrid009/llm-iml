@@ -99,7 +99,7 @@ class AdverModel(nn.Module):
 
     def parameters(self) -> Iterator[nn.Parameter]:
         """
-        Yields the trainable parameters of the module. 
+        Yields the trainable parameters of the module.
         Only the adversarial embeddings are trainable.
 
         Yields:
@@ -147,28 +147,20 @@ class AdverModel(nn.Module):
         """
         Injects adversarial tokens to the last message in each conversation.
         Note that the injected tokens do not change the original conversations.
-        
+
         Args:
             messages (list[list[dict[str, str]]]): A batch of conversations. Each conversation is a list of messages,
                 where each message is a dictionary with keys "role" and "content".
-            
+
         Returns:
             list[list[dict[str, str]]]: A batch of conversations with adversarial tokens injected into the last message.
         """
         conversations = copy.deepcopy(conversations)
-
-        # add adversarial tokens to the last message in each conversation
         for conv in conversations:
-            if len(conv) == 0:
-                continue
             last_msg = conv[-1]
-            if "content" not in last_msg:
-                continue
-            last_msg["content"] += (self.adv_token * self.num_tokens)
-
+            last_msg["content"] += self.adv_token * self.num_tokens
         return conversations
-        
-    
+
     def tokenize(
         self,
         conversations: list[list[dict[str, str]]],
@@ -191,7 +183,7 @@ class AdverModel(nn.Module):
                 - const_idx: Mask for the constant tokens for KV-cache.
                 - target_mask: Mask for the target tokens, if provided.
         """
-        
+
         conversations = self.inject_tokens(conversations)
 
         self.tokenizer.padding_side = "left"
@@ -294,7 +286,7 @@ class AdverModel(nn.Module):
         adv_mask: torch.Tensor | None = None,
         max_length: int = 100,
         **kwargs,
-    ):            
+    ):
 
         # prepare adversarial embeddings
         adv_embeds = self.adv_embeds if adv_mask is not None else None
@@ -331,7 +323,7 @@ class AdverModel(nn.Module):
         Returns:
             list[str]: List of generated adversarial texts.
         """
-        
+
         token_dict = self.tokenize(conversations)
 
         result = self.generate(
