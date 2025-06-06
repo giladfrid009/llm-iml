@@ -5,7 +5,7 @@ import time
 import subprocess
 import atexit
 import json
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 class VLLMServer:
     """
-    Spawns a subprocess running `python vllm_server.py --serve ...`.
-    The subprocess hosts a FastAPI server that loads vLLM on specified GPUs,
-    and answers /health, /chat, and /generate.
+    Spawns a subprocess running ``python vllm_server.py --serve ...``.
+    The subprocess hosts a FastAPI server that loads vLLM on specified GPUs and
+    exposes ``/health``, ``/chat`` and ``/generate`` endpoints.
 
     Usage:
 
@@ -43,8 +43,9 @@ class VLLMServer:
         gpu_ids: List[int],
         host: str = "127.0.0.1",
         port: Optional[int] = None,
-        startup_timeout: float = 15.0,
+        startup_timeout: Optional[float] = 15.0,
         server_script_path: Optional[str] = None,
+        verbose: bool = False,
     ):
         """
         Args:
@@ -53,12 +54,16 @@ class VLLMServer:
             host: Host/IP for the server (default "127.0.0.1").
             port: If None, auto-pick a free port; otherwise bind exactly to this port.
             startup_timeout: Seconds to wait for GET /health to return 200.
+                ``None`` disables the timeout.
             server_script_path: Path to vllm_server.py. If None, assume same directory.
+            verbose: If True, forward stdout/stderr from the server subprocess
+                to the parent process.
         """
         self.llm_config = llm_config
         self.gpu_ids = gpu_ids.copy()
         self.host = host
         self.startup_timeout = startup_timeout
+        self.verbose = verbose
 
         # Determine port
         if port is None:
@@ -144,10 +149,10 @@ class VLLMServer:
         try:
             self._process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=None if self.verbose else subprocess.PIPE,
+                stderr=None if self.verbose else subprocess.PIPE,
                 env=env,
-                text=True,  # get strings
+                text=True,
             )
         except Exception as e:
             raise RuntimeError(f"[VLLMServer] Failed to launch subprocess: {e!r}")
@@ -158,8 +163,12 @@ class VLLMServer:
         while True:
             # 1) If subprocess died, capture logs and error
             if self._process.poll() is not None:
-                out, err = self._process.communicate(timeout=1)
-                raise RuntimeError("[VLLMServer] Subprocess terminated prematurely.\n" f"STDOUT:\n{out}\nSTDERR:\n{err}")
+                out, err = self.fetch_logs()
+                if out:
+                    logger.error("[VLLMServer STDOUT]\n%s", out)
+                if err:
+                    logger.error("[VLLMServer STDERR]\n%s", err)
+                raise RuntimeError("[VLLMServer] Subprocess terminated prematurely.")
             # 2) Try health endpoint
             try:
                 resp = requests.get(health_url, timeout=1.0)
@@ -170,9 +179,16 @@ class VLLMServer:
                 pass
 
             # 3) Timeout?
-            if time.time() - t0 > self.startup_timeout:
+            if self.startup_timeout is not None and time.time() - t0 > self.startup_timeout:
                 self._terminate_process()
-                raise RuntimeError(f"[VLLMServer] Timeout ({self.startup_timeout}s) waiting for health check.")
+                out, err = self.fetch_logs()
+                if out:
+                    logger.error("[VLLMServer STDOUT]\n%s", out)
+                if err:
+                    logger.error("[VLLMServer STDERR]\n%s", err)
+                raise RuntimeError(
+                    f"[VLLMServer] Timeout ({self.startup_timeout}s) waiting for health check."
+                )
             time.sleep(0.1)
 
     def is_running(self) -> bool:
@@ -213,6 +229,16 @@ class VLLMServer:
         except Exception as e:
             logger.error(f"[VLLMServer] Error terminating subprocess: {e!r}")
 
+    def fetch_logs(self) -> tuple[str, str]:
+        """Return the subprocess STDOUT/STDERR if available."""
+        if self._process is None:
+            return "", ""
+        try:
+            out, err = self._process.communicate(timeout=1)
+        except Exception:
+            out, err = "", ""
+        return out, err
+
     def _atexit_shutdown(self) -> None:
         """
         Called automatically at interpreter exit to ensure cleanup.
@@ -236,7 +262,8 @@ class VLLMService:
             model_name="meta-llama/Llama-3.2-1b-Instruct",
             gpu_ids=[0,1],
             host="127.0.0.1",
-            port=None
+            port=None,
+            verbose=True,
         )
         service.start()
         chat_answers = service.chat([...])         # batched chat
@@ -280,6 +307,7 @@ class VLLMService:
                 port=port_counter,
                 startup_timeout=self._serve_config.startup_timeout,
                 server_script_path=self._serve_config.server_script_path,
+                verbose=self._serve_config.verbose,
             )
             servers.append(srv)
             if port_counter is not None:
@@ -300,6 +328,11 @@ class VLLMService:
                             srv.port,
                             e,
                         )
+                        out, err = srv.fetch_logs()
+                        if out:
+                            logger.error("[VLLMServer STDOUT]\n%s", out)
+                        if err:
+                            logger.error("[VLLMServer STDERR]\n%s", err)
                         raise
 
             for srv in started:

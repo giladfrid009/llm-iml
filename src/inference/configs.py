@@ -1,3 +1,5 @@
+"""Configuration dataclasses for the inference/serving utilities."""
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -24,11 +26,14 @@ class LLMConfig:
 
 @dataclass
 class ServeConfig:
-    """Configuration for serving logic."""
+    """Configuration for :class:`~src.inference.vllm_service.VLLMService`."""
 
     gpu_ids: List[int]
     host: str = "127.0.0.1"
     port: Optional[int] = None
-    startup_timeout: float = 15.0
-    client_timeout: float = 30.0
+    # ``None`` disables the timeout completely
+    startup_timeout: Optional[float] = 15.0
+    client_timeout: Optional[float] = 30.0
     server_script_path: Optional[str] = None
+    verbose: bool = False
+

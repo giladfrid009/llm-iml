@@ -1,7 +1,7 @@
 import requests
 from requests.exceptions import RequestException
 from vllm import SamplingParams
-from typing import List, Dict
+from typing import List, Dict, Optional
 import msgspec
 
 from src.inference.vllm_server import (
@@ -12,16 +12,14 @@ from src.inference.vllm_server import (
 
 
 class VLLMClient:
-    """
-    Minimal client for a vLLM batched-chat & generate server.
-    """
+    """HTTP client for the :mod:`vllm_server` FastAPI service."""
 
-    def __init__(self, host: str, port: int, timeout: float = 30.0):
+    def __init__(self, host: str, port: int, timeout: Optional[float] = 30.0):
         """
         Args:
           host: Host where the vLLM server is running (e.g. "127.0.0.1").
           port: Port where the vLLM server listens (e.g. 8000).
-          timeout: HTTP request timeout in seconds.
+          timeout: HTTP request timeout in seconds. ``None`` disables timeouts.
         """
         self.base_url = f"http://{host}:{port}"
         self.timeout = timeout
@@ -65,7 +63,9 @@ class VLLMClient:
             raise RuntimeError(f"Failed to POST /chat → {e!r}")
 
         if response.status_code != 200:
-            raise RuntimeError(f"/chat returned HTTP {response.status_code}: {response.text}")
+            raise RuntimeError(
+                f"/chat returned HTTP {response.status_code}: {response.text}"
+            )
 
         try:
             output = msgspec.json.decode(response.content, type=ResponseOutput)
@@ -104,7 +104,9 @@ class VLLMClient:
             raise RuntimeError(f"Failed to POST /generate → {e!r}")
 
         if response.status_code != 200:
-            raise RuntimeError(f"/generate returned HTTP {response.status_code}: " f"{response.text}")
+            raise RuntimeError(
+                f"/generate returned HTTP {response.status_code}: {response.text}"
+            )
 
         try:
             output = msgspec.json.decode(response.content, type=ResponseOutput)
