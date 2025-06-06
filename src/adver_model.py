@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from transformers import PreTrainedModel, PreTrainedTokenizer
 from typing import Iterator
+import copy
 
 from src import utils
 
@@ -142,23 +143,45 @@ class AdverModel(nn.Module):
         """
         return self.adv_embeds.clone().detach() if clone else self.adv_embeds
 
-    # TODO: low priority: instead of recieving input_texts and target_texts, we can recieve list[list[dict]], a list of messeges
-    # and simply tokenize them using the apply_chat_template.
-    # TODO: low priority: in all places, switch to using list[list[dict]] for inputs. 
+    def inject_tokens(self, conversations: list[list[dict[str, str]]]) -> list[list[dict[str, str]]]:
+        """
+        Injects adversarial tokens to the last message in each conversation.
+        Note that the injected tokens do not change the original conversations.
+        
+        Args:
+            messages (list[list[dict[str, str]]]): A batch of conversations. Each conversation is a list of messages,
+                where each message is a dictionary with keys "role" and "content".
+            
+        Returns:
+            list[list[dict[str, str]]]: A batch of conversations with adversarial tokens injected into the last message.
+        """
+        conversations = copy.deepcopy(conversations)
+
+        # add adversarial tokens to the last message in each conversation
+        for conv in conversations:
+            if len(conv) == 0:
+                continue
+            last_msg = conv[-1]
+            if "content" not in last_msg:
+                continue
+            last_msg["content"] += (self.adv_token * self.num_tokens)
+
+        return conversations
+        
+    
     def tokenize(
         self,
-        input_texts: list[str],
+        conversations: list[list[dict[str, str]]],
         target_texts: list[str] | None = None,
-        system_texts: list[str] | None = None,
     ) -> dict[str, torch.Tensor]:
         """
         Tokenize the input and target texts.
         This function pads the input and target texts such that the adversarial tokens are aligned across all samples.
 
         Args:
-            input_texts (list[str]): List of input texts.
+            conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+                Each message is a dictionary with keys "role" and "content".
             target_texts (list[str] | None): List of target texts. If None, only input texts are tokenized.
-            system_texts (list[str] | None): List of system prompts. If None, default system prompt is used.
 
         Returns:
             dict: Dictionary containing the tokenized input and target texts, with the following keys:
@@ -168,19 +191,12 @@ class AdverModel(nn.Module):
                 - const_idx: Mask for the constant tokens for KV-cache.
                 - target_mask: Mask for the target tokens, if provided.
         """
-
-        input_messeges = []
-        for inp_txt in input_texts:
-            msg = [{"role": "user", "content": inp_txt + (self.adv_token * self.num_tokens)}]
-            input_messeges.append(msg)
-
-        if system_texts is not None:
-            for msg, sys_txt in zip(input_messeges, system_texts):
-                msg.insert(0, {"role": "system", "content": sys_txt})
+        
+        conversations = self.inject_tokens(conversations)
 
         self.tokenizer.padding_side = "left"
         input_tokens = self.tokenizer.apply_chat_template(
-            input_messeges,
+            conversations,
             add_generation_prompt=True,
             padding=True,
             padding_side="left",
@@ -297,28 +313,26 @@ class AdverModel(nn.Module):
             **kwargs,
         )
 
-    # TODO: low priority: rename to chat and use list[list[dict]] for inputs
     @torch.inference_mode()
-    def generate_text(
+    def chat(
         self,
-        input_texts: list[str],
+        conversations: list[list[dict[str, str]]],
         max_length: int = 100,
-        system_texts: list[str] | None = None,
         **kwargs,
     ) -> list[str]:
         """
-        Generate adversarial text using the fitted model.
+        Generates adversarial texts for a batch of conversations.
 
         Args:
-            input_texts (list[str]): List of input texts.
-            adv_embeds (torch.Tensor): Adversarial embedding.
+            conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+                Each message is a dictionary with keys "role" and "content".
             max_length (int): Maximum length of the generated text.
-            system_texts (list[str] | None): List of system prompts. If None, default system prompt is used.
 
         Returns:
             list[str]: List of generated adversarial texts.
         """
-        token_dict = self.tokenize(input_texts, system_texts=system_texts)
+        
+        token_dict = self.tokenize(conversations)
 
         result = self.generate(
             input_ids=token_dict["input_ids"],

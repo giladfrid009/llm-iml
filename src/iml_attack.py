@@ -1,4 +1,4 @@
-from src.attack import Attack
+from src.attacks.attack import Attack
 from src.adver_model import AdverModel
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
@@ -122,7 +122,6 @@ class IML_Attack:
         self,
         adv_model: AdverModel,
         internal_attack: Attack,
-        activ_extractor: ActivationExtractor,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         mixed_precision: bool = True,
         evaluators: list[Evaluator] | None = None,
@@ -130,8 +129,7 @@ class IML_Attack:
     ):
         self.adv_model = adv_model
         self.internal_attack = internal_attack
-        self.activ_extractor = activ_extractor
-        
+
         self.evaluators = evaluators
         self.pred_kwargs = pred_kwargs if pred_kwargs is not None else {}
 
@@ -177,7 +175,7 @@ class IML_Attack:
         Args:
             adv_model (AdverModel): The adversarial model to use for text generation.
             dl_eval (DF_Batcher): Data loader for evaluation.
-            **kwargs (dict): Additional keyword arguments for `AdverModel.generate_text`.
+            **kwargs (dict): Additional keyword arguments for `AdverModel.chat`.
 
         Returns:
             list[str]: List of generated responses.
@@ -193,12 +191,15 @@ class IML_Attack:
                 prompts = batch_data.prompt
                 system_text = batch_data.system if hasattr(batch_data, "system") else None
 
-                responses = adv_model.generate_text(
-                    prompts,
-                    system_text=system_text,
-                    **kwargs,
-                )
-
+                conversations = []
+                if system_text is not None:
+                    for prm, sys in zip(prompts, system_text):
+                        conversations.append([{"role": "system", "content": sys}, {"role": "user", "content": prm}])
+                else:
+                    for prm in prompts:
+                        conversations.append([{"role": "user", "content": prm}])
+                        
+                responses = adv_model.chat(conversations, **kwargs)
                 all_responses.extend(responses)
 
         return all_responses
@@ -343,25 +344,30 @@ class IML_Attack:
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
-            input_text, target_text = data.prompt, data.target
-            token_dict = self.adv_model.tokenize(input_text, target_text)
+            system_text, input_text, target_text = getattr(data, "system", None), data.prompt, data.target
+            
+            conversations = []
+            if system_text is not None:
+                for prm, sys in zip(input_text, system_text):
+                    conversations.append([{"role": "system", "content": sys}, {"role": "user", "content": prm}])
+            else:
+                for prm in input_text:
+                    conversations.append([{"role": "user", "content": prm}])
+            
+            token_dict = self.adv_model.tokenize(conversations, target_text)
 
             # compute universal logits
             univ_embeds = self.univ_embeds.expand(len(input_text), -1, -1)
-            
-            with self.activ_extractor.capture():
-                self.adv_model.set_embeddings(univ_embeds)
-                univ_logits = self.compute_logits(token_dict, self.adv_model)
-                univ_activs = self.activ_extractor.get_activations()
+            self.adv_model.set_embeddings(univ_embeds)
+            univ_logits = self.compute_logits(token_dict, self.adv_model)
 
             # compute per-sample logits
             with torch.autocast(device_type=self.device.type, enabled=False):
-                sample_embed = self.internal_attack.fit(input_text, target_text, embeds_init=univ_embeds)
-            
-            with self.activ_extractor.capture(), torch.inference_mode():
+                sample_embed = self.internal_attack.fit(conversations, target_text, embeds_init=univ_embeds)
+
+            with torch.inference_mode():
                 self.adv_model.set_embeddings(sample_embed)
                 sample_logits = self.compute_logits(token_dict, self.adv_model)
-                sample_activs = self.activ_extractor.get_activations()
 
             # compute loss
             univ_logits = univ_logits.view(-1, univ_logits.size(-1))

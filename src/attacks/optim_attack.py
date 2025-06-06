@@ -1,6 +1,6 @@
 from typing import Callable, Iterable
 from src.adver_model import AdverModel
-from src.attack import Attack
+from src.attacks.attack import Attack
 from tqdm.auto import tqdm
 import torch
 import copy
@@ -21,17 +21,17 @@ class OptimAttack(Attack):
         self.steps = steps
         self.optim_factory = optim_factory
         self.mixed_precision = mixed_precision
-        self.kv_caching = kv_caching  # TODO: implement switch to turn on or off kv-caching
+        self.kv_caching = kv_caching
 
 
     def fit(
         self,
-        input_texts: list[str],
+        conversations: list[list[dict[str, str]]],
         target_texts: list[str],
         embeds_init: torch.Tensor | None = None,
     ) -> torch.Tensor:
 
-        token_dict = self.adv_model.tokenize(input_texts, target_texts)
+        token_dict = self.adv_model.tokenize(conversations, target_texts)
 
         if self.kv_caching:
             with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
@@ -42,7 +42,7 @@ class OptimAttack(Attack):
             adv_embeds = adv_embeds.clone().detach()
             adv_embeds.requires_grad_(True)
         else:
-            adv_embeds = self.init_embedding(num_inputs=len(input_texts))
+            adv_embeds = self.init_embedding(num_inputs=len(conversations))
             adv_embeds.requires_grad_(True)
             
         self.adv_model.set_embeddings(adv_embeds)

@@ -101,7 +101,7 @@ class Attack(ABC):
 
         new_token_dict = {
             "input_ids": token_dict["input_ids"][:, kv_idx:],
-            "attention_mask": token_dict["attention_mask"], # we need the full attention mask
+            "attention_mask": token_dict["attention_mask"],  # we need the full attention mask
             "adv_mask": token_dict["adv_mask"][:, kv_idx:],
             "const_idx": token_dict["const_idx"],
             "kv_cache": kv_cache,
@@ -112,15 +112,10 @@ class Attack(ABC):
 
         return new_token_dict
 
-    # TODO: low priority: input texts should be transformed into list[list[dict]] messeges 
-    # and then if the system prompt is provided, it will be used. 
-    
-    # TODO: low priority - if some attacks do not support system prompt of conveersation length > 1 they can simply
-    # raise and exception at that case. 
     @abstractmethod
     def fit(
         self,
-        input_texts: list[str],
+        conversations: list[list[dict[str, str]]],
         target_texts: list[str],
         embeds_init: torch.Tensor | None = None,
     ) -> torch.Tensor:
@@ -128,7 +123,8 @@ class Attack(ABC):
         Fit the attack model to the input and target texts.
 
         Args:
-            input_texts (list[str]): List of input texts.
+            conversations (list[list[dict[str, str]]]): List of conversations, where each conversation is a list of messages.
+                Each message is a dictionary with keys "role" and "content".
             target_texts (list[str]): List of target texts.
             embeds_init (torch.Tensor | None): Initial adversarial embedding.
 
