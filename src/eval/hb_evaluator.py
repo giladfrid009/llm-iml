@@ -73,7 +73,7 @@ class HarmbenchEvaluator(Evaluator):
         required_colums = ["prompt", "response"] if not use_context else ["prompt", "response", "context"]
 
         super().__init__(
-            name="HarmBench",
+            name=model_name,
             silent=silent,
             required_columns=required_colums,
         )

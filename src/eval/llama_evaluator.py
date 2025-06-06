@@ -49,7 +49,7 @@ class LlamaEvaluator(Evaluator):
         model_name = "meta-llama/Llama-2-7b-chat-hf"
 
         super().__init__(
-            name="Llama2",
+            name=model_name,
             silent=silent,
             required_columns=["prompt", "response"],
         )

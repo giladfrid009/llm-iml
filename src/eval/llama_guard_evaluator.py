@@ -15,10 +15,7 @@ SUPPORTED_MODELS = [
     "meta-llama/Meta-Llama-Guard-2-8B",
     "meta-llama/Llama-Guard-3-1B",
     "meta-llama/Llama-Guard-3-8B",
-    "meta-llama/Llama-Guard-3-11B-Vision",
     "meta-llama/Llama-Guard-4-12B",
-    "nvidia/Aegis-AI-Content-Safety-LlamaGuard-Defensive-1.0",
-    "nvidia/Aegis-AI-Content-Safety-LlamaGuard-Permissive-1.0",
 ]
 
 
@@ -31,16 +28,13 @@ class LlamaGuardEvaluator(Evaluator):
     - `meta-llama/Meta-Llama-Guard-2-8B`
     - `meta-llama/Llama-Guard-3-1B`
     - `meta-llama/Llama-Guard-3-8B`
-    - `meta-llama/Llama-Guard-3-11B-Vision`
     - `meta-llama/Llama-Guard-4-12B`
-    - `nvidia/Aegis-AI-Content-Safety-LlamaGuard-Defensive-1.0`
-    - `nvidia/Aegis-AI-Content-Safety-LlamaGuard-Permissive-1.0`
     """
 
     def __init__(
         self,
         serve_config: ServeConfig,
-        model_name: str = "meta-llama/LlamaGuard-7b",
+        model_name: str = "meta-llama/Llama-Guard-3-8B",
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
         silent: bool = False,
@@ -53,13 +47,14 @@ class LlamaGuardEvaluator(Evaluator):
             raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
 
         super().__init__(
-            name="LlamaGuard",
+            name=model_name,
             silent=silent,
             required_columns=["prompt", "response"],
         )
 
         if llm_config is None:
-            llm_config = LLMConfig(model_name=model_name, dtype="bfloat16")
+            max_model_len=4096 if model_name == "meta-llama/Llama-Guard-4-12B" else None
+            llm_config = LLMConfig(model_name=model_name, dtype="bfloat16", max_model_len=max_model_len)
 
         if sampling_params is None:
             sampling_params = SamplingParams(

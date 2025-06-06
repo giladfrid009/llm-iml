@@ -74,6 +74,7 @@ async def chat_endpoint(request: Request) -> Response:
             sampling_params=sampling_params,
             add_generation_prompt=True,
             continue_final_message=False,
+            use_tqdm=False,
         )
     except Exception as e:
         raise HTTPException(
@@ -149,7 +150,7 @@ def server_main(
         model=model_name,
         **extra,
     )
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":
