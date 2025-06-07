@@ -126,6 +126,7 @@ class VLLMServer:
             "--gpus",
             ",".join(str(g) for g in self.gpu_ids),
         ]
+
         llm_args = {
             "dtype": self.llm_config.dtype,
             "tokenizer": self.llm_config.tokenizer,
@@ -141,11 +142,14 @@ class VLLMServer:
             "enforce_eager": self.llm_config.enforce_eager,
             **self.llm_config.llm_kwargs,
         }
-        if self.llm_config.lora_path is not None:
-            cmd.extend(["--lora_path", self.llm_config.lora_path])
+
         llm_args = {k: v for k, v in llm_args.items() if v is not None}
         if llm_args:
             cmd.extend(["--llm_kwargs", json.dumps(llm_args)])
+
+        if self.llm_config.lora_path is not None:
+            cmd.extend(["--lora_path", self.llm_config.lora_path])
+
         logger.info(f"[VLLMServer] Launching subprocess:\n    {' '.join(cmd)}")
 
         try:
@@ -188,9 +192,7 @@ class VLLMServer:
                     logger.error("[VLLMServer STDOUT]\n%s", out)
                 if err:
                     logger.error("[VLLMServer STDERR]\n%s", err)
-                raise RuntimeError(
-                    f"[VLLMServer] Timeout ({self.startup_timeout}s) waiting for health check."
-                )
+                raise RuntimeError(f"[VLLMServer] Timeout ({self.startup_timeout}s) waiting for health check.")
             time.sleep(0.1)
 
     def is_running(self) -> bool:

@@ -15,8 +15,9 @@ app = FastAPI(title="vLLM Batched-Chat & Generate Server")
 
 # This will hold the single LLM instance once we call `server_main(...)`
 _llm_instance: Optional[LLM] = None
+
 # Optional LoRA request applied to all generation/chat calls
-_lora_request: Optional["LoRARequest"] = None
+_lora_request: Optional[LoRARequest] = None
 
 
 class ChatRequest(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=True):
@@ -149,8 +150,8 @@ def server_main(
 
     1) Sets ``CUDA_VISIBLE_DEVICES`` so only the given GPUs are visible.
     2) Initializes a single :class:`vllm.LLM` with ``model_name``.
-    3) Launches ``uvicorn(app)`` at ``host:port``.
-    4) If ``lora_path`` is provided, loads the LoRA adapter and enables LoRA.
+    3) If ``lora_path`` is provided, loads the LoRA adapter and enables LoRA.
+    4) Launches ``uvicorn(app)`` at ``host:port``.
     """
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
     global _llm_instance, _lora_request
@@ -158,12 +159,12 @@ def server_main(
     if lora_path is not None:
         _lora_request = LoRARequest("lora_adapter", 1, lora_path=lora_path)
         extra.setdefault("enable_lora", True)
-    else:
-        _lora_request = None
+
     _llm_instance = LLM(
         model=model_name,
         **extra,
     )
+
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
@@ -203,7 +204,7 @@ if __name__ == "__main__":
         "--lora_path",
         type=str,
         default=None,
-        help="Path to a LoRA adapter to use for all inferences",
+        help="Path to a LoRA adapter to use for inference",
     )
     args = parser.parse_args()
 
