@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
+import msgspec
 from vllm import SamplingParams
 
 from src.inference.vllm_client import VLLMClient
@@ -141,6 +142,11 @@ class VLLMServer:
             "enforce_eager": self.llm_config.enforce_eager,
             **self.llm_config.llm_kwargs,
         }
+        if self.llm_config.lora_request is not None:
+            llm_args["enable_lora"] = True
+            import msgspec
+            lora_json = msgspec.json.encode(self.llm_config.lora_request).decode()
+            cmd.extend(["--lora_request", lora_json])
         llm_args = {k: v for k, v in llm_args.items() if v is not None}
         if llm_args:
             cmd.extend(["--llm_kwargs", json.dumps(llm_args)])

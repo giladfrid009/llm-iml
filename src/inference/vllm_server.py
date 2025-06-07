@@ -9,11 +9,14 @@ import uvicorn
 import msgspec
 
 from vllm import LLM, SamplingParams
+from vllm.lora.request import LoRARequest
 
 app = FastAPI(title="vLLM Batched-Chat & Generate Server")
 
 # This will hold the single LLM instance once we call `server_main(...)`
 _llm_instance: Optional[LLM] = None
+# Optional LoRA request applied to all generation/chat calls
+_lora_request: Optional["LoRARequest"] = None
 
 
 class ChatRequest(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=True):
@@ -72,6 +75,7 @@ async def chat_endpoint(request: Request) -> Response:
         req_outputs = _llm_instance.chat(
             req.conversations,
             sampling_params=sampling_params,
+            lora_request=_lora_request,
             add_generation_prompt=True,
             continue_final_message=False,
             use_tqdm=False,
@@ -112,6 +116,7 @@ async def generate_endpoint(request: Request) -> Response:
         req_outputs = _llm_instance.generate(
             req.prompts,
             sampling_params=sampling_params,
+            lora_request=_lora_request,
             use_tqdm=False,
         )
     except Exception as e:
@@ -136,6 +141,7 @@ def server_main(
     port: int,
     gpus: str,
     llm_kwargs: Optional[str] = None,
+    lora_request: Optional[str] = None,
 ) -> None:
     """
     Entrypoint to run the FastAPI server. Called when this file is run with `--serve`.
@@ -144,8 +150,13 @@ def server_main(
     3) Launches uvicorn(app) at host:port.
     """
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
-    global _llm_instance
+    global _llm_instance, _lora_request
     extra = json.loads(llm_kwargs) if llm_kwargs else {}
+    if lora_request is not None:
+        _lora_request = msgspec.json.decode(lora_request.encode(), type=LoRARequest)
+        extra.setdefault("enable_lora", True)
+    else:
+        _lora_request = None
     _llm_instance = LLM(
         model=model_name,
         **extra,
@@ -185,6 +196,12 @@ if __name__ == "__main__":
         default=None,
         help="JSON string with additional arguments passed to vllm.LLM",
     )
+    parser.add_argument(
+        "--lora_request",
+        type=str,
+        default=None,
+        help="JSON-encoded LoRARequest applied to all inferences",
+    )
     args = parser.parse_args()
 
     if args.serve:
@@ -198,6 +215,7 @@ if __name__ == "__main__":
             port=args.port,
             gpus=args.gpus,
             llm_kwargs=args.llm_kwargs,
+            lora_request=args.lora_request,
         )
 
         sys.exit(0)
