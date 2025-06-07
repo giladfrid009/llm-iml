@@ -141,19 +141,22 @@ def server_main(
     port: int,
     gpus: str,
     llm_kwargs: Optional[str] = None,
-    lora_request: Optional[str] = None,
+    lora_path: Optional[str] = None,
 ) -> None:
     """
-    Entrypoint to run the FastAPI server. Called when this file is run with `--serve`.
-    1) Sets CUDA_VISIBLE_DEVICES so only the given GPUs are visible to vLLM.
-    2) Initializes a single vLLM( model=model_name ).
-    3) Launches uvicorn(app) at host:port.
+    Entrypoint to run the FastAPI server. Called when this file is run with
+    ``--serve``.
+
+    1) Sets ``CUDA_VISIBLE_DEVICES`` so only the given GPUs are visible.
+    2) Initializes a single :class:`vllm.LLM` with ``model_name``.
+    3) Launches ``uvicorn(app)`` at ``host:port``.
+    4) If ``lora_path`` is provided, loads the LoRA adapter and enables LoRA.
     """
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
     global _llm_instance, _lora_request
     extra = json.loads(llm_kwargs) if llm_kwargs else {}
-    if lora_request is not None:
-        _lora_request = msgspec.json.decode(lora_request.encode(), type=LoRARequest)
+    if lora_path is not None:
+        _lora_request = LoRARequest("lora_adapter", 1, lora_path=lora_path)
         extra.setdefault("enable_lora", True)
     else:
         _lora_request = None
@@ -197,10 +200,10 @@ if __name__ == "__main__":
         help="JSON string with additional arguments passed to vllm.LLM",
     )
     parser.add_argument(
-        "--lora_request",
+        "--lora_path",
         type=str,
         default=None,
-        help="JSON-encoded LoRARequest applied to all inferences",
+        help="Path to a LoRA adapter to use for all inferences",
     )
     args = parser.parse_args()
 
@@ -215,7 +218,7 @@ if __name__ == "__main__":
             port=args.port,
             gpus=args.gpus,
             llm_kwargs=args.llm_kwargs,
-            lora_request=args.lora_request,
+            lora_path=args.lora_path,
         )
 
         sys.exit(0)

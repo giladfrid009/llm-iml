@@ -3,8 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from vllm.lora.request import LoRARequest
-
 
 @dataclass
 class LLMConfig:
@@ -24,8 +22,8 @@ class LLMConfig:
     max_model_len: Optional[int] = None
     download_dir: Optional[str] = None
     llm_kwargs: Dict[str, Any] = field(default_factory=dict)
-    # Optional LoRA adapter to load for all inference calls.
-    lora_request: Optional[LoRARequest] = None
+    # Optional path to a LoRA adapter directory to load for all inference calls.
+    lora_path: Optional[str] = None
 
 
 @dataclass
