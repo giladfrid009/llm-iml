@@ -10,7 +10,7 @@ import msgspec
 
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
-from vllm.sequences import SampleLogprobs
+from vllm.sequence import SampleLogprobs
 
 app = FastAPI(title="vLLM Batched-Chat & Generate Server")
 
@@ -41,7 +41,7 @@ class GenerateRequest(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=
 class ResponseOutput(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=True):
     """Single generation response from vLLM."""
 
-    output: str
+    text: str
     logprobs: Optional[SampleLogprobs] = None
 
 
@@ -88,7 +88,7 @@ async def chat_endpoint(request: Request) -> Response:
     for res in req_outputs:
         gens: List[ResponseOutput] = []
         for o in res.outputs:
-            gens.append(ResponseOutput(output=o.text, logprobs=o.logprobs))
+            gens.append(ResponseOutput(text=o.text, logprobs=o.logprobs))
         responses.append(gens)
     return Response(
         content=msgspec.json.encode(responses),
@@ -129,7 +129,7 @@ async def generate_endpoint(request: Request) -> Response:
     for res in req_outputs:
         gens: List[ResponseOutput] = []
         for o in res.outputs:
-            gens.append(ResponseOutput(output=o.text, logprobs=o.logprobs))
+            gens.append(ResponseOutput(text=o.text, logprobs=o.logprobs))
         responses.append(gens)
     return Response(
         content=msgspec.json.encode(responses),

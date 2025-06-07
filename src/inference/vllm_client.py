@@ -75,7 +75,7 @@ class VLLMClient:
 
         if return_extra:
             return output
-        return [[o.output for o in outs] for outs in output]
+        return [[o.text for o in outs] for outs in output]
 
     def generate(
         self,
@@ -119,4 +119,4 @@ class VLLMClient:
 
         if return_extra:
             return output
-        return [[o.output for o in outs] for outs in output]
+        return [[o.text for o in outs] for outs in output]
