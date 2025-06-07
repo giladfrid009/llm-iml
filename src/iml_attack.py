@@ -189,7 +189,7 @@ class IML_Attack:
             all_responses = []
             for batch_data in tqdm(dl_eval, desc="Predict", leave=False):
                 prompts = batch_data.prompt
-                system_text = batch_data.system if hasattr(batch_data, "system") else None
+                system_text = getattr(batch_data, "system", None)
 
                 conversations = []
                 if system_text is not None:
@@ -198,7 +198,7 @@ class IML_Attack:
                 else:
                     for prm in prompts:
                         conversations.append([{"role": "user", "content": prm}])
-                        
+
                 responses = adv_model.chat(conversations, **kwargs)
                 all_responses.extend(responses)
 
@@ -225,7 +225,6 @@ class IML_Attack:
             dict[str, float]: Dictionary containing evaluation metrics.
         """
         dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
-
         all_responses = self.predict(adv_model, dl_eval)
         dl_eval.set_column("response", all_responses)
 
@@ -236,7 +235,7 @@ class IML_Attack:
         if update_best:
             if self.best_metric < metrics[evalers[0].name]:
                 self.best_metric = metrics[evalers[0].name]
-                self.best_embeds = self.adv_model.get_embeddings(clone=True)
+                self.best_embeds = adv_model.get_embeddings(clone=True)
 
         return metrics
 
@@ -315,10 +314,8 @@ class IML_Attack:
                     stop_criteria.update(epoch_num, None)
                     epoch_pbar.set_postfix({"loss": loss_value})
 
-        # set to best
+        # set to best embeddings and final eval 
         self.adv_model.set_embeddings(self.best_embeds)
-
-        # final evaluation
         if dl_eval is not None and self.evaluators is not None:
             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval)
             for name, value in metrics.items():
@@ -345,7 +342,7 @@ class IML_Attack:
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
             system_text, input_text, target_text = getattr(data, "system", None), data.prompt, data.target
-            
+
             conversations = []
             if system_text is not None:
                 for prm, sys in zip(input_text, system_text):
@@ -353,7 +350,7 @@ class IML_Attack:
             else:
                 for prm in input_text:
                     conversations.append([{"role": "user", "content": prm}])
-            
+
             token_dict = self.adv_model.tokenize(conversations, target_text)
 
             # compute universal logits

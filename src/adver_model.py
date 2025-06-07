@@ -4,6 +4,13 @@ from transformers import PreTrainedModel, PreTrainedTokenizer
 from typing import Iterator
 import copy
 
+from transformers.generation.utils import (
+    GenerateBeamDecoderOnlyOutput,
+    GenerateBeamEncoderDecoderOutput,
+    GenerateDecoderOnlyOutput,
+    GenerateEncoderDecoderOutput,
+)
+
 from src import utils
 
 
@@ -286,7 +293,7 @@ class AdverModel(nn.Module):
         adv_mask: torch.Tensor | None = None,
         max_length: int = 100,
         **kwargs,
-    ):
+    ) -> GenerateDecoderOnlyOutput:
 
         # prepare adversarial embeddings
         adv_embeds = self.adv_embeds if adv_mask is not None else None
@@ -295,6 +302,11 @@ class AdverModel(nn.Module):
 
         inputs_embeds = self.adv_embedder.forward(input_ids, adv_embeds, adv_mask)
 
+        # greedy by default
+        kwargs.setdefault("do_sample", False)
+        kwargs.setdefault("temperature", 1.0)
+        kwargs.setdefault("top_p", 1.0)
+
         return self.model.generate(
             inputs=None,
             inputs_embeds=inputs_embeds,
@@ -302,6 +314,8 @@ class AdverModel(nn.Module):
             max_length=max_length,
             num_return_sequences=1,
             pad_token_id=self.tokenizer.pad_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+            use_model_defaults=True,
             **kwargs,
         )
 
