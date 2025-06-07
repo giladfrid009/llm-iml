@@ -12,6 +12,7 @@ import requests
 from vllm import SamplingParams
 
 from src.inference.vllm_client import VLLMClient
+from src.inference.vllm_server import ResponseOutput
 from src.inference.configs import LLMConfig, ServeConfig
 
 import logging
@@ -364,7 +365,8 @@ class VLLMService:
         self,
         conversations: List[List[Dict[str, str]]],
         sampling_params: SamplingParams | None = None,
-    ) -> List[List[str]]:
+        return_extra: bool = False,
+    ) -> List[List[str]] | List[List[ResponseOutput]]:
         """
         Batched chat.
         Returns a list of lists, each sub-list corresponds to number of outputs (n).
@@ -389,13 +391,16 @@ class VLLMService:
             batches.append(conversations[start : start + size])
             start += size
 
-        results: List[List[List[str]]] = []
+        results: List[List] = []
         with ThreadPoolExecutor(max_workers=num_servers) as ex:
-            futures = [ex.submit(client.chat, batch, sampling_params) for client, batch in zip(self.clients, batches)]
+            futures = [
+                ex.submit(client.chat, batch, sampling_params, return_extra)
+                for client, batch in zip(self.clients, batches)
+            ]
             for fut in futures:
                 results.append(fut.result())
 
-        merged: List[List[str]] = []
+        merged: List[List] = []
         for res in results:
             merged.extend(res)
         return merged
@@ -404,7 +409,8 @@ class VLLMService:
         self,
         prompts: List[str],
         sampling_params: SamplingParams | None = None,
-    ) -> List[List[str]]:
+        return_extra: bool = False,
+    ) -> List[List[str]] | List[List[ResponseOutput]]:
         """
         Batched generate.
         Returns a list of lists, each sub-list corresponds to number of outputs (n).
@@ -430,13 +436,16 @@ class VLLMService:
             batches.append(prompts[start : start + size])
             start += size
 
-        results: List[List[List[str]]] = []
+        results: List[List] = []
         with ThreadPoolExecutor(max_workers=num_servers) as ex:
-            futures = [ex.submit(client.generate, batch, sampling_params) for client, batch in zip(self.clients, batches)]
+            futures = [
+                ex.submit(client.generate, batch, sampling_params, return_extra)
+                for client, batch in zip(self.clients, batches)
+            ]
             for fut in futures:
                 results.append(fut.result())
 
-        merged: List[List[str]] = []
+        merged: List[List] = []
         for res in results:
             merged.extend(res)
         return merged

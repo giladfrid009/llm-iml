@@ -37,7 +37,8 @@ class VLLMClient:
         self,
         conversations: List[List[Dict[str, str]]],
         sampling_params: SamplingParams,
-    ) -> List[List[str]]:
+        return_extra: bool = False,
+    ) -> List[List[str]] | List[List[ResponseOutput]]:
         """
         Send a batch of M conversations to POST /chat, return a list of M generated strings.
 
@@ -68,17 +69,20 @@ class VLLMClient:
             )
 
         try:
-            output = msgspec.json.decode(response.content, type=ResponseOutput)
+            output = msgspec.json.decode(response.content, type=list[list[ResponseOutput]])
         except msgspec.DecodeError as e:
             raise RuntimeError(f"Invalid JSON in /chat response: {e!r}")
 
-        return output.outputs
+        if return_extra:
+            return output
+        return [[o.output for o in outs] for outs in output]
 
     def generate(
         self,
         prompts: List[str],
         sampling_params: SamplingParams,
-    ) -> List[List[str]]:
+        return_extra: bool = False,
+    ) -> List[List[str]] | List[List[ResponseOutput]]:
         """
         Send a batch of N prompts to POST /generate, return a list of N generated strings.
 
@@ -109,8 +113,10 @@ class VLLMClient:
             )
 
         try:
-            output = msgspec.json.decode(response.content, type=ResponseOutput)
+            output = msgspec.json.decode(response.content, type=list[list[ResponseOutput]])
         except msgspec.DecodeError as e:
             raise RuntimeError(f"Invalid JSON in /generate response: {e!r}")
 
-        return output.outputs
+        if return_extra:
+            return output
+        return [[o.output for o in outs] for outs in output]

@@ -10,6 +10,7 @@ import msgspec
 
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
+from vllm.sequences import SampleLogprobs
 
 app = FastAPI(title="vLLM Batched-Chat & Generate Server")
 
@@ -38,14 +39,10 @@ class GenerateRequest(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=
 
 
 class ResponseOutput(msgspec.Struct, omit_defaults=True, forbid_unknown_fields=True):
-    """
-    Response output model for chat and generate endpoints.
-    - outputs: The output sequences of the request.
-        Each distinct output is represented as a list of strings, where the number of items
-        in the list corresponds to the number of outputs generated for each input.
-    """
+    """Single generation response from vLLM."""
 
-    outputs: List[List[str]]
+    output: str
+    logprobs: Optional[SampleLogprobs] = None
 
 
 @app.get("/health")
@@ -87,12 +84,14 @@ async def chat_endpoint(request: Request) -> Response:
             detail=f"Error during vLLM inference: {e!r}",
         )
 
-    responses = []
+    responses: List[List[ResponseOutput]] = []
     for res in req_outputs:
-        responses.append([o.text for o in res.outputs])
-    resp_obj = ResponseOutput(outputs=responses)
+        gens: List[ResponseOutput] = []
+        for o in res.outputs:
+            gens.append(ResponseOutput(output=o.text, logprobs=o.logprobs))
+        responses.append(gens)
     return Response(
-        content=msgspec.json.encode(resp_obj),
+        content=msgspec.json.encode(responses),
         media_type="application/json",
     )
 
@@ -126,12 +125,14 @@ async def generate_endpoint(request: Request) -> Response:
             detail=f"Error during vLLM inference: {e!r}",
         )
 
-    responses = []
+    responses: List[List[ResponseOutput]] = []
     for res in req_outputs:
-        responses.append([o.text for o in res.outputs])
-    resp_obj = ResponseOutput(outputs=responses)
+        gens: List[ResponseOutput] = []
+        for o in res.outputs:
+            gens.append(ResponseOutput(output=o.text, logprobs=o.logprobs))
+        responses.append(gens)
     return Response(
-        content=msgspec.json.encode(resp_obj),
+        content=msgspec.json.encode(responses),
         media_type="application/json",
     )
 
