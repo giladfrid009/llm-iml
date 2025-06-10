@@ -26,4 +26,8 @@ dependencies = [
     "uvicorn>=0.34.3",
     "vllm>=0.9",
     "xformers>=0.0.27.post2",
+    "gserve",
 ]
+
+[tool.uv.sources]
+gserve = { git = "https://github.com/giladfrid009/gserve" }

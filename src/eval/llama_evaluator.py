@@ -1,7 +1,7 @@
 from numpy import isin
 from src.eval.evaluator import Evaluator
-from src.inference.vllm_service import VLLMService
-from src.inference.configs import LLMConfig, ServeConfig
+from gserve.vllm_service import VLLMService
+from gserve.configs import LLMConfig, ServeConfig
 
 from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams

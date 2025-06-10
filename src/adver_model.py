@@ -306,6 +306,7 @@ class AdverModel(nn.Module):
         kwargs.setdefault("do_sample", False)
         kwargs.setdefault("temperature", 1.0)
         kwargs.setdefault("top_p", 1.0)
+        kwargs.setdefault("top_k", None) 
 
         return self.model.generate(
             inputs=None,

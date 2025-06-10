@@ -895,6 +895,25 @@ wheels = [
 ]
 
 [[package]]
+name = "gserve"
+version = "0.1.0"
+source = { git = "https://github.com/giladfrid009/gserve#da3aa05b2165a8f78a3d9d62d563a48fe2eba7da" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "ipykernel" },
+    { name = "ipywidgets" },
+    { name = "jupyter" },
+    { name = "msgspec" },
+    { name = "ray" },
+    { name = "torch" },
+    { name = "tqdm" },
+    { name = "uvicorn" },
+    { name = "vllm" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1517,6 +1536,7 @@ dependencies = [
     { name = "accelerate" },
     { name = "cuda-python" },
     { name = "fastapi" },
+    { name = "gserve" },
     { name = "huggingface-hub" },
     { name = "ipykernel" },
     { name = "ipywidgets" },
@@ -1543,6 +1563,7 @@ requires-dist = [
     { name = "accelerate", specifier = ">=1.7.0" },
     { name = "cuda-python", specifier = ">=12.9.0" },
     { name = "fastapi", specifier = ">=0.115.12" },
+    { name = "gserve", git = "https://github.com/giladfrid009/gserve" },
     { name = "huggingface-hub", specifier = ">=0.32.4" },
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "ipywidgets", specifier = ">=8.1.7" },
