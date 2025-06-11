@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from typing import Callable, List
+
 import torch
 from typing import Any
 from src.data import DF_Batcher
@@ -23,7 +25,7 @@ class Evaluator(ABC):
         self.name = name
         self.silent = silent
         self.required_columns = required_columns
-        
+
     @abstractmethod
     def process_batch(self, data: tuple[list[Any], ...]) -> torch.Tensor:
         """
@@ -59,3 +61,40 @@ class Evaluator(ABC):
             num_samples += batch_metric.size(0)
 
         return total_metric / num_samples if num_samples > 0 else 0.0
+
+
+class MultiEvaluator(Evaluator):
+    def __init__(
+        self,
+        evaluators: list[Evaluator],
+        combine_fn: Callable[[list[torch.Tensor]], torch.Tensor],
+        silent: bool = False,
+    ):
+
+        name = " + ".join([evaluator.name for evaluator in evaluators])
+
+        super().__init__(
+            name=name,
+            required_columns=[],
+            silent=silent,
+        )
+
+        self.evaluators = evaluators
+        self.combine_fn = combine_fn
+
+    def process_batch(self, data: tuple[list[Any], ...]) -> torch.Tensor:
+        """
+        Processes a batch of input and target texts using multiple evaluators,
+        and combines their results using the specified combine function.
+
+        Args:
+            data (tuple[list[Any], ...]): Tuple containing all relevant data to perform model evaluation.
+
+        Returns:
+            torch.Tensor: Combined evaluation metric for each sample in the batch.
+        """
+        metrics = []
+        for evaluator in self.evaluators:
+            batch_metric = evaluator.process_batch(data)
+            metrics.append(batch_metric)
+        return self.combine_fn(metrics)
