@@ -42,31 +42,6 @@ def extract_device(module: torch.nn.Module) -> torch.device:
     return next(iter(module.parameters())).device
 
 
-def sample_lp_ball(length: int, norm: float = 2.0, device: torch.device | None = None) -> torch.Tensor:
-    """
-    Implementation of the method described in:
-    [https://stats.stackexchange.com/questions/352668/generate-uniform-noise-from-a-p-norm-ball-x-p-leq-r]
-
-    Sample a random vector from the Lp ball of radius 1.
-
-    Args:
-        length (int): Length of the vector.
-        norm (int): Norm of the ball.
-        device (torch.device, optional): Device to move the tensor to.
-
-    Returns:
-        torch.Tensor: A random vector sampled from the Lp ball.
-    """
-    if device is None:
-        device = torch.device("cpu")
-    vec = (-torch.log(torch.rand(length, device=device))) ** (1 / norm)
-    sgn = 2 * torch.randint(0, 2, (length,), dtype=torch.float32, device=device) - 1
-    vec = sgn * vec
-    vec = vec / (torch.norm(vec, p=norm) + torch.finfo(vec.dtype).eps)
-    rad = torch.exp(torch.log(torch.rand(1, device=device)) / length)
-    return rad * vec
-
-
 def api_key_from_file(path: str) -> str:
     """
     Read an API key from a file.

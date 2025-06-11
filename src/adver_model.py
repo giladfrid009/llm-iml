@@ -1,15 +1,10 @@
 import torch
 from torch import nn
-from transformers import PreTrainedModel, PreTrainedTokenizer
 from typing import Iterator
 import copy
 
-from transformers.generation.utils import (
-    GenerateBeamDecoderOnlyOutput,
-    GenerateBeamEncoderDecoderOutput,
-    GenerateDecoderOnlyOutput,
-    GenerateEncoderDecoderOutput,
-)
+from transformers.generation.utils import GenerateDecoderOnlyOutput
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from src import utils
 
@@ -89,8 +84,8 @@ class AdverModel(nn.Module):
             tokenizer.add_special_tokens({"additional_special_tokens": [self.adv_token]})
 
         # adv embedder
-        orig_embedder = self.model.get_input_embeddings()
-        self.adv_embedder = AdverEmbedding(orig_embedder)
+        self.orig_embedder = self.model.get_input_embeddings()
+        self.adv_embedder = AdverEmbedding(self.orig_embedder)
         self.model.set_input_embeddings(self.adv_embedder)
 
         # params
@@ -127,15 +122,24 @@ class AdverModel(nn.Module):
         self.training = mode
         return self
 
-    def set_embeddings(self, adv_embeds: torch.Tensor):
+    def set_embeddings(self, adv_embeds: torch.Tensor, strict: bool = True) -> None:
         """
-        Set the adversarial embeddings.
+        Set the adversarial embeddings, and the corresponding number of attacked tokens.
         If batch_size is 1, the embeddings will be broadcasted to input batch size.
 
         Args:
             adv_embeds (torch.Tensor): Adversarial embeddings of shape (batch_size, num_tokens, embed_dim).
+            strict (bool): If True, number of adversarial tokens must match to `self.num_tokens`.
         """
+        assert adv_embeds.ndim == 3, "Adversarial embeddings must be a 3D tensor (batch_size, num_tokens, embed_dim)"
+        assert adv_embeds.size(2) == self.adv_embedder.embed_dim, "Adversarial embeddings must match the embed_dim of the model"
+
+        num_tokens = adv_embeds.size(1)
+        if num_tokens != self.num_tokens and strict:
+            raise ValueError(f"Number of adversarial tokens must be {self.num_tokens}, but got {num_tokens}.")
+
         self.adv_embeds = adv_embeds
+        self.num_tokens = num_tokens
 
     def get_embeddings(self, clone: bool = False) -> torch.Tensor:
         """
@@ -222,6 +226,7 @@ class AdverModel(nn.Module):
             # - meta-llama/Llama-3.2-1B-Instruct
             # - Qwen/Qwen3-0.6B
 
+            # TODO: should we set add_special_tokens=False?
             self.tokenizer.padding_side = "right"
             target_tokens = self.tokenizer(
                 target_texts,
@@ -306,7 +311,7 @@ class AdverModel(nn.Module):
         kwargs.setdefault("do_sample", False)
         kwargs.setdefault("temperature", 1.0)
         kwargs.setdefault("top_p", 1.0)
-        kwargs.setdefault("top_k", None) 
+        kwargs.setdefault("top_k", None)
 
         return self.model.generate(
             inputs=None,
