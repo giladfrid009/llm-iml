@@ -96,5 +96,5 @@ class MultiEvaluator(Evaluator):
         metrics = []
         for evaluator in self.evaluators:
             batch_metric = evaluator.process_batch(data)
-            metrics.append(batch_metric)
+            metrics.append(batch_metric.cpu())
         return self.combine_fn(metrics)
