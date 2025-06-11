@@ -72,6 +72,9 @@ class MultiEvaluator(Evaluator):
     ):
 
         name = " + ".join([evaluator.name for evaluator in evaluators])
+        
+        for evaler in evaluators:
+            evaler.silent = silent
 
         super().__init__(
             name=name,
