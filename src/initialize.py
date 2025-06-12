@@ -95,7 +95,8 @@ class Initializer:
         adver_model: AdverModel,
         text: str,
         strict: bool = True,
-        pad_word: str = " ",
+        pad_word: str = ".",
+        verbose: bool = False,
     ):
         """
         Initialize adversarial embeddings from a string of text.
@@ -108,9 +109,11 @@ class Initializer:
                 - If True, the embeddings will be padded or truncated to match :attr:`adver_model.num_tokens`.
                 - If False, allow variable length. That may result in a change of :attr:`adver_model.num_tokens` value.
             pad_word (str): The word to use for padding if strict is True, to reach the target length.
+            verbose (bool): If True, print the initialized tokens and their length.
         """
         tokenizer = adver_model.tokenizer
         embedder = adver_model.orig_embedder
+        input_ids = None
 
         if not strict:
 
@@ -123,35 +126,47 @@ class Initializer:
                 truncation=False,
                 return_tensors="pt",
                 return_attention_mask=False,
-            )
+            ).to(adver_model.device)
 
             input_ids = tokenized["input_ids"]
-            embeddings = embedder(input_ids).unsqueeze(0)
-            adver_model.set_embeddings(embeddings, strict=False)
-            return
 
-        # Otherwise, we need to ensure the embeddings are of the correct length
-        target_length = adver_model.num_tokens
-        strict_tokenized = tokenizer.__call__(
-            test=text,
-            add_special_tokens=False,
-            padding="max_length",
-            truncation="max_length",
-            padding_side="right",
-            truncation_side="right",
-            max_length=target_length,
-            return_tensors="pt",
-            return_attention_mask=True,
-        )
+        else:
 
-        input_ids = strict_tokenized["input_ids"]
-        attention_mask = strict_tokenized["attention_mask"]
+            # We need to set some tokenizer settings manually
+            orig_padding_side = tokenizer.padding_side
+            orig_truncation_side = tokenizer.truncation_side
+            tokenizer.truncation_side = "right"
+            tokenizer.padding_side = "right"
+            
+            # Tokenize with strict padding and truncation
+            strict_tokenized = tokenizer(
+                text=text,
+                add_special_tokens=False,
+                padding="max_length",
+                truncation=True,
+                padding_side="right",
+                max_length=adver_model.num_tokens,
+                return_tensors="pt",
+                return_attention_mask=True,
+            ).to(adver_model.device)
+            
+            # Restore original tokenizer settings
+            tokenizer.padding_side = orig_padding_side
+            tokenizer.truncation_side = orig_truncation_side
 
-        # replace padding tokens with the specified pad_word
-        pad_token_id = tokenizer.convert_tokens_to_ids(pad_word)
-        input_ids[attention_mask == 0] = pad_token_id
+            input_ids = strict_tokenized["input_ids"]
+            attention_mask = strict_tokenized["attention_mask"]
 
-        embeddings = embedder(input_ids).unsqueeze(0)
+            # replace padding tokens with the specified pad_word
+            pad_token_id = tokenizer.convert_tokens_to_ids(pad_word)
+            input_ids[attention_mask == 0] = pad_token_id
+
+        embeddings = embedder(input_ids)        
         adver_model.set_embeddings(embeddings)
-
-    # TODO: maybe implement sampling from mean and same covariance (as done in HF transformers)
+        
+        if verbose:
+            ids_list = input_ids.flatten().tolist()
+            str_list = tokenizer.convert_ids_to_tokens(ids_list, skip_special_tokens=False)            
+            print(f"Initialized from text: '{text}'")
+            print(f"Embed Tokens: {str_list}")
+            print(f"Embed Length: {len(str_list)}")

@@ -136,7 +136,11 @@ class IML_Attack:
         self.mixed_precision = mixed_precision
         self.grad_scaler = torch.GradScaler(enabled=mixed_precision)
 
-        self.univ_embeds = self.init_embedding()
+        self.univ_embeds = self.adv_model.get_embeddings(clone=False)
+        self.univ_embeds.requires_grad_(True)
+        if self.univ_embeds.size(0) != 1:
+            raise ValueError("Batch size of universal embeddings must be 1.")
+        
         self.optimizer = optim_factory([self.univ_embeds])
 
         self.best_metric = -float("inf")
@@ -153,14 +157,6 @@ class IML_Attack:
     @property
     def device(self) -> torch.device:
         return self.internal_attack.device
-
-    def init_embedding(self) -> torch.Tensor:
-        return torch.randn(
-            size=(1, self.num_tokens, self.embed_dim),
-            device=self.device,
-            dtype=self.internal_attack.embed_dtype,
-            requires_grad=True,
-        )
 
     @torch.inference_mode()
     def predict(
@@ -211,7 +207,7 @@ class IML_Attack:
         evalers: list[Evaluator],
         dl_eval: DF_Batcher,
         update_best: bool = False,
-    ) -> dict[str, float]:
+    ) -> list[float]:
         """
         Evaluates the model using the provided evaluators and data loader.
 
@@ -222,19 +218,20 @@ class IML_Attack:
             update_embeds (bool): If True, updates the universal embeddings with the best ones found during evaluation.
 
         Returns:
-            dict[str, float]: Dictionary containing evaluation metrics.
+            list[float]: List containing evaluation metrics from each evaluator.
         """
         dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
         all_responses = self.predict(adv_model, dl_eval)
         dl_eval.set_column("response", all_responses)
 
-        metrics = {}
+        metrics = []
         for evaluator in evalers:
-            metrics[evaluator.name] = evaluator.evaluate(dl_eval)
+            res = evaluator.evaluate(dl_eval)
+            metrics.append(res)
 
         if update_best:
-            if self.best_metric < metrics[evalers[0].name]:
-                self.best_metric = metrics[evalers[0].name]
+            if self.best_metric < metrics[0]:
+                self.best_metric = metrics[0]
                 self.best_embeds = adv_model.get_embeddings(clone=True)
 
         return metrics
@@ -243,7 +240,9 @@ class IML_Attack:
     # ITS BECOMING A MESS AND NON-MAINTANABLE
 
     # TODO: probably we need to make the evaluators mandatory
-    # in order for IML to only use succesful attacks
+    # in order for IML to only use succesful attacks.
+    # Note, that the judge for early astopping, and the one used during the attack
+    # often should be different.
 
     # TODO: after this point i feel we can practically use the same code as we use in ulib
     # including all the logging, etc...
@@ -279,8 +278,8 @@ class IML_Attack:
                     update_best=True,
                 )
 
-                stop_criteria.update(0, metrics[self.evaluators[0].name])
-                epoch_pbar.set_postfix(metrics)
+                stop_criteria.update(0, metrics[0])
+                epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
             # main training loop
             for epoch_num in epoch_pbar:
@@ -307,8 +306,8 @@ class IML_Attack:
                         update_best=True,
                     )
 
-                    stop_criteria.update(epoch_num, metrics[self.evaluators[0].name])
-                    epoch_pbar.set_postfix(metrics)
+                    stop_criteria.update(epoch_num, metrics[0])
+                    epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
                 else:
                     stop_criteria.update(epoch_num, None)
@@ -318,8 +317,8 @@ class IML_Attack:
         self.adv_model.set_embeddings(self.best_embeds)
         if dl_eval is not None and self.evaluators is not None:
             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval)
-            for name, value in metrics.items():
-                print(f"Final metric {name}: {value:.6f}")
+            for evaler, value in zip(self.evaluators, metrics):
+                print(f"Final metric {evaler.name}: {value:.6f}")
 
         return self.adv_model
 

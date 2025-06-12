@@ -93,11 +93,7 @@ class AdverModel(nn.Module):
         self.num_tokens = num_tokens
 
         # adversarial embeddings
-        self.adv_embeds: torch.Tensor | None = torch.zeros(
-            (1, num_tokens, self.adv_embedder.embed_dim),
-            dtype=self.adv_embedder.embed_dtype,
-            device=self.device,
-        )
+        self.adv_embeds: torch.Tensor | None = None
 
     def parameters(self) -> Iterator[nn.Parameter]:
         """
@@ -227,6 +223,7 @@ class AdverModel(nn.Module):
             # - Qwen/Qwen3-0.6B
 
             # TODO: should we set add_special_tokens=False?
+            # probably yes, need to run tests
             self.tokenizer.padding_side = "right"
             target_tokens = self.tokenizer(
                 target_texts,
