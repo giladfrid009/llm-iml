@@ -52,9 +52,9 @@ class Initializer:
         Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
         The mean and std are computed per embedding dimension across all original embeddings.
         """
-        orig_embeds = adver_model.orig_embedder.weight
-        mean = orig_embeds.mean(dim=0)
-        std = orig_embeds.std(dim=0)
+        orig_weight = adver_model.orig_embedder.weight
+        mean = torch.mean(orig_weight, dim=0)
+        std = torch.std(orig_weight, dim=0)
 
         new_embeds = Initializer.make_empty(adver_model)
         new_embeds = new_embeds.normal_() * std + mean
@@ -137,7 +137,7 @@ class Initializer:
             orig_truncation_side = tokenizer.truncation_side
             tokenizer.truncation_side = "right"
             tokenizer.padding_side = "right"
-            
+
             # Tokenize with strict padding and truncation
             strict_tokenized = tokenizer(
                 text=text,
@@ -149,7 +149,7 @@ class Initializer:
                 return_tensors="pt",
                 return_attention_mask=True,
             ).to(adver_model.device)
-            
+
             # Restore original tokenizer settings
             tokenizer.padding_side = orig_padding_side
             tokenizer.truncation_side = orig_truncation_side
@@ -161,12 +161,12 @@ class Initializer:
             pad_token_id = tokenizer.convert_tokens_to_ids(pad_word)
             input_ids[attention_mask == 0] = pad_token_id
 
-        embeddings = embedder(input_ids)        
+        embeddings = embedder(input_ids)
         adver_model.set_embeddings(embeddings)
-        
+
         if verbose:
             ids_list = input_ids.flatten().tolist()
-            str_list = tokenizer.convert_ids_to_tokens(ids_list, skip_special_tokens=False)            
+            str_list = tokenizer.convert_ids_to_tokens(ids_list, skip_special_tokens=False)
             print(f"Initialized from text: '{text}'")
             print(f"Embed Tokens: {str_list}")
             print(f"Embed Length: {len(str_list)}")

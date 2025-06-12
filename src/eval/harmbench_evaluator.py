@@ -55,7 +55,7 @@ Answer: [/INST]""",
 }
 
 
-class HarmbenchEvaluator(Evaluator):
+class HarmBenchEvaluator(Evaluator):
     """
     Evaluator using the `cais/HarmBench-Llama-2-13b-cls` model.
     """
@@ -99,7 +99,7 @@ class HarmbenchEvaluator(Evaluator):
         # start vllm service
         self.model.start()
 
-    def _fmt_inputs(self, input_texts: list[str], response_texts: list[str], contex_texts: list[str] = None) -> list[str]:
+    def _fmt_inputs(self, input_texts: list[str], response_texts: list[str], contex_texts: list[str] | None = None) -> list[str]:
         """
         Formats the input texts and response texts into the required prompt format.
 
@@ -113,12 +113,14 @@ class HarmbenchEvaluator(Evaluator):
         """
         if contex_texts is None:
             return [
-                LLAMA2_CLS_PROMPT["prompt"].format(behavior=behavior, generation=gen) for behavior, gen in zip(input_texts, response_texts)
+                LLAMA2_CLS_PROMPT["prompt"].format(behavior=input, generation=response)
+                for input, response in zip(input_texts, response_texts)
             ]
+
         else:
             return [
-                LLAMA2_CLS_PROMPT["prompt_contextual"].format(context=ctx, behavior=behavior, generation=gen)
-                for ctx, behavior, gen in zip(contex_texts, input_texts, response_texts)
+                LLAMA2_CLS_PROMPT["prompt_contextual"].format(context=context, behavior=input, generation=response)
+                for context, input, response in zip(contex_texts, input_texts, response_texts)
             ]
 
     def process_batch(self, data: tuple[list[str], ...]) -> torch.Tensor:
@@ -152,9 +154,7 @@ class HarmbenchEvaluator(Evaluator):
         """
         Closes the evaluator, releasing any resources.
         """
-        if self.model is not None:
-            self.model.shutdown()
-            self.model = None
+        self.model.shutdown()
 
     def __del__(self):
         try:

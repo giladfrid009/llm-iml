@@ -1,4 +1,3 @@
-from numpy import isin
 from src.eval.evaluator import Evaluator
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
@@ -141,9 +140,7 @@ class StrongRejectEvaluator(Evaluator):
         """
         Closes the evaluator, releasing any resources.
         """
-        if self.model is not None:
-            self.model.shutdown()
-            self.model = None
+        self.model.shutdown()
 
     def __del__(self):
         try:

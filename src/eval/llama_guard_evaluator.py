@@ -1,5 +1,3 @@
-from random import choices
-from numpy import isin
 from src.eval.evaluator import Evaluator
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
@@ -60,7 +58,7 @@ class LlamaGuardEvaluator(Evaluator):
             sampling_params = SamplingParams(
                 temperature=0.0,
                 max_tokens=5,
-                # GuidedDecodingParams=GuidedDecodingParams(choices=["unsafe", "safe"]),
+                guided_decoding=GuidedDecodingParams(choice=["unsafe", "safe"]),
             )
 
         self.llm_config = llm_config
@@ -73,7 +71,7 @@ class LlamaGuardEvaluator(Evaluator):
         # start vllm service
         self.model.start()
 
-    def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
+    def _fmt_convos(self, input_texts: list[str], response_texts: list[str]) -> list[list[dict]]:
         """
         Formats the input texts and response texts into the required prompt format.
 
@@ -106,7 +104,7 @@ class LlamaGuardEvaluator(Evaluator):
         input_texts = data.prompt
         response_texts = data.response
 
-        convos = self._fmt_inputs(input_texts, response_texts)
+        convos = self._fmt_convos(input_texts, response_texts)
         responses = self.model.chat(convos, sampling_params=self.sampling_params)
 
         eval_results = []
@@ -126,9 +124,7 @@ class LlamaGuardEvaluator(Evaluator):
         """
         Closes the evaluator, releasing any resources.
         """
-        if self.model is not None:
-            self.model.shutdown()
-            self.model = None
+        self.model.shutdown()
 
     def __del__(self):
         try:

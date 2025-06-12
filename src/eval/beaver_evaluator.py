@@ -16,10 +16,17 @@ class BeaverEvaluator(Evaluator):
     def __init__(
         self,
         device_map: Any = "balanced_low_0",
-        binary_thresh: float | None = 5.0,
-        compile: bool = False,
+        binary_thresh: float | None = None,
+        torch_compile: bool = False,
         silent: bool = False,
     ):
+        """
+        Args:
+            device_map (Any): Device map for the model, e.g., "balanced_low_0", "auto", or a specific device like "cuda:0".
+            binary_thresh (float | None): Threshold for score binarization. If None, scores are returned as is.
+            torch_compile (bool): Whether to compile the model using `torch.compile`. Defaults to False.
+            silent (bool): Whether to suppress output messages during evaluation. Defaults to False.
+        """
 
         model_name = "PKU-Alignment/beaver-7b-v1.0-cost"
 
@@ -37,7 +44,7 @@ class BeaverEvaluator(Evaluator):
             device_map=device_map,
         ).eval()
 
-        if compile:
+        if torch_compile:
             # TODO: inductor is for training + inference
             # maybe there's a better inference only backend which works
             # NOTE: from my testing, so far other backends

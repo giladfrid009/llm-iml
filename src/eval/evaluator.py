@@ -6,6 +6,10 @@ from typing import Any
 from src.data import DF_Batcher
 from tqdm.auto import tqdm
 
+# TODO: add support to evaluating mutiple generations per prompt
+# at that case, how should the score be computed? i think first avg per-sample, then
+# avg across all samples
+
 
 class Evaluator(ABC):
     def __init__(
@@ -67,12 +71,21 @@ class MultiEvaluator(Evaluator):
     def __init__(
         self,
         evaluators: list[Evaluator],
-        combine_fn: Callable[[list[torch.Tensor]], torch.Tensor],
+        combine_fn: Callable[..., torch.Tensor],
         silent: bool = False,
     ):
+        """
+        Combines multiple evaluators into a single evaluator, which combines
+        their results using a specified combine function.
 
+        Args:
+            evaluators (list[Evaluator]): List of evaluators to combine.
+            combine_fn (Callable[[..., torch.Tensor], torch.Tensor]): Function to combine the results of the evaluators.
+                All arguments to this function should be tensors, and it should return a single tensor.
+            silent (bool): If True, suppresses output and tqdm during evaluation. Overrides silent mode of all evaluators.
+        """
         name = " + ".join([evaluator.name for evaluator in evaluators])
-        
+
         for evaler in evaluators:
             evaler.silent = silent
 
@@ -100,4 +113,4 @@ class MultiEvaluator(Evaluator):
         for evaluator in self.evaluators:
             batch_metric = evaluator.process_batch(data)
             metrics.append(batch_metric.cpu())
-        return self.combine_fn(metrics)
+        return self.combine_fn(*metrics)

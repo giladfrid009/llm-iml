@@ -12,6 +12,7 @@ class OptimAttack(Attack):
         adv_model: AdverModel,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
+        early_stopping: bool = True,
         mixed_precision: bool = True,
         kv_caching: bool = True,
         silent: bool = False,
@@ -20,9 +21,12 @@ class OptimAttack(Attack):
 
         self.steps = steps
         self.optim_factory = optim_factory
+        self.early_stopping = early_stopping
         self.mixed_precision = mixed_precision
         self.kv_caching = kv_caching
 
+        # TODO: important: add early stopping. If logits.argmax() == target_ids, then stop optimizing for this sample
+        # whats cool is that id doesnt require us to call expensive generate()
 
     def fit(
         self,
@@ -49,7 +53,7 @@ class OptimAttack(Attack):
 
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory(self.adv_model.parameters())
-
+        
         with tqdm(range(self.steps), disable=self.silent, leave=False, desc="Attack") as pbar:
             for step in pbar:
 

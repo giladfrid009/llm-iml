@@ -6,7 +6,7 @@ module_path = os.path.abspath(os.path.join("."))
 if module_path not in sys.path:
     sys.path.append(module_path)
 
-from src.eval.harmbench_evaluator import HarmbenchEvaluator
+from src.eval.harmbench_evaluator import HarmBenchEvaluator
 from src.eval.llama_evaluator import LlamaEvaluator
 from src.eval.template_evaluator import TemplateEvaluator
 from src.eval.llama_guard_evaluator import LlamaGuardEvaluator
@@ -22,7 +22,7 @@ import time
 if __name__ == "__main__":
 
     evaluators = [
-        # HarmbenchEvaluator(
+        # HarmBenchEvaluator(
         #     serve_config=ServeConfig(gpu_ids=[1], startup_timeout=5 * 60, client_timeout=60),
         #     use_context=False,
         #     silent=False,

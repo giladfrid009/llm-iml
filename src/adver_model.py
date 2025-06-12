@@ -95,7 +95,7 @@ class AdverModel(nn.Module):
         # adversarial embeddings
         self.adv_embeds: torch.Tensor | None = None
 
-    def parameters(self) -> Iterator[nn.Parameter]:
+    def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
         """
         Yields the trainable parameters of the module.
         Only the adversarial embeddings are trainable.
@@ -148,6 +148,8 @@ class AdverModel(nn.Module):
         Returns:
             torch.Tensor: Adversarial embeddings of shape (batch_size, num_tokens, embed_dim).
         """
+        if self.adv_embeds is None:
+            raise ValueError("Adversarial embeddings are not set. Please set them using `set_embeddings` method.")
         return self.adv_embeds.clone().detach() if clone else self.adv_embeds
 
     def inject_tokens(self, conversations: list[list[dict[str, str]]]) -> list[list[dict[str, str]]]:
@@ -320,7 +322,7 @@ class AdverModel(nn.Module):
             eos_token_id=self.tokenizer.eos_token_id,
             use_model_defaults=True,
             **kwargs,
-        )
+        ) # type: ignore
 
     @torch.inference_mode()
     def chat(
