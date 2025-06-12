@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 
 class Initializer:
     """
-    A class used to initialize universal adversarial embeddings for a given adversarial model..
+    A class used to initialize universal adversarial embeddings for a given adversarial model.
+    Note, that all these methods set the embedding of the passed :class:`AdverModel` instance.
     """
 
     @staticmethod
@@ -46,6 +47,50 @@ class Initializer:
         adver_model.set_embeddings(embeds)
 
     @staticmethod
+    def from_mean_std(adver_model: AdverModel):
+        """
+        Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
+        The mean and std are computed per embedding dimension across all original embeddings.
+        """
+        orig_embeds = adver_model.orig_embedder.weight
+        mean = orig_embeds.mean(dim=0)
+        std = orig_embeds.std(dim=0)
+
+        new_embeds = Initializer.make_empty(adver_model)
+        new_embeds = new_embeds.normal_() * std + mean
+        adver_model.set_embeddings(new_embeds)
+
+    @staticmethod
+    def from_lp_ball(
+        adver_model: AdverModel,
+        norm: float = 2.0,
+        radius: float = 1.0,
+    ):
+        """
+        Initialize adversarial embeddings by sampling each token-embedding
+        uniformly from the Lp ball of given norm and radius.
+
+        Args:
+            adver_model (AdverModel): The adversarial model to initialize.
+            norm (float): The norm of the Lp ball to sample from.
+            radius (float): The radius of the Lp ball to sample from.
+        """
+        embeds = Initializer.make_empty(adver_model)
+        device = embeds.device
+        N, D = adver_model.num_tokens, embeds.shape[-1]
+
+        vec = torch.rand(N, D, device=device)
+        vec = (-vec.log()).pow(1.0 / norm)
+        sgn = torch.randint(0, 2, (N, D), device=device, dtype=embeds.dtype) * 2 - 1
+        vec = sgn * vec
+        vec = vec / (vec.norm(p=norm, dim=-1, keepdim=True) + torch.finfo(embeds.dtype).eps)
+        rad = torch.rand((N, 1), device=device).pow(1.0 / D) * radius
+
+        embeds = vec * rad
+        embeds = embeds.unsqueeze(0)  # add batch dimension
+        adver_model.set_embeddings(embeds)
+
+    @staticmethod
     def from_string(
         adver_model: AdverModel,
         text: str,
@@ -54,7 +99,8 @@ class Initializer:
     ):
         """
         Initialize adversarial embeddings from a string of text.
-        
+        This method tokenizes the text and uses the original embedder to create embeddings.
+
         Args:
             adver_model (AdverModel): The adversarial model to initialize.
             text (str): The text to use for initialization.
@@ -108,32 +154,4 @@ class Initializer:
         embeddings = embedder(input_ids).unsqueeze(0)
         adver_model.set_embeddings(embeddings)
 
-
-    # TODO: implement sampling from mean and std of all embeddings
     # TODO: maybe implement sampling from mean and same covariance (as done in HF transformers)
-    # TODO: maybe implement sampling from Lp ball
-
-    @staticmethod
-    def _sample_lp_ball(length: int, norm: float = 2.0, device: torch.device | None = None) -> torch.Tensor:
-        """
-        Implementation of the method described in:
-        [https://stats.stackexchange.com/questions/352668/generate-uniform-noise-from-a-p-norm-ball-x-p-leq-r]
-
-        Sample a random vector from the Lp ball of radius 1.
-
-        Args:
-            length (int): Length of the vector.
-            norm (int): Norm of the ball.
-            device (torch.device, optional): Device to move the tensor to.
-
-        Returns:
-            torch.Tensor: A random vector sampled from the Lp ball.
-        """
-        if device is None:
-            device = torch.device("cpu")
-        vec = (-torch.log(torch.rand(length, device=device))) ** (1 / norm)
-        sgn = 2 * torch.randint(0, 2, (length,), dtype=torch.float32, device=device) - 1
-        vec = sgn * vec
-        vec = vec / (torch.norm(vec, p=norm) + torch.finfo(vec.dtype).eps)
-        rad = torch.exp(torch.log(torch.rand(1, device=device)) / length)
-        return rad * vec
