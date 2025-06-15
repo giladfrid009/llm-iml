@@ -63,7 +63,10 @@ class LlamaEvaluator(Evaluator):
         )
 
         if llm_config is None:
-            llm_config = LLMConfig(model_name=model_name, dtype="bfloat16")
+            if model_name == "meta-llama/Llama-2-7b-chat-hf":
+                llm_config = LLMConfig(model_name=model_name, dtype="float16")
+            elif model_name == "meta-llama/Llama-3.1-8B-Instruct":
+                llm_config = LLMConfig(model_name=model_name, dtype="bfloat16")
 
         if sampling_params is None:
             sampling_params = SamplingParams(

@@ -1,4 +1,3 @@
-from numpy import isin
 from src.eval.evaluator import Evaluator
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
