@@ -123,14 +123,28 @@ class IML_Attack:
         adv_model: AdverModel,
         internal_attack: Attack,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
+        evaluators: list[Evaluator],
+        eval_freq: int | float = 1,
         mixed_precision: bool = True,
-        evaluators: list[Evaluator] | None = None,
         pred_kwargs: dict[str, Any] | None = None,
     ):
+        """
+        Args:
+            adv_model (AdverModel): The adversarial model to use for text generation.
+            internal_attack (Attack): The internal attack to use for generating adversarial examples.
+            optim_factory (Callable): Function to create an optimizer for the universal embeddings.
+            evaluators (list[Evaluator]): List of evaluators to use for evaluation.
+            eval_freq (int | float): Frequency of evaluation during training.
+                - if int, evaluates every `eval_freq` epochs.
+                - if float, evaluates every `int(eval_freq * len(dl_train))` batches.
+            mixed_precision (bool): Whether to use mixed precision training.
+            pred_kwargs (dict[str, Any] | None): Additional keyword arguments for `AdverModel.chat`.
+        """
         self.adv_model = adv_model
         self.internal_attack = internal_attack
 
         self.evaluators = evaluators
+        self.eval_freq = eval_freq
         self.pred_kwargs = pred_kwargs if pred_kwargs is not None else {}
 
         self.mixed_precision = mixed_precision
@@ -140,7 +154,7 @@ class IML_Attack:
         self.univ_embeds.requires_grad_(True)
         if self.univ_embeds.size(0) != 1:
             raise ValueError("Batch size of universal embeddings must be 1.")
-        
+
         self.optimizer = optim_factory([self.univ_embeds])
 
         self.best_metric = -float("inf")
@@ -207,6 +221,7 @@ class IML_Attack:
         evalers: list[Evaluator],
         dl_eval: DF_Batcher,
         update_best: bool = False,
+        **kwargs: Any,
     ) -> list[float]:
         """
         Evaluates the model using the provided evaluators and data loader.
@@ -215,13 +230,24 @@ class IML_Attack:
             adv_model (AdverModel): The adversarial model to evaluate.
             evalers (list[Evaluator]): List of evaluators to use for evaluation.
             dl_eval (DF_Batcher): Data loader for evaluation.
-            update_embeds (bool): If True, updates the universal embeddings with the best ones found during evaluation.
+            update_best (bool): If True, updates the best metric and embeddings if the current evaluation is better.
+            **kwargs (dict): Additional keyword arguments for `AdverModel.chat`.
 
         Returns:
             list[float]: List containing evaluation metrics from each evaluator.
         """
-        dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
-        all_responses = self.predict(adv_model, dl_eval)
+
+        # TODO: add support to evaluating mutiple generations per prompt
+        # easiest and probably cleanest solution is to copy each row in dl_eval multiple times
+
+        if dl_eval.drop_last or dl_eval.shuffle:
+            warnings.warn(
+                "Evaluation data loader should not be shuffled or dropped last. "
+                "Creatomg a shallow copy with `shuffle=False` and `drop_last=False`."
+            )
+            dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
+
+        all_responses = self.predict(adv_model, dl_eval, **kwargs)
         dl_eval.set_column("response", all_responses)
 
         metrics = []
@@ -236,16 +262,7 @@ class IML_Attack:
 
         return metrics
 
-    # TODO: CLEAN UP AND SPLIT INTO SMALLER FUNTIONS
-    # ITS BECOMING A MESS AND NON-MAINTANABLE
-
-    # TODO: probably we need to make the evaluators mandatory
-    # in order for IML to only use succesful attacks.
-    # Note, that the judge for early astopping, and the one used during the attack
-    # often should be different.
-
-    # TODO: after this point i feel we can practically use the same code as we use in ulib
-    # including all the logging, etc...
+    # TODO: inclue logging and other relevant stuff from ulib.
     def fit(
         self,
         dl_train: DF_Batcher,
@@ -253,8 +270,9 @@ class IML_Attack:
         stop_criteria: StopCriteria | None = None,
     ) -> AdverModel:
 
-        if dl_eval is not None and self.evaluators is None:
-            warnings.warn("Evaluation data loader provided but no evaluators specified. Skipping evaluation.")
+        if dl_eval is None:
+            warnings.warn("No evaluation data loader provided, using training data for evaluation.")
+            dl_eval = dl_train.copy(shuffle=False, drop_last=False)
 
         # must have these columns at least
         dl_train.validate(["prompt", "target"])
@@ -262,6 +280,7 @@ class IML_Attack:
         if stop_criteria is None:
             stop_criteria = StopCriteria()
 
+        global_step = 0
         loss_value = None
         stop_criteria.reset()
         should_stop = stop_criteria.should_stop()
@@ -269,17 +288,10 @@ class IML_Attack:
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
 
             # initial evaluation
-            if dl_eval is not None and self.evaluators is not None:
-                self.adv_model.set_embeddings(self.univ_embeds)
-                metrics = self.evaluate(
-                    adv_model=self.adv_model,
-                    evalers=self.evaluators[:1],
-                    dl_eval=dl_eval,
-                    update_best=True,
-                )
-
-                stop_criteria.update(0, metrics[0])
-                epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
+            self.adv_model.set_embeddings(self.univ_embeds)
+            metrics = self.evaluate(self.adv_model, self.evaluators[:1], dl_eval, update_best=True)
+            stop_criteria.update(0, metrics[0])
+            epoch_pbar.set_postfix({self.evaluators[0].name: metrics[0]})
 
             # main training loop
             for epoch_num in epoch_pbar:
@@ -291,34 +303,31 @@ class IML_Attack:
                         if should_stop:
                             break
 
+                        # training step
                         loss_value = self.optim_step(batch_data, epoch_num, batch_num)
-
                         stop_criteria.update(epoch_num, None)
                         batch_pbar.set_postfix({"loss": loss_value})
+                        global_step += 1
+                        
+                        # per-batch evaluation
+                        if isinstance(self.eval_freq, float) and global_step % int(self.eval_freq * len(dl_train)) == 0:
+                            self.adv_model.set_embeddings(self.univ_embeds)
+                            metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
+                            stop_criteria.update(epoch_num, metrics[0])
+                            epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
-                # evaluate after each epoch
-                if dl_eval is not None and self.evaluators is not None:
+                # per-epoch evaluation
+                if isinstance(self.eval_freq, int) and (epoch_num + 1) % self.eval_freq == 0:
                     self.adv_model.set_embeddings(self.univ_embeds)
-                    metrics = self.evaluate(
-                        adv_model=self.adv_model,
-                        evalers=self.evaluators,
-                        dl_eval=dl_eval,
-                        update_best=True,
-                    )
-
+                    metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                     stop_criteria.update(epoch_num, metrics[0])
                     epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
-                else:
-                    stop_criteria.update(epoch_num, None)
-                    epoch_pbar.set_postfix({"loss": loss_value})
-
-        # set to best embeddings and final eval 
+        # set to best embeddings and final eval
         self.adv_model.set_embeddings(self.best_embeds)
-        if dl_eval is not None and self.evaluators is not None:
-            metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval)
-            for evaler, value in zip(self.evaluators, metrics):
-                print(f"Final metric {evaler.name}: {value:.6f}")
+        metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval)
+        for evaler, value in zip(self.evaluators, metrics):
+            print(f"Final metric {evaler.name}: {value:.6f}")
 
         return self.adv_model
 
@@ -357,7 +366,7 @@ class IML_Attack:
             self.adv_model.set_embeddings(univ_embeds)
             univ_logits = self.compute_logits(token_dict, self.adv_model)
 
-            # compute per-sample logits
+            # compute per-sample logits, disable autocast
             with torch.autocast(device_type=self.device.type, enabled=False):
                 sample_embed = self.internal_attack.fit(conversations, target_text, embeds_init=univ_embeds)
 

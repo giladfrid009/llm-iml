@@ -170,6 +170,88 @@ class AdverModel(nn.Module):
             last_msg["content"] += self.adv_token * self.num_tokens
         return conversations
 
+    # TODO: implement
+    # def tokenize_with_targets(
+    #     self,
+    #     conversations: list[list[dict[str, str]]],
+    #     target_texts: list[str],
+    # ):
+
+    #     convs_part = self.inject_tokens(conversations)
+    #     convs_full = copy.deepcopy(convs_part)
+        
+    #     for cnv, tgt in zip(convs_full, target_texts):
+    #         cnv.append({"role": "assistant", "content": tgt})
+
+    #     self.tokenizer.padding_side = "left"
+    #     tokens_full: list[list[int]] = self.tokenizer.apply_chat_template(
+    #         conversations,
+    #         tokenize=True,
+    #         add_special_tokens=True,
+    #         add_generation_prompt=False,
+    #         continue_final_message=True,
+    #         padding=False,
+    #         return_tensors=None,
+    #         return_attention_mask=False,
+    #         return_dict=False,
+    #         enable_thinking=False,
+    #     )  # type: ignore
+
+    #     adv_token_id = self.tokenizer.convert_tokens_to_ids(self.adv_token)
+
+    #     # find the index of the first adversarial token
+    #     const_idx = []
+    #     for tokens in tokens_full:
+    #         adv_idx = tokens.index(adv_token_id)
+    #         const_idx.append(adv_idx)
+
+    #     # split convs before and after the constant index
+    #     tokens_full_const = []
+    #     tokens_part_const = []
+    #     tokens_full_adver = []
+    #     tokens_part_adver = []
+    #     for tokens, idx in zip(tokens_full, const_idx):
+    #         tokens_full_const.append(tokens[:idx])
+    #         tokens_part_const.append(tokens[:idx])
+    #         tokens_full_adver.append(tokens[idx:])
+    #         tokens_part_adver.append(tokens[idx:])
+
+    #     # left pad tokens_full_const and right pad tokens_full_adver
+    #     left_data_full = self.tokenizer.pad(
+    #         tokens_full_const,
+    #         padding=True,
+    #         padding_side="left",
+    #         return_attention_mask=True,
+    #         return_tensors="pt",
+    #     )
+        
+    #     right_data_full = self.tokenizer.pad(
+    #         tokens_full_adver,
+    #         padding=True,
+    #         padding_side="right",
+    #         return_attention_mask=True,
+    #         return_tensors="pt",
+    #     )
+        
+    #     right_data_part = self.tokenizer.pad(
+    #         tokens_part_adver,
+    #         padding="max_length",
+    #         max_length=right_data_full["input_ids"].size(1),
+    #         padding_side="right",
+    #         return_attention_mask=False,
+    #         return_tensors="pt",
+    #     )
+        
+    #     # we now find the first index where right_full token ids differ from right_part token ids
+        
+    #     diff_mask: torch.Tensor = right_data_full["input_ids"] != right_data_part["input_ids"]
+    #     target_mask = (diff_mask.int().cumsum(dim=1) > 0)
+
+        
+        
+    #     # create const idx, parts of the input batch that does not change
+    #     const_idx = torch.argmax(adv_mask.int(), dim=1)
+
     def tokenize(
         self,
         conversations: list[list[dict[str, str]]],
@@ -185,13 +267,19 @@ class AdverModel(nn.Module):
             target_texts (list[str] | None): List of target texts. If None, only input texts are tokenized.
 
         Returns:
-            dict: Dictionary containing the tokenized input and target texts, with the following keys:
-                - input_ids: Token IDs of the entire tokenized texts.
-                - attention_mask: Attention mask of the entire tokenized texts.
-                - adv_mask: Mask for the adversarial tokens.
-                - const_idx: Mask for the constant tokens for KV-cache.
-                - target_mask: Mask for the target tokens, if provided.
+            (dict[str, torch.Tensor]):
+            A Dictionary containing the tokenized input and target texts with the following keys
+                - `input_ids` (torch.IntTensor): Token IDs of the entire tokenized texts.
+                - `attention_mask` (torch.BoolTensor): Attention mask of the entire tokenized texts.
+                - `adv_mask` (torch.BoolTensor): Mask for the adversarial tokens.
+                - `const_idx` (torch.IntTensor): Index values for the constant tokens for KV-cache.
+                - `target_mask` (torch.BoolTensor): Mask for the target tokens, if provided.
         """
+
+        # TODO: THIS IS UNFORTUNATLY SOMETIMES ALSO INCORRECT FOR SOME TOKENIZERS
+        # THE BEST SOLUTION IS TO TOKENIZE WITH TARGET TEXT ONCE, AND ANOTHER TIME WITH TARGET = ""
+        # AND FIND THE INDEX WHEN THE TOKENIZATION CHANGES, THAT IS THE INDEX WHERE THE ADV TOKENS START
+        # CURRENT BEHAVIOR IS INCORRECT FOR "meta-llama/Llama-2-7b-chat-hf" I THINK
 
         conversations = self.inject_tokens(conversations)
 
@@ -233,6 +321,7 @@ class AdverModel(nn.Module):
                 padding_side="right",
                 return_tensors="pt",
                 return_attention_mask=True,
+                add_special_tokens=False,
             ).to(self.device)
 
             # check if BOS was added to target, if yes remove it
@@ -322,7 +411,7 @@ class AdverModel(nn.Module):
             eos_token_id=self.tokenizer.eos_token_id,
             use_model_defaults=True,
             **kwargs,
-        ) # type: ignore
+        )  # type: ignore
 
     @torch.inference_mode()
     def chat(

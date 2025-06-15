@@ -6,10 +6,6 @@ from typing import Any
 from src.data import DF_Batcher
 from tqdm.auto import tqdm
 
-# TODO: add support to evaluating mutiple generations per prompt
-# at that case, how should the score be computed? i think first avg per-sample, then
-# avg across all samples
-
 
 class Evaluator(ABC):
     def __init__(
@@ -45,7 +41,8 @@ class Evaluator(ABC):
 
     def evaluate(self, dl_eval: DF_Batcher) -> float:
         """
-        Evaluates the model on the provided data loader using the generated outputs.
+        Evaluates the model on the provided data loader using the generated outputs.  
+        This methods sets a column `eval-{self.name}` in the data loader with the evaluation metric.
 
         Args:
             dl_eval (DF_Batcher): Data loader for evaluation.
@@ -56,15 +53,16 @@ class Evaluator(ABC):
 
         dl_eval.validate(self.required_columns)
 
-        total_metric = 0.0
-        num_samples = 0
+        metrics = torch.zeros(len(dl_eval), dtype=torch.float32)
+        index = 0
 
         for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=self.silent, leave=False):
-            batch_metric = self.process_batch(batch_data)
-            total_metric += batch_metric.sum().item()
-            num_samples += batch_metric.size(0)
-
-        return total_metric / num_samples if num_samples > 0 else 0.0
+            batch_metric = self.process_batch(batch_data).cpu()
+            metrics[index:index + batch_metric.size(0)] = batch_metric
+            index += batch_metric.size(0)
+            
+        dl_eval.set_column(f"eval-{self.name}", metrics.tolist())
+        return metrics.mean().item()
 
 
 class MultiEvaluator(Evaluator):
