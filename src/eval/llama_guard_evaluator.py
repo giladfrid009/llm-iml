@@ -35,7 +35,7 @@ class LlamaGuardEvaluator(Evaluator):
         model_name: str = "meta-llama/Llama-Guard-3-8B",
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
-        silent: bool = False,
+        verbose: bool = False,
     ):
 
         if model_name not in SUPPORTED_MODELS:
@@ -46,7 +46,7 @@ class LlamaGuardEvaluator(Evaluator):
 
         super().__init__(
             name=model_name,
-            silent=silent,
+            verbose=verbose,
             required_columns=["prompt", "response"],
         )
 

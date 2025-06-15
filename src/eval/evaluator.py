@@ -12,18 +12,18 @@ class Evaluator(ABC):
         self,
         name: str,
         required_columns: list[str],
-        silent: bool = False,
+        verbose: bool = True,
     ):
         """
-        Initializes the Evaluator with a name and a silent mode.
+        A base class for evaluators that processes batches of data and computes evaluation metrics.
 
         Args:
             name (str): Name of the evaluation method.
             required_columns (list[str]): List of required columns in the data for evaluation.
-            silent (bool): If True, suppresses output and tqdm during evaluation.
+            verbose (bool): If True, enables verbose output during evaluation.
         """
         self.name = name
-        self.silent = silent
+        self.verbose = verbose
         self.required_columns = required_columns
 
     @abstractmethod
@@ -56,7 +56,7 @@ class Evaluator(ABC):
         metrics = torch.zeros(dl_eval.n_samples, dtype=torch.float32)
         index = 0
 
-        for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=self.silent, leave=False):
+        for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=not self.verbose, leave=False):
             batch_metric = self.process_batch(batch_data).cpu()
             metrics[index:index + batch_metric.size(0)] = batch_metric
             index += batch_metric.size(0)
@@ -70,7 +70,7 @@ class MultiEvaluator(Evaluator):
         self,
         evaluators: list[Evaluator],
         combine_fn: Callable[..., torch.Tensor],
-        silent: bool = False,
+        verbose: bool = False,
     ):
         """
         Combines multiple evaluators into a single evaluator, which combines
@@ -80,17 +80,17 @@ class MultiEvaluator(Evaluator):
             evaluators (list[Evaluator]): List of evaluators to combine.
             combine_fn (Callable[[..., torch.Tensor], torch.Tensor]): Function to combine the results of the evaluators.
                 All arguments to this function should be tensors, and it should return a single tensor.
-            silent (bool): If True, suppresses output and tqdm during evaluation. Overrides silent mode of all evaluators.
+            verbose (bool): Whether to suppress verbose outputs and tqdm progress during evaluation.
         """
         name = " + ".join([evaluator.name for evaluator in evaluators])
 
         for evaler in evaluators:
-            evaler.silent = silent
+            evaler.verbose = verbose
 
         super().__init__(
             name=name,
             required_columns=[],
-            silent=silent,
+            verbose=verbose,
         )
 
         self.evaluators = evaluators

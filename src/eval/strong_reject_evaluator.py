@@ -36,7 +36,7 @@ class StrongRejectEvaluator(Evaluator):
         binary_thresh: float | None = 0.5,
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
-        silent: bool = False,
+        verbose: bool = False,
     ):
         """
         Args:
@@ -44,7 +44,7 @@ class StrongRejectEvaluator(Evaluator):
             binary_thresh (float | None): Threshold for score binarization. If None, scores are not thresholded.
             llm_config (LLMConfig | None): Configuration for the LLM. If None, defaults to `google/gemma-2b` with LoRA.
             sampling_params (SamplingParams | None): Sampling parameters for generation. If None, defaults to guided decoding.
-            silent (bool): Whether to suppress output messages.
+            verbose (bool): Whether to suppress output messages during evaluation.
         """
 
         model_name = "google/gemma-2b"
@@ -52,7 +52,7 @@ class StrongRejectEvaluator(Evaluator):
 
         super().__init__(
             name=lora_name,
-            silent=silent,
+            verbose=verbose,
             required_columns=["prompt", "response"],
         )
 

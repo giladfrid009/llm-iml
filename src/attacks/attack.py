@@ -8,10 +8,10 @@ class Attack(ABC):
     def __init__(
         self,
         adv_model: AdverModel,
-        silent: bool = False,
+        verbose: bool = True,
     ):
         self.adv_model = adv_model
-        self.silent = silent
+        self.verbose = verbose
 
     @property
     def num_tokens(self) -> int:

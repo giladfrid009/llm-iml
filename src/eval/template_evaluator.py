@@ -107,11 +107,11 @@ class TemplateEvaluator(Evaluator):
     def __init__(
         self,
         refusal_phrases: list[str] | None = None,
-        silent: bool = False,
+        verbose: bool = False,
     ):
         super().__init__(
             name="Template",
-            silent=silent,
+            verbose=verbose,
             required_columns=["response"],
         )
 

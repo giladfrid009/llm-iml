@@ -18,21 +18,21 @@ class BeaverEvaluator(Evaluator):
         device_map: Any = "balanced_low_0",
         binary_thresh: float | None = None,
         torch_compile: bool = False,
-        silent: bool = False,
+        verbose: bool = False,
     ):
         """
         Args:
             device_map (Any): Device map for the model, e.g., "balanced_low_0", "auto", or a specific device like "cuda:0".
             binary_thresh (float | None): Threshold for score binarization. If None, scores are returned as is.
             torch_compile (bool): Whether to compile the model using `torch.compile`. Defaults to False.
-            silent (bool): Whether to suppress output messages during evaluation. Defaults to False.
+            verbose (bool): Whether to suppress output messages during evaluation..
         """
 
         model_name = "PKU-Alignment/beaver-7b-v1.0-cost"
 
         super().__init__(
             name=model_name,
-            silent=silent,
+            verbose=verbose,
             required_columns=["prompt", "response"],
         )
 

@@ -10,9 +10,6 @@ from src.eval.template_evaluator import TemplateEvaluator
 # TODO: GO OVER ALL EVALUATORS AND MAKE SURE THAT WE ACTUALLY CALL IT CORRECTLY
 # IT DOESNT MAKE SENSE TO CALL A CHAT EVALUATOR VIA GENERATION
 
-# TODO: make usage of verbose / silent consistent across all the project
-# we shouldnt use verbose in some places and silent in others
-
 # TODO: test whether loading the model in float16 and bfloat16 influences the results
 # also, check it for the rest of the codebase
 

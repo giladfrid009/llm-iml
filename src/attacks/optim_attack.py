@@ -15,9 +15,9 @@ class OptimAttack(Attack):
         early_stopping: bool = True,
         mixed_precision: bool = True,
         kv_caching: bool = True,
-        silent: bool = False,
+        verbose: bool = True,
     ):
-        super().__init__(adv_model, silent)
+        super().__init__(adv_model, verbose)
 
         self.steps = steps
         self.optim_factory = optim_factory
@@ -54,7 +54,7 @@ class OptimAttack(Attack):
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory(self.adv_model.parameters())
         
-        with tqdm(range(self.steps), disable=self.silent, leave=False, desc="Attack") as pbar:
+        with tqdm(range(self.steps), disable=not self.verbose, leave=False, desc="Attack") as pbar:
             for step in pbar:
 
                 optim.zero_grad()

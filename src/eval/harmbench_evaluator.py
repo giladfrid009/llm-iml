@@ -66,7 +66,7 @@ class HarmBenchEvaluator(Evaluator):
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
         use_context: bool = False,
-        silent: bool = False,
+        verbose: bool = False,
     ):
 
         model_name = "cais/HarmBench-Llama-2-13b-cls"
@@ -74,7 +74,7 @@ class HarmBenchEvaluator(Evaluator):
 
         super().__init__(
             name=model_name,
-            silent=silent,
+            verbose=verbose,
             required_columns=required_colums,
         )
 
