@@ -36,6 +36,7 @@ SUPPORTED_MODELS = [
     "meta-llama/Llama-3.1-8B-Instruct",
 ]
 
+
 class LlamaEvaluator(Evaluator):
     """
     Evaluator using the `meta-llama/Llama-2-7b-chat-hf` model.
@@ -44,7 +45,7 @@ class LlamaEvaluator(Evaluator):
     def __init__(
         self,
         serve_config: ServeConfig,
-        model_name = "meta-llama/Llama-2-7b-chat-hf",
+        model_name="meta-llama/Llama-2-7b-chat-hf",
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
         verbose: bool = False,
@@ -85,7 +86,7 @@ class LlamaEvaluator(Evaluator):
         # start vllm service
         self.model.start()
 
-    def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
+    def _fmt_convs(self, input_texts: list[str], response_texts: list[str]) -> list[list[dict[str, str]]]:
         """
         Formats the input texts and response texts into the required prompt format.
 
@@ -94,9 +95,12 @@ class LlamaEvaluator(Evaluator):
             response_texts (list[str]): List of model outputs corresponding to the input texts.
 
         Returns:
-            list[str]: Formatted inputs ready for model evaluation.
+            list[list[dict[str, str]]]: Formatted conversations for the model.
         """
-        return [LLAMA_PROMPT.format(behavior=beh, generation=gen) for beh, gen in zip(input_texts, response_texts)]
+        return [
+            [{"role": "user", "content": LLAMA_PROMPT.format(behavior=beh, generation=gen)}]
+            for beh, gen in zip(input_texts, response_texts)
+        ]
 
     def process_batch(self, data: tuple[list[str], ...]) -> torch.Tensor:
         """
@@ -109,8 +113,8 @@ class LlamaEvaluator(Evaluator):
         input_texts = data.prompt
         response_texts = data.response
 
-        eval_inputs = self._fmt_inputs(input_texts, response_texts)
-        responses = self.model.generate(eval_inputs, sampling_params=self.sampling_params)
+        eval_inputs = self._fmt_convs(input_texts, response_texts)
+        responses = self.model.chat(eval_inputs, self.sampling_params)
 
         eval_results = []
         for resp, inp_text in zip(responses, input_texts):
