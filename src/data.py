@@ -46,6 +46,13 @@ class DF_Batcher:
             if col not in self.df.columns:
                 raise ValueError(f"Column '{col}' not found in DataFrame")
 
+    @property
+    def n_samples(self) -> int:
+        """
+        Number of samples in the DataFrame.
+        """
+        return self._n_samples
+
     def _compute_num_batches(self) -> int:
         if self.drop_last:
             return self._n_samples // self.batch_size

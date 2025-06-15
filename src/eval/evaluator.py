@@ -53,7 +53,7 @@ class Evaluator(ABC):
 
         dl_eval.validate(self.required_columns)
 
-        metrics = torch.zeros(len(dl_eval), dtype=torch.float32)
+        metrics = torch.zeros(dl_eval.n_samples, dtype=torch.float32)
         index = 0
 
         for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=self.silent, leave=False):
