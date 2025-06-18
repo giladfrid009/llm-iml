@@ -1,0 +1,207 @@
+import torch
+import copy
+from transformers import PreTrainedTokenizer
+from transformers.tokenization_utils_base import BatchEncoding
+
+
+def chat_with_targets(
+    tokenizer: PreTrainedTokenizer,
+    conversations: list[list[dict[str, str]]],
+    target_texts: list[str],
+    adver_token: str,
+) -> BatchEncoding:
+    """
+    Tokenization function which also returns a mask indicating positions of target tokens.
+    In addition, this function tokenizes the conversations in a kv-cache efficient way.
+
+    Args:
+        tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
+        conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+            Each message is a dictionary with keys "role" and "content".
+        target_texts (list[str]): A list of target texts corresponding to each conversation.
+        adver_token (str): The adversarial token to split the conversations on.
+
+    Returns:
+        BatchEncoding: A dictionary containing the tokenized input and target texts with the following keys
+            - `input_ids` (torch.IntTensor): Token IDs of the entire tokenized texts.
+            - `attention_mask` (torch.BoolTensor): Attention mask of the entire tokenized texts.
+            - `adv_mask` (torch.BoolTensor): Mask which is true for the adversarial tokens.
+            - `const_idx` (torch.LongTensor): The index of the first adversarial token in each conversation.
+            - `target_mask` (torch.BoolTensor): A mask indicating the positions of the target tokens in the full input.
+    """
+    convs_partial = copy.deepcopy(conversations)
+    for conv in convs_partial:
+        conv.append({"role": "assistant", "content": ""})
+
+    tokenized_partial = chat_with_cache(tokenizer, convs_partial, adver_token)
+
+    convs_full = copy.deepcopy(conversations)
+    for conv, tgt in zip(convs_full, target_texts):
+        conv.append({"role": "assistant", "content": tgt})
+
+    tokenized_full = chat_with_cache(tokenizer, convs_full, adver_token)
+
+    ids_full: torch.Tensor = tokenized_full["input_ids"]
+    attn_full: torch.Tensor = tokenized_full["attention_mask"]
+    ids_partial: torch.Tensor = tokenized_partial["input_ids"]
+
+    # pad so we can compare the two tensors
+    size_diff = ids_full.size(1) - ids_partial.size(1)
+    ids_partial = torch.nn.functional.pad(
+        ids_partial,
+        pad=(0, size_diff),
+        value=tokenizer.pad_token_id,
+        mode="constant",
+    )
+
+    diff_mask = ids_full != ids_partial
+    target_mask = torch.cumsum(diff_mask, dim=1).bool()
+    target_mask = torch.logical_and(target_mask, attn_full == 1)
+
+    data = {
+        "input_ids": ids_full,
+        "attention_mask": attn_full,
+        "adv_mask": tokenized_full["adv_mask"],
+        "const_idx": tokenized_full["const_idx"],
+        "target_mask": target_mask,
+    }
+
+    return BatchEncoding(data=data, tensor_type="pt")
+
+
+def chat_with_cache(
+    tokenizer: PreTrainedTokenizer,
+    conversations: list[list[dict[str, str]]],
+    adver_token: str,
+) -> BatchEncoding:
+    """
+    Tokenization funciton which tokenizes the input conversations in a kv-cache efficient way.
+
+    The conversations into two parts:
+    1. Constant part: Tokens before the first occurrence of the first adversarial token.
+    2. Adversarial part: Tokens including and after the first occurrence of the first adversarial token.
+
+    The split conversation is then padded in a way that the constant part is left-padded
+    and the adversarial part is right-padded. This allows for efficient kv-cache usage during training, as the kv-cache for all constant tokens does not change
+    even if the embeddings corresponding to the adversarial tokens change during the training.
+
+    Args:
+        tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
+        conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+            Each message is a dictionary with keys "role" and "content".
+        adver_token (str): The adversarial token to split the conversations on.
+
+    Returns:
+        BatchEncoding: A dictionary containing the tokenized input and target texts with the following keys
+            - `input_ids` (torch.IntTensor): Token IDs of the entire tokenized texts.
+            - `attention_mask` (torch.BoolTensor): Attention mask of the entire tokenized texts.
+            - `adv_mask` (torch.BoolTensor): Mask which is true for the adversarial tokens.
+            - `const_idx` (torch.LongTensor): The index of the first adversarial token in each conversation.
+    """
+    input_tokens: list[list[int]] = tokenizer.apply_chat_template(
+        conversations,
+        tokenize=True,
+        add_special_tokens=True,
+        add_generation_prompt=False,
+        continue_final_message=True,
+        padding=False,
+        return_tensors=None,
+        return_attention_mask=False,
+        return_dict=False,
+        enable_thinking=False,
+    )  # type: ignore
+
+    adv_token_id = tokenizer.convert_tokens_to_ids(adver_token)
+
+    # find the index of the first adversarial token
+    # should be the same for both full and partial conversations
+    const_idx = []
+    for conv in input_tokens:
+        adv_idx = conv.index(adv_token_id)
+        const_idx.append(adv_idx)
+
+    # split convs before and after the constant index
+    tokens_const = [conv[:idx] for conv, idx in zip(input_tokens, const_idx)]
+    tokens_adver = [conv[idx:] for conv, idx in zip(input_tokens, const_idx)]
+
+    # left pad const tokens, and right pad non-const tokens
+    # we do that to maximize the effectivness of the kv-cache.
+    data_const = tokenizer.pad(
+        {"input_ids": tokens_const},
+        padding=True,
+        padding_side="left",
+        return_attention_mask=True,
+        return_tensors="pt",
+        verbose=False,
+    )
+
+    data_adver = tokenizer.pad(
+        {"input_ids": tokens_adver},
+        padding=True,
+        padding_side="right",
+        return_attention_mask=True,
+        return_tensors="pt",
+        verbose=False,
+    )
+
+    # construct result tensors
+    input_ids = torch.cat([data_const["input_ids"], data_adver["input_ids"]], dim=1)
+    attn_mask = torch.cat([data_const["attention_mask"], data_adver["attention_mask"]], dim=1)
+    adv_mask = input_ids == adv_token_id
+    const_idx = torch.tensor(const_idx, dtype=torch.long)
+
+    data = {
+        "input_ids": input_ids,
+        "attention_mask": attn_mask,
+        "adv_mask": adv_mask,
+        "const_idx": const_idx,
+    }
+
+    return BatchEncoding(data=data, tensor_type="pt")
+
+
+def chat(
+    tokenizer: PreTrainedTokenizer,
+    conversations: list[list[dict[str, str]]],
+    adver_token: str,
+) -> BatchEncoding:
+    """
+    Regular tokenization function which applies left padding to a batch of conversations.
+
+    Args:
+        tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
+        conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+            Each message is a dictionary with keys "role" and "content".
+        adver_token (str): The adversarial token.
+
+    Returns:
+        BatchEncoding: A dictionary containing the tokenized input with the following keys
+            - `input_ids` (torch.IntTensor): Token IDs of the entire tokenized texts.
+            - `attention_mask` (torch.BoolTensor): Attention mask of the entire tokenized texts.
+            - `adv_mask` (torch.BoolTensor): Mask for the adversarial tokens.
+    """
+    tokenizer.padding_side = "left"
+
+    input_tokens = tokenizer.apply_chat_template(
+        conversations,
+        add_generation_prompt=True,
+        padding=True,
+        padding_side="left",
+        return_dict=True,
+        return_tensors="pt",
+        enable_thinking=False,
+    )
+
+    adv_token_id = tokenizer.convert_tokens_to_ids(adver_token)
+
+    input_ids = input_tokens["input_ids"]
+    attn_mask = input_tokens["attention_mask"]
+    adver_mask = input_ids == adv_token_id
+
+    data = {
+        "input_ids": input_ids,
+        "attention_mask": attn_mask,
+        "adv_mask": adver_mask,
+    }
+
+    return BatchEncoding(data=data, tensor_type="pt")

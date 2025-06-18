@@ -24,6 +24,7 @@ SUPPORTED_MODELS = [
     "google/gemma-2-2b-it",
     "google/gemma-3-1b-it",
     # "ContinuousAT/Llama-2-7B-CAT" # NOTE: protected model, only an adapter
+    "apple/OpenELM-1_1B-Instruct",
 ]
 
 def print_models():

@@ -136,7 +136,7 @@ class IML_Attack:
             evaluators (list[Evaluator]): List of evaluators to use for evaluation.
             eval_freq (int | float): Frequency of evaluation during training.
                 - if int, evaluates every `eval_freq` epochs.
-                - if float, evaluates every `int(eval_freq * len(dl_train))` batches.
+                - if float, evaluates every `round(eval_freq * len(dl_train))` batches.
             mixed_precision (bool): Whether to use mixed precision training.
             pred_kwargs (dict[str, Any] | None): Additional keyword arguments for `AdverModel.chat`.
         """
@@ -307,14 +307,15 @@ class IML_Attack:
                         loss_value = self.optim_step(batch_data, epoch_num, batch_num)
                         stop_criteria.update(epoch_num, None)
                         batch_pbar.set_postfix({"loss": loss_value})
-                        global_step += 1
                         
                         # per-batch evaluation
-                        if isinstance(self.eval_freq, float) and global_step % int(self.eval_freq * len(dl_train)) == 0:
+                        if isinstance(self.eval_freq, float) and (global_step + 1) % round(self.eval_freq * len(dl_train)) == 0:
                             self.adv_model.set_embeddings(self.univ_embeds)
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[0])
                             epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
+                            
+                        global_step += 1
 
                 # per-epoch evaluation
                 if isinstance(self.eval_freq, int) and (epoch_num + 1) % self.eval_freq == 0:

@@ -26,7 +26,7 @@ class OptimAttack(Attack):
         self.kv_caching = kv_caching
 
         # TODO: important: add early stopping. If logits.argmax() == target_ids, then stop optimizing for this sample
-        # whats cool is that id doesnt require us to call expensive generate()
+        # whats cool is that it doesnt require us to call expensive generate()
 
     def fit(
         self,

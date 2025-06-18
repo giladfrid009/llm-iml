@@ -47,8 +47,6 @@ class BeaverEvaluator(Evaluator):
         if torch_compile:
             # TODO: inductor is for training + inference
             # maybe there's a better inference only backend which works
-            # NOTE: from my testing, so far other backends
-            # do not work properly, even backends for inference
             self.model.forward = torch.compile(
                 self.model.forward,
                 dynamic=True,

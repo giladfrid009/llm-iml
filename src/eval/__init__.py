@@ -7,8 +7,6 @@ from src.eval.llama_guard_evaluator import LlamaGuardEvaluator
 from src.eval.strong_reject_evaluator import StrongRejectEvaluator
 from src.eval.template_evaluator import TemplateEvaluator
 
-# TODO: GO OVER ALL EVALUATORS AND MAKE SURE THAT WE ACTUALLY CALL IT CORRECTLY
-# IT DOESNT MAKE SENSE TO CALL A CHAT EVALUATOR VIA GENERATION
 
 __all__ = [
     "Evaluator",
