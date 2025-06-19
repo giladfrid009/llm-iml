@@ -192,6 +192,14 @@ class IML_Attack:
     def device(self) -> torch.device:
         return self.internal_attack.device
 
+    @property
+    def judge(self) -> Evaluator:
+        """
+        Returns the main judge evaluator.
+        This is the first evaluator in the list of evaluators.
+        """
+        return self.evaluators[0]
+
     def get_hparams(self) -> dict:
         return {
             "iml_attack/num_tokens": self.num_tokens,
@@ -246,16 +254,7 @@ class IML_Attack:
             all_responses = []
             for batch_data in tqdm(dl_eval, desc="Predict", leave=False):
                 prompts = batch_data["prompt"]
-                system_text = batch_data.get("system", None)
-
-                conversations = []
-                if system_text is not None:
-                    for prm, sys in zip(prompts, system_text):
-                        conversations.append([{"role": "system", "content": sys}, {"role": "user", "content": prm}])
-                else:
-                    for prm in prompts:
-                        conversations.append([{"role": "user", "content": prm}])
-
+                conversations = [[{"role": "user", "content": prm}] for prm in prompts]
                 responses = adv_model.chat(conversations, **kwargs)
                 all_responses.extend(responses)
 
@@ -265,7 +264,7 @@ class IML_Attack:
     def evaluate(
         self,
         adv_model: AdverModel,
-        evalers: list[Evaluator],
+        evalers: list[Evaluator] | Evaluator,
         dl_eval: DF_Batcher,
         update_best: bool = False,
         **kwargs: Any,
@@ -283,6 +282,9 @@ class IML_Attack:
         Returns:
             list[float]: List containing evaluation metrics from each evaluator.
         """
+
+        if isinstance(evalers, Evaluator):
+            evalers = [evalers]
 
         # TODO: add support to evaluating mutiple generations per prompt
         # easiest and probably cleanest solution is to copy each row in dl_eval multiple times
@@ -302,9 +304,21 @@ class IML_Attack:
             res = evaluator.evaluate(dl_eval)
             metrics.append(res)
 
+        # Find metric which belongs to the judge evaluator
+        # If it improves, update the best metric and embeddings
         if update_best:
-            if self.best_metric < metrics[0]:
-                self.best_metric = metrics[0]
+
+            judge_metric = None
+            for evaler, metric in zip(evalers, metrics):
+                if evaler == self.judge:
+                    judge_metric = metric
+                    break
+
+            if judge_metric is None:
+                raise ValueError(f"Judge evaluator {self.judge.name} not found in the list of evaluators {[e.name for e in evalers]}.")
+
+            if self.best_metric < judge_metric:
+                self.best_metric = judge_metric
                 self.best_embeds = adv_model.get_embeddings(clone=True)
 
         return metrics
@@ -350,12 +364,11 @@ class IML_Attack:
 
             # initial evaluation
             self.adv_model.set_embeddings(self.univ_embeds)
-            metrics = self.evaluate(self.adv_model, self.evaluators[:1], dl_eval, update_best=True)
-            stop_criteria.update(0, metrics[0])
-            epoch_pbar.set_postfix({self.evaluators[0].name: metrics[0]})
+            metric = self.evaluate(self.adv_model, self.judge, dl_eval, update_best=True)[0]
+            stop_criteria.update(0, metric)
 
-            self.logger.log_scalar(f"{self.evaluators[0].name}/current", metrics[0], step=-1)
-            self.logger.log_scalar(f"{self.evaluators[0].name}/best", self.best_metric, step=-1)
+            epoch_pbar.set_postfix({self.judge.name: metric})
+            self.logger.log_scalar(f"{self.judge.name}/best", self.best_metric, step=-1)
 
             # main training loop
             for epoch_num in epoch_pbar:
@@ -374,39 +387,26 @@ class IML_Attack:
                         self.logger.log_scalar("loss", loss_value, step=global_step)
                         batch_pbar.set_postfix({"loss": loss_value})
 
-                        # per-batch evaluation
-                        if isinstance(self.eval_freq, float) and (global_step + 1) % round(self.eval_freq * len(dl_train)) == 0:
+                        # evaluation step
+                        if global_step % round(self.eval_freq * len(dl_train)) == 0:
                             self.adv_model.set_embeddings(self.univ_embeds)
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[0])
 
                             self.save_checkpoint()
-                            self.logger.log_scalar(f"{self.evaluators[0].name}/best", self.best_metric, step=global_step)
-                            for evaler, value in zip(self.evaluators, metrics):
-                                self.logger.log_scalar(f"{evaler.name}/current", value, step=global_step)
-
+                            self.logger.log_scalar(f"{self.judge.name}/best", self.best_metric, step=global_step)
+                            self.logger.log_scalers({f"{e.name}/current": m for e, m in zip(self.evaluators, metrics)}, step=global_step)
                             epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
                         global_step += 1
 
-                # per-epoch evaluation
-                if isinstance(self.eval_freq, int) and (epoch_num + 1) % self.eval_freq == 0:
-                    self.adv_model.set_embeddings(self.univ_embeds)
-                    metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
-                    stop_criteria.update(epoch_num, metrics[0])
-
-                    self.save_checkpoint()
-                    self.logger.log_scalar(f"{self.evaluators[0].name}/best", self.best_metric, step=epoch_num)
-                    for evaler, value in zip(self.evaluators, metrics):
-                        self.logger.log_scalar(f"{evaler.name}/current", value, step=epoch_num)
-
-                    epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
+                stop_criteria.update(epoch_num, None)
 
         # set to best embeddings and final eval
         self.adv_model.set_embeddings(self.best_embeds)
         metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval)
+        self.logger.log_metrics({e.name: m for e, m in zip(self.evaluators, metrics)})
         for evaler, value in zip(self.evaluators, metrics):
-            self.logger.log_scalar(f"{evaler.name}/final", value)
             print(f"Final metric {evaler.name}: {value:.6f}")
 
         self.close()
@@ -428,16 +428,9 @@ class IML_Attack:
         self.optimizer.zero_grad()
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-
-            system_text, input_text, target_text = data.get("system"), data["prompt"], data["target"]
-
-            conversations = []
-            if system_text is not None:
-                for prm, sys in zip(input_text, system_text):
-                    conversations.append([{"role": "system", "content": sys}, {"role": "user", "content": prm}])
-            else:
-                for prm in input_text:
-                    conversations.append([{"role": "user", "content": prm}])
+            # build conversations
+            input_text, target_text = data["prompt"], data["target"]
+            conversations = [[{"role": "user", "content": prm}] for prm in input_text]
 
             # skip already succesfully fooled samples
             if self.skip_already_fooled:
@@ -445,7 +438,7 @@ class IML_Attack:
                     self.adv_model.set_embeddings(self.univ_embeds)
                     responses = self.adv_model.chat(conversations, **self.pred_kwargs)
                     data["response"] = responses
-                    eval_result = self.evaluators[0].process_batch(data)
+                    eval_result = self.judge.process_batch(data)
 
                     mask_fooled = eval_result >= 1.0
                     if mask_fooled.all():
@@ -459,13 +452,13 @@ class IML_Attack:
                 embeds_init = self.univ_embeds.expand(len(conversations), -1, -1)
                 sample_embed = self.internal_attack.fit(conversations, target_text, embeds_init=embeds_init)
 
-            # skip failed per-sample attack samples
+            # skip failed per-sample attacks
             if self.skip_failed_attacks:
                 with torch.inference_mode():
                     self.adv_model.set_embeddings(sample_embed)
                     responses = self.adv_model.chat(conversations, **self.pred_kwargs)
                     data["response"] = responses
-                    eval_result = self.evaluators[0].process_batch(data)
+                    eval_result = self.judge.process_batch(data)
 
                     mask_succ = eval_result >= 1.0
                     if not mask_succ.any():

@@ -122,6 +122,10 @@ class Logger:
             formatted = {f"final/{k}": v for k, v in metrics.items()}
             self.tb_writer.add_hparams({}, metric_dict=formatted, run_name=".")
 
+    def log_scalers(self, scalers: dict[str, int | float | torch.Tensor | None], step: int | None = None):
+        for key, value in scalers.items():
+            self.log_scalar(key, value, step)
+
     def log_scalar(self, tag: str, value: int | float | torch.Tensor | None, step: int | None = None):
         """
         Logs a scalar value.

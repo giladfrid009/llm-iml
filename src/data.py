@@ -11,7 +11,6 @@ class DF_Batcher:
     - 'prompt' (str): Input prompt for the model.
     - 'response' (str): Model response or output, should be present for evaluation.
     - 'target' (str): Target response of the model, should be present for training.
-    - 'system' (str): System prompt or context, can be omitted, and then the model-default system prompt is used.
     """
 
     def __init__(
