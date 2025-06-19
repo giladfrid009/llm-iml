@@ -1,6 +1,5 @@
 import random
-from collections import namedtuple
-from typing import Any, Generator, List, Tuple
+from typing import Any, Generator, List, Dict
 import pandas as pd
 
 
@@ -66,10 +65,8 @@ class DF_Batcher:
         """
         return self._n_batches
 
-    def __iter__(self) -> Generator[Tuple[List[Any], ...], None, None]:
+    def __iter__(self) -> Generator[Dict[str, List[Any]], None, None]:
         columns = self.df.columns.tolist()
-
-        Batch = namedtuple("Batch", columns, rename=True)
 
         # Make a copy of the indices and shuffle if requested
         idxs = self._indices.copy()
@@ -86,11 +83,8 @@ class DF_Batcher:
             if len(batch_idxs) < self.batch_size and self.drop_last:
                 break
 
-            # Gather each selected column's values into a Python list
-            column_lists: List[List[Any]] = [self.df.loc[batch_idxs, col].tolist() for col in columns]
-
-            # Yield a namedtuple( column_lists... )
-            yield Batch(*column_lists)
+            data = {col: self.df.loc[batch_idxs, col].tolist() for col in columns}
+            yield data
 
     def copy(self, **kwargs) -> "DF_Batcher":
         """

@@ -69,8 +69,20 @@ class BeaverEvaluator(Evaluator):
         """
         return [BEAVER_PROMPT.format(behavior=beh, generation=gen) for beh, gen in zip(input_texts, response_texts)]
 
+    def get_hparams(self) -> dict:
+        """
+        Returns the hyperparameters of the evaluator as a dictionary.
+
+        Returns:
+            dict: Hyperparameters of the evaluator.
+        """
+        return {
+            f"{type(self).__name__}/binary_thresh": self.binary_thresh,
+            f"{type(self).__name__}/device": self.model.device,
+        }
+
     @torch.inference_mode()
-    def process_batch(self, data: tuple[list[str], ...]) -> torch.Tensor:
+    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts, returning the evaluation metric.
 
@@ -78,8 +90,8 @@ class BeaverEvaluator(Evaluator):
             torch.Tensor: Evaluation metric for each sample in the batch.
         """
 
-        input_texts = data.prompt
-        response_texts = data.response
+        input_texts = data["prompt"]
+        response_texts = data["response"]
 
         eval_inputs = self._fmt_inputs(input_texts, response_texts)
 

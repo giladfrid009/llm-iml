@@ -1,5 +1,5 @@
 from src.eval.evaluator import Evaluator
-
+from typing import Any
 import torch
 
 
@@ -120,7 +120,15 @@ class TemplateEvaluator(Evaluator):
 
         self.refusal_phrases = [phrase.lower().strip() for phrase in refusal_phrases]
 
-    def process_batch(self, data: tuple[list[str], ...]) -> torch.Tensor:
+    def get_hparams(self) -> dict:
+        """
+        Returns the hyperparameters of the evaluator as a dictionary.
+        """
+        return {
+            f"{type(self).__name__}/refusal_phrases": str(self.refusal_phrases),
+        }
+
+    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts, returning the evaluation metric.
 
@@ -128,7 +136,7 @@ class TemplateEvaluator(Evaluator):
             torch.Tensor: Evaluation metric for each sample in the batch.
         """
 
-        response_texts = data.response
+        response_texts = data["response"]
 
         eval_results = []
         for resp in response_texts:

@@ -2,6 +2,7 @@ from src.eval.evaluator import Evaluator
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
 
+from typing import Any
 from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
 import torch
@@ -98,6 +99,17 @@ class HarmBenchEvaluator(Evaluator):
         # start vllm service
         self.model.start()
 
+    def get_hparams(self) -> dict:
+        """
+        Returns the hyperparameters of the evaluator as a dictionary.
+        """
+        return {
+            f"{type(self).__name__}/use_context": self.use_context,
+            f"{type(self).__name__}/sampling_params": repr(self.sampling_params),
+            f"{type(self).__name__}/llm_config": repr(self.llm_config),
+            f"{type(self).__name__}/serve_config": repr(self.serve_config),
+        }
+
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str], contex_texts: list[str] | None = None) -> list[str]:
         """
         Formats the input texts and response texts into the required prompt format.
@@ -122,7 +134,7 @@ class HarmBenchEvaluator(Evaluator):
                 for context, input, response in zip(contex_texts, input_texts, response_texts)
             ]
 
-    def process_batch(self, data: tuple[list[str], ...]) -> torch.Tensor:
+    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts, returning the evaluation metric.
 
@@ -130,9 +142,9 @@ class HarmBenchEvaluator(Evaluator):
             torch.Tensor: Evaluation metric for each sample in the batch.
         """
 
-        input_texts = data.prompt
-        response_texts = data.response
-        contex_texts = data.context if self.use_context else None
+        input_texts = data["prompt"]
+        response_texts = data["response"]
+        contex_texts = data["context"] if self.use_context else None
 
         eval_inputs = self._fmt_inputs(input_texts, response_texts, contex_texts)
         responses = self.model.generate(eval_inputs, sampling_params=self.sampling_params)

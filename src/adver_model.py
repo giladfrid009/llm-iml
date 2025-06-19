@@ -88,7 +88,6 @@ class AdverModel(nn.Module):
         # adv embedder
         self.orig_embedder = self.model.get_input_embeddings()
         self.adv_embedder = AdverEmbedding(self.orig_embedder)
-        self.model.set_input_embeddings(self.adv_embedder)
 
         # params
         self.device = utils.extract_device(model)
@@ -96,6 +95,14 @@ class AdverModel(nn.Module):
 
         # adversarial embeddings
         self.adv_embeds: torch.Tensor | None = None
+
+    def get_hparams(self) -> dict:
+        return {
+            "adver_model/model_name": self.model.name_or_path,
+            "adver_model/tokenizer_name": self.tokenizer.name_or_path,
+            "adver_model/num_tokens": self.num_tokens,
+            "adver_model/adv_token": self.adv_token,
+        }
 
     def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
         """

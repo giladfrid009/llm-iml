@@ -27,12 +27,23 @@ class Evaluator(ABC):
         self.required_columns = required_columns
 
     @abstractmethod
-    def process_batch(self, data: tuple[list[Any], ...]) -> torch.Tensor:
+    def get_hparams(self) -> dict:
+        """
+        Returns the hyperparameters of the evaluator as a dictionary.
+        This method should be overridden by subclasses to provide specific hyperparameters.
+
+        Returns:
+            dict: Hyperparameters of the evaluator.
+        """
+        raise NotImplementedError("This method should be overridden by subclasses.")
+
+    @abstractmethod
+    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts, returning the evaluation metric.
 
         Args:
-            eval_data (tuple[list[Any], ...]): Tuple containing all relevant data to perform model evaluation
+            eval_data (dict[str, list[Any]]): Tuple containing all relevant data to perform model evaluation
 
         Returns:
             torch.Tensor: Evaluation metric for each sample in the batch.
@@ -61,7 +72,7 @@ class Evaluator(ABC):
             metrics[index:index + batch_metric.size(0)] = batch_metric
             index += batch_metric.size(0)
             
-        dl_eval.set_column(f"eval-{self.name}", metrics.tolist())
+        dl_eval.set_column(self.name, metrics.tolist())
         return metrics.mean().item()
 
 
@@ -96,13 +107,28 @@ class MultiEvaluator(Evaluator):
         self.evaluators = evaluators
         self.combine_fn = combine_fn
 
-    def process_batch(self, data: tuple[list[Any], ...]) -> torch.Tensor:
+    def get_hparams(self) -> dict:
+        """
+        Returns the hyperparameters of the combined evaluator as a dictionary.
+        This method combines the hyperparameters of all individual evaluators.
+
+        Returns:
+            dict: Combined hyperparameters of the evaluators.
+        """
+        hparams = {}
+        for evaluator in self.evaluators:
+            params = evaluator.get_hparams()
+            params = {f"MultiEvaluator/{evaluator.name}/{k}": v for k, v in params.items()}
+            hparams.update(params)
+        return hparams
+
+    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts using multiple evaluators,
         and combines their results using the specified combine function.
 
         Args:
-            data (tuple[list[Any], ...]): Tuple containing all relevant data to perform model evaluation.
+            data (dict[str, list[Any]]): Tuple containing all relevant data to perform model evaluation.
 
         Returns:
             torch.Tensor: Combined evaluation metric for each sample in the batch.

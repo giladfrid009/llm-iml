@@ -2,7 +2,7 @@ from src.attacks.attack import Attack
 from src.adver_model import AdverModel
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
-from src.activation_extractor import ActivationExtractor
+from src.logger import Logger
 
 from typing import Any
 import torch
@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 import time
 from typing import Iterable, Callable
 import warnings
+import pathlib
 
 
 class StopCriteria:
@@ -127,6 +128,9 @@ class IML_Attack:
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
         pred_kwargs: dict[str, Any] | None = None,
+        skip_already_fooled: bool = False,
+        skip_failed_attacks: bool = True,
+        log_dir: str | None = None,
     ):
         """
         Args:
@@ -139,6 +143,9 @@ class IML_Attack:
                 - if float, evaluates every `round(eval_freq * len(dl_train))` batches.
             mixed_precision (bool): Whether to use mixed precision training.
             pred_kwargs (dict[str, Any] | None): Additional keyword arguments for `AdverModel.chat`.
+            skip_already_fooled (bool): If True, skips samples that are already successfully fooled.
+            skip_failed_attacks (bool): If True, skips samples where the internal attack fails.
+            log_dir (str | None): Directory to save logs. If None, no logging is performed.
         """
         self.adv_model = adv_model
         self.internal_attack = internal_attack
@@ -156,9 +163,20 @@ class IML_Attack:
             raise ValueError("Batch size of universal embeddings must be 1.")
 
         self.optimizer = optim_factory([self.univ_embeds])
+        self.skip_already_fooled = skip_already_fooled
+        self.skip_failed_attacks = skip_failed_attacks
 
         self.best_metric = -float("inf")
         self.best_embeds = self.univ_embeds.clone().detach()
+
+        # logging
+        self.logger = Logger(log_dir)
+        self.logger.register_hparams(self)
+        self.logger.register_hparams(adv_model)
+        self.logger.register_hparams(internal_attack)
+        self.logger.register_hparams(evaluators[0])
+        self.logger.register_hparams(self.optimizer)
+        self.logger.register_hparams(self.grad_scaler)
 
     @property
     def num_tokens(self) -> int:
@@ -171,6 +189,33 @@ class IML_Attack:
     @property
     def device(self) -> torch.device:
         return self.internal_attack.device
+
+    def get_hparams(self) -> dict:
+        return {
+            "iml_attack/num_tokens": self.num_tokens,
+            "iml_attack/embed_dim": self.embed_dim,
+            "iml_attack/mixed_precision": self.mixed_precision,
+            "iml_attack/skip_already_fooled": self.skip_already_fooled,
+            "iml_attack/skip_failed_attacks": self.skip_failed_attacks,
+            "iml_attack/optimizer": self.optimizer.__class__.__name__,
+            "iml_attack/internal_attack": self.internal_attack.__class__.__name__,
+            "iml_attack/eval_freq": self.eval_freq,
+            "iml_attack/pred_kwargs": self.pred_kwargs,
+            "iml_attack/evaluators": (e.name for e in self.evaluators),
+            "iml_attack/log_dir": self.logger.root_dir if self.logger else None,
+        }
+
+    def close(self):
+        """Close all resources."""
+        self.logger.close()
+
+    def __del__(self):
+        self.close()
+
+    def save_checkpoint(self, file_name: str = "best_pert.pt"):
+        log_dir = self.logger.log_dir()
+        if log_dir is not None:
+            torch.save(self.best_embeds, pathlib.Path(log_dir) / file_name)
 
     @torch.inference_mode()
     def predict(
@@ -198,8 +243,8 @@ class IML_Attack:
 
             all_responses = []
             for batch_data in tqdm(dl_eval, desc="Predict", leave=False):
-                prompts = batch_data.prompt
-                system_text = getattr(batch_data, "system", None)
+                prompts = batch_data["prompt"]
+                system_text = batch_data.get("system", None)
 
                 conversations = []
                 if system_text is not None:
@@ -285,6 +330,20 @@ class IML_Attack:
         stop_criteria.reset()
         should_stop = stop_criteria.should_stop()
 
+        # init logging
+        self.logger.register_hparams(stop_criteria)
+        self.logger.initialize(
+            self.adv_model.model.name_or_path,
+            f"num_tokens_{self.num_tokens}",
+            self.internal_attack.__class__.__name__,
+        )
+        self.logger.add_tags(
+            model=self.adv_model.model.name_or_path,
+            num_tokens=self.num_tokens,
+            internal_attack=self.internal_attack.__class__.__name__,
+        )
+        self.logger.log_hparams()
+
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
 
             # initial evaluation
@@ -292,6 +351,9 @@ class IML_Attack:
             metrics = self.evaluate(self.adv_model, self.evaluators[:1], dl_eval, update_best=True)
             stop_criteria.update(0, metrics[0])
             epoch_pbar.set_postfix({self.evaluators[0].name: metrics[0]})
+
+            self.logger.log_scalar(f"{self.evaluators[0].name}/current", metrics[0], step=-1)
+            self.logger.log_scalar(f"{self.evaluators[0].name}/best", self.best_metric, step=-1)
 
             # main training loop
             for epoch_num in epoch_pbar:
@@ -307,14 +369,20 @@ class IML_Attack:
                         loss_value = self.optim_step(batch_data, epoch_num, batch_num)
                         stop_criteria.update(epoch_num, None)
                         batch_pbar.set_postfix({"loss": loss_value})
-                        
+
                         # per-batch evaluation
                         if isinstance(self.eval_freq, float) and (global_step + 1) % round(self.eval_freq * len(dl_train)) == 0:
                             self.adv_model.set_embeddings(self.univ_embeds)
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[0])
+
+                            self.save_checkpoint()
+                            self.logger.log_scalar(f"{self.evaluators[0].name}/best", self.best_metric, step=global_step)
+                            for evaler, value in zip(self.evaluators, metrics):
+                                self.logger.log_scalar(f"{evaler.name}/current", value, step=global_step)
+
                             epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
-                            
+
                         global_step += 1
 
                 # per-epoch evaluation
@@ -322,6 +390,12 @@ class IML_Attack:
                     self.adv_model.set_embeddings(self.univ_embeds)
                     metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                     stop_criteria.update(epoch_num, metrics[0])
+
+                    self.save_checkpoint()
+                    self.logger.log_scalar(f"{self.evaluators[0].name}/best", self.best_metric, step=epoch_num)
+                    for evaler, value in zip(self.evaluators, metrics):
+                        self.logger.log_scalar(f"{evaler.name}/current", value, step=epoch_num)
+
                     epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
         # set to best embeddings and final eval
@@ -330,15 +404,18 @@ class IML_Attack:
         for evaler, value in zip(self.evaluators, metrics):
             print(f"Final metric {evaler.name}: {value:.6f}")
 
+        for evaler, value in zip(self.evaluators, metrics):
+            self.logger.log_scalar(f"{evaler.name}/final", value)
+
+        self.close()
         return self.adv_model
 
-    def optim_step(self, data: tuple[list[Any], ...], epoch_num: int, batch_num: int) -> float | None:
+    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int) -> float | None:
         """
         Perform a single optimization step on the given batch of data.
 
         Args:
-            data (tuple[list[Any], ...]): Batch data containing input and target text
-                via attributes `data.prompt` and `data.target`.
+            data (dict[str, list[Any]]): Batch data containing input and target texts.
             epoch_num (int): Current epoch number.
             batch_num (int): Current batch number.
 
@@ -350,7 +427,7 @@ class IML_Attack:
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
-            system_text, input_text, target_text = getattr(data, "system", None), data.prompt, data.target
+            system_text, input_text, target_text = data.get("system"), data["prompt"], data["target"]
 
             conversations = []
             if system_text is not None:
@@ -360,20 +437,52 @@ class IML_Attack:
                 for prm in input_text:
                     conversations.append([{"role": "user", "content": prm}])
 
+            # skip already succesfully fooled samples
+            if self.skip_already_fooled:
+                with torch.inference_mode():
+                    self.adv_model.set_embeddings(self.univ_embeds)
+                    responses = self.adv_model.chat(conversations, **self.pred_kwargs)
+                    data["response"] = responses
+                    eval_result = self.evaluators[0].process_batch(data)
+
+                    mask_fooled = eval_result >= 1.0
+                    if mask_fooled.all():
+                        return None
+
+                    conversations = [conv for conv, m in zip(conversations, mask_fooled) if not m]
+                    target_text = [tgt for tgt, m in zip(target_text, mask_fooled) if not m]
+
+            # run per-sample attack
+            with torch.autocast(device_type=self.device.type, enabled=False):
+                embeds_init = self.univ_embeds.expand(len(conversations), -1, -1)
+                sample_embed = self.internal_attack.fit(conversations, target_text, embeds_init=embeds_init)
+
+            # skip failed per-sample attack samples
+            if self.skip_failed_attacks:
+                with torch.inference_mode():
+                    self.adv_model.set_embeddings(sample_embed)
+                    responses = self.adv_model.chat(conversations, **self.pred_kwargs)
+                    data["response"] = responses
+                    eval_result = self.evaluators[0].process_batch(data)
+
+                    mask_succ = eval_result >= 1.0
+                    if not mask_succ.any():
+                        return None
+
+                    sample_embed = sample_embed[mask_succ]
+                    conversations = [conv for conv, m in zip(conversations, mask_succ) if m]
+                    target_text = [tgt for tgt, m in zip(target_text, mask_succ) if m]
+
             token_dict = self.adv_model.tokenize(conversations, target_text)
 
-            # compute universal logits
-            univ_embeds = self.univ_embeds.expand(len(input_text), -1, -1)
-            self.adv_model.set_embeddings(univ_embeds)
-            univ_logits = self.compute_logits(token_dict, self.adv_model)
-
-            # compute per-sample logits, disable autocast
-            with torch.autocast(device_type=self.device.type, enabled=False):
-                sample_embed = self.internal_attack.fit(conversations, target_text, embeds_init=univ_embeds)
-
+            # compute per-sample logits
             with torch.inference_mode():
                 self.adv_model.set_embeddings(sample_embed)
                 sample_logits = self.compute_logits(token_dict, self.adv_model)
+
+            # compute universal logits
+            self.adv_model.set_embeddings(self.univ_embeds)
+            univ_logits = self.compute_logits(token_dict, self.adv_model)
 
             # compute loss
             univ_logits = univ_logits.view(-1, univ_logits.size(-1))

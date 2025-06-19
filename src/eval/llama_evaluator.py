@@ -2,6 +2,7 @@ from src.eval.evaluator import Evaluator
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
 
+from typing import Any
 from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
 import torch
@@ -68,6 +69,8 @@ class LlamaEvaluator(Evaluator):
                 llm_config = LLMConfig(model_name=model_name, dtype="float16")
             elif model_name == "meta-llama/Llama-3.1-8B-Instruct":
                 llm_config = LLMConfig(model_name=model_name, dtype="bfloat16")
+            else:
+                raise ValueError(f"Unsupported model: {model_name}.")
 
         if sampling_params is None:
             sampling_params = SamplingParams(
@@ -85,6 +88,19 @@ class LlamaEvaluator(Evaluator):
 
         # start vllm service
         self.model.start()
+        
+    def get_hparams(self) -> dict:
+        """
+        Returns the hyperparameters of the evaluator as a dictionary.
+        
+        Returns:
+            dict: Hyperparameters of the evaluator.
+        """
+        return {
+            f"{type(self).__name__}/llm_config": repr(self.llm_config),
+            f"{type(self).__name__}/serve_config": repr(self.serve_config),
+            f"{type(self).__name__}/sampling_params": repr(self.sampling_params),
+        }
 
     def _fmt_convs(self, input_texts: list[str], response_texts: list[str]) -> list[list[dict[str, str]]]:
         """
@@ -102,7 +118,7 @@ class LlamaEvaluator(Evaluator):
             for beh, gen in zip(input_texts, response_texts)
         ]
 
-    def process_batch(self, data: tuple[list[str], ...]) -> torch.Tensor:
+    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts, returning the evaluation metric.
 
@@ -110,8 +126,8 @@ class LlamaEvaluator(Evaluator):
             torch.Tensor: Evaluation metric for each sample in the batch.
         """
 
-        input_texts = data.prompt
-        response_texts = data.response
+        input_texts = data["prompt"]
+        response_texts = data["response"]
 
         eval_inputs = self._fmt_convs(input_texts, response_texts)
         responses = self.model.chat(eval_inputs, self.sampling_params)

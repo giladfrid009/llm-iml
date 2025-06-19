@@ -27,6 +27,8 @@ dependencies = [
     "vllm>=0.9",
     "xformers>=0.0.27.post2",
     "gserve",
+    "clearml>=2.0.0",
+    "tensorboard>=2.19.0",
 ]
 
 [tool.uv.sources]
