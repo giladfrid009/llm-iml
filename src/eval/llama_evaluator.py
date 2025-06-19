@@ -2,6 +2,7 @@ from src.eval.evaluator import Evaluator
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
 
+import msgspec
 from typing import Any
 from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
@@ -88,19 +89,20 @@ class LlamaEvaluator(Evaluator):
 
         # start vllm service
         self.model.start()
-        
+
     def get_hparams(self) -> dict:
         """
         Returns the hyperparameters of the evaluator as a dictionary.
-        
+
         Returns:
             dict: Hyperparameters of the evaluator.
         """
-        return {
-            f"{type(self).__name__}/llm_config": repr(self.llm_config),
-            f"{type(self).__name__}/serve_config": repr(self.serve_config),
-            f"{type(self).__name__}/sampling_params": repr(self.sampling_params),
-        }
+        name = type(self).__name__
+        hparams = {}
+        hparams.update({f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()})
+        hparams.update({f"{name}/llm_config/{k}": v for k, v in self.llm_config.__dict__.items()})
+        hparams.update({f"{name}/serve_config/{k}": v for k, v in self.serve_config.__dict__.items()})
+        return hparams
 
     def _fmt_convs(self, input_texts: list[str], response_texts: list[str]) -> list[list[dict[str, str]]]:
         """

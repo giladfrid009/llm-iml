@@ -52,7 +52,7 @@ class Evaluator(ABC):
 
     def evaluate(self, dl_eval: DF_Batcher) -> float:
         """
-        Evaluates the model on the provided data loader using the generated outputs.  
+        Evaluates the model on the provided data loader using the generated outputs.
         This methods sets a column `eval-{self.name}` in the data loader with the evaluation metric.
 
         Args:
@@ -69,9 +69,9 @@ class Evaluator(ABC):
 
         for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=not self.verbose, leave=False):
             batch_metric = self.process_batch(batch_data).cpu()
-            metrics[index:index + batch_metric.size(0)] = batch_metric
+            metrics[index : index + batch_metric.size(0)] = batch_metric
             index += batch_metric.size(0)
-            
+
         dl_eval.set_column(self.name, metrics.tolist())
         return metrics.mean().item()
 
@@ -115,10 +115,11 @@ class MultiEvaluator(Evaluator):
         Returns:
             dict: Combined hyperparameters of the evaluators.
         """
-        hparams = {}
+        name = type(self).__name__
+        hparams = {f"{name}/evaluators": str([evaluator.name for evaluator in self.evaluators])}
         for evaluator in self.evaluators:
             params = evaluator.get_hparams()
-            params = {f"MultiEvaluator/{evaluator.name}/{k}": v for k, v in params.items()}
+            params = {f"{name}/{k}": v for k, v in params.items()}
             hparams.update(params)
         return hparams
 

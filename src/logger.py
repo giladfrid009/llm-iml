@@ -27,19 +27,13 @@ class Logger:
         self.global_step: int = 0
         self._hparams: dict[str, object] = {}
 
-    def register_hparams(self, obj: object):
+    def register_hparams(self, hparams: dict[str, object]):
         """
         Registers hyperparameters to be logged.
 
         Args:
             hparams (dict[str, object]): The hyperparameters to log.
         """
-
-        if hasattr(obj, "get_hparams") and callable(obj.get_hparams):
-            hparams: dict = obj.get_hparams()  # type: ignore
-        else:
-            hparams = {f"{type(obj).__name__}/{k}": v for k, v in obj.__dict__.items()}
-
         clean_hparams = {}
         for k, v in hparams.items():
             if isinstance(v, torch.Tensor) and v.numel() == 1:

@@ -124,9 +124,9 @@ class TemplateEvaluator(Evaluator):
         """
         Returns the hyperparameters of the evaluator as a dictionary.
         """
-        return {
-            f"{type(self).__name__}/refusal_phrases": str(self.refusal_phrases),
-        }
+        name = type(self).__name__
+        hparams = {f"{name}/refusal_phrases": str(self.refusal_phrases)}
+        return hparams
 
     def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """

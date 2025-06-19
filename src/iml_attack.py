@@ -171,12 +171,14 @@ class IML_Attack:
 
         # logging
         self.logger = Logger(log_dir)
-        self.logger.register_hparams(self)
-        self.logger.register_hparams(adv_model)
-        self.logger.register_hparams(internal_attack)
-        self.logger.register_hparams(evaluators[0])
-        self.logger.register_hparams(self.optimizer)
-        self.logger.register_hparams(self.grad_scaler)
+        self.logger.register_hparams(self.get_hparams())
+        self.logger.register_hparams(adv_model.get_hparams())
+        for evaler in self.evaluators:
+            self.logger.register_hparams(evaler.get_hparams())
+        self.logger.register_hparams({f"internal_attack/{k}": v for k, v in internal_attack.__dict__.items()})
+        self.logger.register_hparams({f"optim/name": self.optimizer.__class__.__name__})
+        self.logger.register_hparams({f"optim/{k}": v for k, v in self.optimizer.param_groups[0].items()})
+        self.logger.register_hparams({f"grad_scaler/{k}": v for k, v in self.grad_scaler.state_dict().items()})
 
     @property
     def num_tokens(self) -> int:
@@ -307,7 +309,6 @@ class IML_Attack:
 
         return metrics
 
-    # TODO: inclue logging and other relevant stuff from ulib.
     def fit(
         self,
         dl_train: DF_Batcher,
@@ -325,13 +326,14 @@ class IML_Attack:
         if stop_criteria is None:
             stop_criteria = StopCriteria()
 
+        # local stats
         global_step = 0
         loss_value = None
         stop_criteria.reset()
         should_stop = stop_criteria.should_stop()
 
         # init logging
-        self.logger.register_hparams(stop_criteria)
+        self.logger.register_hparams(stop_criteria.get_hparams())
         self.logger.initialize(
             self.adv_model.model.name_or_path,
             f"num_tokens_{self.num_tokens}",
@@ -368,6 +370,8 @@ class IML_Attack:
                         # training step
                         loss_value = self.optim_step(batch_data, epoch_num, batch_num)
                         stop_criteria.update(epoch_num, None)
+
+                        self.logger.log_scalar("loss", loss_value, step=global_step)
                         batch_pbar.set_postfix({"loss": loss_value})
 
                         # per-batch evaluation
@@ -402,10 +406,8 @@ class IML_Attack:
         self.adv_model.set_embeddings(self.best_embeds)
         metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval)
         for evaler, value in zip(self.evaluators, metrics):
-            print(f"Final metric {evaler.name}: {value:.6f}")
-
-        for evaler, value in zip(self.evaluators, metrics):
             self.logger.log_scalar(f"{evaler.name}/final", value)
+            print(f"Final metric {evaler.name}: {value:.6f}")
 
         self.close()
         return self.adv_model
