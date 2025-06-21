@@ -49,7 +49,7 @@ class AdverEmbedding(nn.Module):
         if (adv_embeds is None) != (adv_mask is None):
             raise ValueError("Both adv_embeds and adv_mask should be None or not None")
 
-        if adv_mask is None:
+        if adv_mask is None or adv_embeds is None:
             return self.embedder(inputs)
 
         if inputs.shape != adv_mask.shape:
@@ -270,7 +270,6 @@ class AdverModel(nn.Module):
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             max_length=max_length,
-            num_return_sequences=1,
             pad_token_id=self.tokenizer.pad_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
             use_model_defaults=True,

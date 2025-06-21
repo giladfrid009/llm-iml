@@ -97,14 +97,11 @@ class Attack(ABC):
             use_cache=True,
         )
 
-        kv_cache = copy.deepcopy(kv_result.past_key_values)
-
         new_token_dict = {
             "input_ids": token_dict["input_ids"][:, kv_idx:],
             "attention_mask": token_dict["attention_mask"],  # we need the full attention mask
             "adv_mask": token_dict["adv_mask"][:, kv_idx:],
-            "const_idx": token_dict["const_idx"],
-            "kv_cache": kv_cache,
+            "kv_cache": kv_result.past_key_values,
         }
 
         if "target_mask" in token_dict:

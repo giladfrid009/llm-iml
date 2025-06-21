@@ -1,9 +1,15 @@
 from typing import Callable, Iterable
-from src.adver_model import AdverModel
-from src.attacks.attack import Attack
 from tqdm.auto import tqdm
 import torch
 import copy
+
+from transformers.tokenization_utils_base import BatchEncoding
+from transformers.cache_utils import Cache, DynamicCache
+
+LegacyCache = tuple[tuple[torch.Tensor], tuple[torch.Tensor]]
+
+from src.adver_model import AdverModel
+from src.attacks.attack import Attack
 
 
 class OptimAttack(Attack):
@@ -27,6 +33,9 @@ class OptimAttack(Attack):
 
         # TODO: important: add early stopping. If logits.argmax() == target_ids, then stop optimizing for this sample
         # whats cool is that it doesnt require us to call expensive generate()
+        # to filter the cache object for early stopping see:
+        # https://github.com/huggingface/transformers/blob/main/src/transformers/generation/utils.py
+        # in the _contrastive_search method, they use DynamicCache.batch_select_indices()
 
     def fit(
         self,
@@ -48,12 +57,12 @@ class OptimAttack(Attack):
         else:
             adv_embeds = self.init_embedding(num_inputs=len(conversations))
             adv_embeds.requires_grad_(True)
-            
+
         self.adv_model.set_embeddings(adv_embeds)
 
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory(self.adv_model.parameters())
-        
+
         with tqdm(range(self.steps), disable=not self.verbose, leave=False, desc="Attack") as pbar:
             for step in pbar:
 
@@ -61,9 +70,9 @@ class OptimAttack(Attack):
 
                 with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
-                    past_keys_values = None
+                    past_keys_values: Cache | LegacyCache | None = None
                     if self.kv_caching:
-                        # NOTE: need to copy since forward modifies in in-place
+                        # NOTE: need to copy since forward modifies it in-place
                         past_keys_values = copy.deepcopy(token_dict["kv_cache"])
 
                     result = self.adv_model.forward(
@@ -79,6 +88,9 @@ class OptimAttack(Attack):
                         target_mask=token_dict["target_mask"],
                     )
 
+                    # TODO: currently in the loss caclulation, we give uniform weights to all tokens.
+                    # i think instead we should first average per-sequence and then average over the sequences.
+                    # but it is an annoying implementation since we do mask_select here to choose the target tokens.
                     loss = torch.nn.functional.cross_entropy(pred_logits, target_ids)
 
                 scaler.scale(loss).backward()
