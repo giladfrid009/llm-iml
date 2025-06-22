@@ -117,7 +117,9 @@ class StopCriteria:
 
         return False
 
-
+# TODO: add scheduling to the inner-attack i.e accept a lambda function that takes the current epoch and
+# returns an instance of an inner attack.
+# TODO: implmenet discretization
 class IML_Attack:
     def __init__(
         self,
@@ -222,7 +224,7 @@ class IML_Attack:
     def __del__(self):
         self.close()
 
-    def save_checkpoint(self, file_name: str = "best_pert.pt"):
+    def save_checkpoint(self, file_name: str = "best_embeds.pt"):
         log_dir = self.logger.log_dir()
         if log_dir is not None:
             torch.save(self.best_embeds, pathlib.Path(log_dir) / file_name)
@@ -483,6 +485,10 @@ class IML_Attack:
             univ_logits = univ_logits.view(-1, univ_logits.size(-1))
             sample_logits = sample_logits.view(-1, sample_logits.size(-1))
             loss = 1 - torch.cosine_similarity(univ_logits, sample_logits, dim=-1).mean()
+
+            # TODO: currently we compute the loss uniformly over all tokens.
+            # i think instead we should first average per-sequence and then average over the sequences.
+            # but it is an annoying implementation since we do mask_select here to choose the target tokens.
 
         if loss is not None:
             self.grad_scaler.scale(loss).backward()
