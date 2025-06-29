@@ -67,7 +67,7 @@ class HarmBenchEvaluator(Evaluator):
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
         use_context: bool = False,
-        verbose: bool = False,
+        verbose: bool = True,
     ):
 
         model_name = "cais/HarmBench-Llama-2-13b-cls"

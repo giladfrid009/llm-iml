@@ -19,7 +19,7 @@ class BeaverEvaluator(Evaluator):
         device_map: Any = "balanced_low_0",
         binary_thresh: float | None = None,
         torch_compile: bool = False,
-        verbose: bool = False,
+        verbose: bool = True,
     ):
         """
         Args:

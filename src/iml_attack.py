@@ -1,5 +1,6 @@
 from src.attacks.attack import Attack
 from src.adver_model import AdverModel
+from src.activ_extractor import ActivationExtractor
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
 from src.logger import Logger
@@ -117,6 +118,7 @@ class StopCriteria:
 
         return False
 
+
 # TODO: add scheduling to the inner-attack i.e accept a lambda function that takes the current epoch and
 # returns an instance of an inner attack.
 # TODO: implmenet discretization
@@ -126,6 +128,7 @@ class IML_Attack:
         adv_model: AdverModel,
         internal_attack: Attack,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
+        activ_extractor: ActivationExtractor,
         evaluators: list[Evaluator],
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
@@ -139,6 +142,8 @@ class IML_Attack:
             adv_model (AdverModel): The adversarial model to use for text generation.
             internal_attack (Attack): The internal attack to use for generating adversarial examples.
             optim_factory (Callable): Function to create an optimizer for the universal embeddings.
+            activ_extractor (ActivationExtractor): Activation extractor to capture model activations
+                from latent layers. Loss computation is based on these activations.
             evaluators (list[Evaluator]): List of evaluators to use for evaluation.
             eval_freq (int | float): Frequency of evaluation during training.
                 - if int, evaluates every `eval_freq` epochs.
@@ -151,6 +156,7 @@ class IML_Attack:
         """
         self.adv_model = adv_model
         self.internal_attack = internal_attack
+        self.activ_extractor = activ_extractor
 
         self.evaluators = evaluators
         self.eval_freq = eval_freq
@@ -385,12 +391,12 @@ class IML_Attack:
                         # training step
                         loss_value = self.optim_step(batch_data, epoch_num, batch_num)
                         stop_criteria.update(epoch_num, None)
-
                         self.logger.log_scalar("loss", loss_value, step=global_step)
                         batch_pbar.set_postfix({"loss": loss_value})
+                        should_stop = stop_criteria.should_stop()
 
                         # evaluation step
-                        if global_step % round(self.eval_freq * len(dl_train)) == 0:
+                        if should_stop or (global_step > 0 and global_step % round(self.eval_freq * len(dl_train)) == 0):
                             self.adv_model.set_embeddings(self.univ_embeds)
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[0])
@@ -430,7 +436,8 @@ class IML_Attack:
         self.optimizer.zero_grad()
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-            # build conversations
+
+            # construct conversations
             input_text, target_text = data["prompt"], data["target"]
             conversations = [[{"role": "user", "content": prm}] for prm in input_text]
 
@@ -472,43 +479,42 @@ class IML_Attack:
 
             token_dict = self.adv_model.tokenize(conversations, target_text)
 
-            # compute per-sample logits
-            with torch.inference_mode():
-                self.adv_model.set_embeddings(sample_embed)
-                sample_logits = self.compute_logits(token_dict, self.adv_model)
+            with self.activ_extractor.capture():
 
-            # compute universal logits
-            self.adv_model.set_embeddings(self.univ_embeds)
-            univ_logits = self.compute_logits(token_dict, self.adv_model)
+                # compute per-sample activations
+                with torch.inference_mode():
+                    self.adv_model.set_embeddings(sample_embed)
+                    self.adv_model.forward(token_dict["input_ids"], token_dict["attention_mask"], token_dict["adv_mask"])
+                    sample_activs = self.activ_extractor.get_activations()
+
+                # compute universal activations
+                self.adv_model.set_embeddings(self.univ_embeds)
+                self.adv_model.forward(token_dict["input_ids"], token_dict["attention_mask"], token_dict["adv_mask"])
+                univ_activs = self.activ_extractor.get_activations()
+
+            # extract activations for the target tokens
+            target_mask = token_dict["target_mask"][:, 1:]  # remove first BOS token
+            sample_activs = {k: v[:, :-1] for k, v in sample_activs.items()}  # remove last new token
+            univ_activs = {k: v[:, :-1] for k, v in univ_activs.items()}  # remove last new token
+            sample_activs = {k: v[target_mask] for k, v in sample_activs.items()}
+            univ_activs = {k: v[target_mask] for k, v in univ_activs.items()}
+
+            # NOTE: we currently compute the loss over ALL target tokens
+            # i.e for each sample we use multiple tokens for loss calculation
 
             # compute loss
-            univ_logits = univ_logits.view(-1, univ_logits.size(-1))
-            sample_logits = sample_logits.view(-1, sample_logits.size(-1))
-            loss = 1 - torch.cosine_similarity(univ_logits, sample_logits, dim=-1).mean()
+            loss = 0.0
+            for key in sample_activs.keys():
+                s_activ = sample_activs[key]
+                u_activ = univ_activs[key]
+                s_activ = s_activ.view(-1, s_activ.size(-1))
+                u_activ = u_activ.view(-1, u_activ.size(-1))
+                layer_loss = 1 - torch.cosine_similarity(u_activ, s_activ, dim=-1).mean()
+                loss = loss + layer_loss
 
-            # TODO: currently we compute the loss uniformly over all tokens.
-            # i think instead we should first average per-sequence and then average over the sequences.
-            # but it is an annoying implementation since we do mask_select here to choose the target tokens.
+        # grad step
+        self.grad_scaler.scale(loss).backward()
+        self.grad_scaler.step(self.optimizer)
+        self.grad_scaler.update()
 
-        if loss is not None:
-            self.grad_scaler.scale(loss).backward()
-            self.grad_scaler.step(self.optimizer)
-            self.grad_scaler.update()
-
-        return loss.item() if loss is not None else None
-
-    def compute_logits(self, token_dict: dict, adv_model: AdverModel) -> torch.Tensor:
-
-        result = adv_model.forward(
-            input_ids=token_dict["input_ids"],
-            attention_mask=token_dict["attention_mask"],
-            adv_mask=token_dict["adv_mask"],
-        )
-
-        logits, _ = self.internal_attack.align_preds(
-            result.logits,
-            input_ids=token_dict["input_ids"],
-            target_mask=token_dict["target_mask"],
-        )
-
-        return logits
+        return loss.item()

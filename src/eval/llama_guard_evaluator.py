@@ -37,7 +37,7 @@ class LlamaGuardEvaluator(Evaluator):
         model_name: str = "meta-llama/Llama-Guard-3-8B",
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
-        verbose: bool = False,
+        verbose: bool = True,
     ):
 
         if model_name not in SUPPORTED_MODELS:

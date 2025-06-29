@@ -38,7 +38,7 @@ class StrongRejectEvaluator(Evaluator):
         binary_thresh: float | None = 0.5,
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
-        verbose: bool = False,
+        verbose: bool = True,
     ):
         """
         Args:

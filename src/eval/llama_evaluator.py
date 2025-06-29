@@ -50,7 +50,7 @@ class LlamaEvaluator(Evaluator):
         model_name="meta-llama/Llama-2-7b-chat-hf",
         llm_config: LLMConfig | None = None,
         sampling_params: SamplingParams | None = None,
-        verbose: bool = False,
+        verbose: bool = True,
     ):
 
         if model_name not in SUPPORTED_MODELS:

@@ -1,11 +1,13 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 from typing import Iterator
 import copy
 
 from transformers.generation.utils import GenerateDecoderOnlyOutput
 from transformers import PreTrainedModel, PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
+
 
 from src import tokenize
 from src import utils
@@ -113,6 +115,19 @@ class AdverModel(nn.Module):
             Iterator[nn.Parameter]: Trainable parameters.
         """
         yield self.adv_embeds
+
+    # TODO: EXPERIMENTAL
+    @torch.no_grad()
+    def discretize(self) -> None:
+        if self.adv_embeds is None:
+            raise ValueError("Adversarial embeddings are not set. Please set them using `set_embeddings` method.")
+
+        adv_embeds = F.normalize(self.adv_embeds, p=2, dim=-1)  # shape [b, n, d]
+        weights = F.normalize(self.orig_embedder.weight, p=2, dim=-1)  # shape [v, d]
+        weights = weights.unsqueeze(0).expand(adv_embeds.size(0), -1, -1)  # shape [b, v, d]
+        dists = torch.cdist(adv_embeds, weights, p=2)  # shape [b, n, v]
+        closest_indices = torch.argmin(dists, dim=-1)  # shape [b, n]
+        self.adv_embeds = self.orig_embedder(closest_indices)  # shape [b, n, d]
 
     def train(self, mode: bool = True) -> "AdverModel":
         """
