@@ -260,7 +260,7 @@ class IML_Attack:
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
             all_responses = []
-            for batch_data in tqdm(dl_eval, desc="Predict", leave=False):
+            for batch_data in tqdm(dl_eval, desc="Generating", leave=False):
                 prompts = batch_data["prompt"]
                 conversations = [[{"role": "user", "content": prm}] for prm in prompts]
                 responses = adv_model.chat(conversations, **kwargs)
@@ -372,18 +372,19 @@ class IML_Attack:
 
             # initial evaluation
             self.adv_model.set_embeddings(self.univ_embeds)
-            metric = self.evaluate(self.adv_model, self.judge, dl_eval, update_best=True)[0]
-            stop_criteria.update(0, metric)
+            metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
 
-            epoch_pbar.set_postfix({self.judge.name: metric})
+            self.save_checkpoint()
             self.logger.log_scalar(f"{self.judge.name}/best", self.best_metric, step=-1)
+            self.logger.log_scalers({f"{e.name}/current": m for e, m in zip(self.evaluators, metrics)}, step=-1)
+            epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
             # main training loop
             for epoch_num in epoch_pbar:
                 if should_stop:
                     break
 
-                with tqdm(dl_train, desc="Batch", leave=False) as batch_pbar:
+                with tqdm(dl_train, desc="Batches", leave=False) as batch_pbar:
                     for batch_num, batch_data in enumerate(batch_pbar):
                         if should_stop:
                             break
@@ -407,8 +408,6 @@ class IML_Attack:
                             epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
                         global_step += 1
-
-                stop_criteria.update(epoch_num, None)
 
         # set to best embeddings and final eval
         self.adv_model.set_embeddings(self.best_embeds)
