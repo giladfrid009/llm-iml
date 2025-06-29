@@ -1,6 +1,6 @@
 from src.attacks.attack import Attack
 from src.adver_model import AdverModel
-from src.activ_extractor import ActivationExtractor
+from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
 from src.logger import Logger
@@ -12,6 +12,7 @@ import time
 from typing import Iterable, Callable
 import warnings
 import pathlib
+from functools import partial
 
 
 class StopCriteria:
@@ -117,6 +118,23 @@ class StopCriteria:
             return True
 
         return False
+
+
+# TODO: currently loss is over all target tokens and not a single token per sample
+def cosine_similarity_loss(univ_activ: torch.Tensor, sample_activ: torch.Tensor, target_mask: torch.Tensor) -> torch.Tensor:
+    """
+    Args:
+        univ_activ (torch.Tensor): Universal activations of shape (batch_size, seq_length, hidden_dim).
+        sample_activ (torch.Tensor): Sample activations of shape (batch_size, seq_length, hidden_dim).
+        target_mask (torch.Tensor): Mask indicating which tokens are targets of shape (batch_size, seq_length).
+    """
+    num_targets = torch.sum(target_mask.float(), dim=-1)  # (batch_size)
+    target_mask = target_mask.unsqueeze(-1)  # (batch_size, seq_length, 1)
+    univ_activ = univ_activ.masked_fill(~target_mask, 0.0)  # (batch_size, seq_length, hidden_dim)
+    sample_activ = sample_activ.masked_fill(~target_mask, 0.0)  # (batch_size, seq_length, hidden_dim)
+    cos_sim = torch.cosine_similarity(univ_activ, sample_activ, dim=-1)  # (batch_size, seq_length)
+    loss = 1 - cos_sim.sum(dim=-1) / num_targets  # (batch_size)
+    return loss
 
 
 # TODO: add scheduling to the inner-attack i.e accept a lambda function that takes the current epoch and
@@ -491,25 +509,14 @@ class IML_Attack:
                 self.adv_model.forward(token_dict["input_ids"], token_dict["attention_mask"], token_dict["adv_mask"])
                 univ_activs = self.activ_extractor.get_activations()
 
-            # extract activations for the target tokens
-            target_mask = token_dict["target_mask"][:, 1:]  # remove first BOS token
-            sample_activs = {k: v[:, :-1] for k, v in sample_activs.items()}  # remove last new token
-            univ_activs = {k: v[:, :-1] for k, v in univ_activs.items()}  # remove last new token
-            sample_activs = {k: v[target_mask] for k, v in sample_activs.items()}
-            univ_activs = {k: v[target_mask] for k, v in univ_activs.items()}
-
-            # NOTE: we currently compute the loss over ALL target tokens
-            # i.e for each sample we use multiple tokens for loss calculation
+            # align target mask and activations
+            target_mask = token_dict["target_mask"][:, 1:]
+            sample_activs = {k: v[:, :-1] for k, v in sample_activs.items()}
+            univ_activs = {k: v[:, :-1] for k, v in univ_activs.items()}
 
             # compute loss
-            loss = 0.0
-            for key in sample_activs.keys():
-                s_activ = sample_activs[key]
-                u_activ = univ_activs[key]
-                s_activ = s_activ.view(-1, s_activ.size(-1))
-                u_activ = u_activ.view(-1, u_activ.size(-1))
-                layer_loss = 1 - torch.cosine_similarity(u_activ, s_activ, dim=-1).mean()
-                loss = loss + layer_loss
+            criterion = ActivationLoss(loss_fn=partial(cosine_similarity_loss, target_mask=target_mask))
+            loss = criterion.forward(univ_activs, sample_activs)
 
         # grad step
         self.grad_scaler.scale(loss).backward()

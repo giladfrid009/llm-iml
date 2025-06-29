@@ -200,5 +200,5 @@ class ActivationLoss(torch.nn.Module):
         sample = next(iter(args[0].values()))
         losses = torch.empty(size=(sample.size(0), len(keys)), device=sample.device)
         for i, key in enumerate(keys):
-            losses[:, i] = self.loss_fn(*[arg[key].flatten(1) for arg in args])
+            losses[:, i] = self.loss_fn(*[arg[key] for arg in args])
         return self.aggr_fn(losses).mean()
