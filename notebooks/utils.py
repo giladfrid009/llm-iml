@@ -57,7 +57,7 @@ def load_model(
     if kwargs is None:
         kwargs = {}
 
-    kwargs = kwargs.copy()
+    config = kwargs.copy()
 
     if model_name not in SUPPORTED_MODELS:
         raise ValueError(f"Model '{model_name}' is not supported. Supported models are: {SUPPORTED_MODELS}")
@@ -65,34 +65,34 @@ def load_model(
     # Model-Dependent configurations
 
     if model_name == "lmsys/vicuna-7b-v1.5":
-        kwargs.update({"chat_template": VICUNA_TEMPLATE})
+        config.update({"chat_template": VICUNA_TEMPLATE})
 
     elif model_name == "mosaicml/mpt-7b-chat":
-        kwargs.update({"tokenizer_name": "EleutherAI/gpt-neox-20b", "chat_template": MPT_TEMPLATE})
+        config.update({"tokenizer_name": "EleutherAI/gpt-neox-20b", "chat_template": MPT_TEMPLATE})
 
     elif model_name == "microsoft/Orca-2-7b":
-        kwargs.update({"chat_template": ORCA_TEMPLATE})
+        config.update({"chat_template": ORCA_TEMPLATE})
 
     elif model_name == "microsoft/Phi-3-mini-4k-instruct":
-        kwargs.update({"trust_remote_code": True})
+        config.update({"trust_remote_code": True})
 
     elif model_name == "microsoft/Phi-4-mini-instruct":
-        kwargs.update({"trust_remote_code": True})
+        config.update({"trust_remote_code": True})
 
     elif model_name == "ContinuousAT/Llama-2-7B-CAT":
-        kwargs.update({"model_name": "meta-llama/Llama-2-7b-chat-hf", "adapter_name": "ContinuousAT/Llama-2-7B-CAT"})
+        config.update({"model_name": "meta-llama/Llama-2-7b-chat-hf", "adapter_name": "ContinuousAT/Llama-2-7B-CAT"})
 
     elif model_name == "apple/OpenELM-1_1B-Instruct":
-        kwargs.update({"trust_remote_code": True})
+        config.update({"trust_remote_code": True})
 
-    kwargs.setdefault("model_name", model_name)
-    kwargs.setdefault("device_map", device_map)
-    kwargs.setdefault("torch_dtype", torch_dtype)
-    kwargs.setdefault("hf_token", hf_token)
+    config.setdefault("model_name", model_name)
+    config.setdefault("device_map", device_map)
+    config.setdefault("torch_dtype", torch_dtype)
+    config.setdefault("hf_token", hf_token)
 
     # print kwargs
     print("Model Config:")
-    for key, value in kwargs.items():
+    for key, value in config.items():
         print(f"{key}: {value}")
 
-    return utils_hf.load_hf_model(**kwargs)
+    return utils_hf.load_hf_model(**config)

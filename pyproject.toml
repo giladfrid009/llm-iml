@@ -29,6 +29,7 @@ dependencies = [
     "gserve",
     "clearml>=2.0.0",
     "tensorboard>=2.19.0",
+    "sentence-transformers>=5.0.0",
 ]
 
 [tool.uv.sources]
