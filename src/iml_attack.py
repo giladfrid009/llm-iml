@@ -494,6 +494,7 @@ class IML_Attack:
                     conversations = [conv for conv, m in zip(conversations, mask_succ) if m]
                     target_text = [tgt for tgt, m in zip(target_text, mask_succ) if m]
 
+            # tokenize remaining coversations
             token_dict = self.adv_model.tokenize(conversations, target_text)
 
             with self.activ_extractor.capture():
