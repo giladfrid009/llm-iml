@@ -46,7 +46,7 @@ class BeaverEvaluator(Evaluator):
         ).eval()
 
         if torch_compile:
-            # TODO: inductor is for training + inference
+            # TODO: (low priority) inductor is for training + inference
             # maybe there's a better inference only backend which works
             self.model.forward = torch.compile(
                 self.model.forward,

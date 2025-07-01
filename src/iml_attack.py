@@ -120,7 +120,7 @@ class StopCriteria:
         return False
 
 
-# TODO: currently loss is over all target tokens and not a single token per sample
+# NOTE: currently loss is over all target tokens and not a single token per sample
 def cosine_similarity_loss(univ_activ: torch.Tensor, sample_activ: torch.Tensor, target_mask: torch.Tensor) -> torch.Tensor:
     """
     Args:
@@ -309,7 +309,7 @@ class IML_Attack:
         if isinstance(evalers, Evaluator):
             evalers = [evalers]
 
-        # TODO: add support to evaluating mutiple generations per prompt
+        # TODO: (low priority) add support to evaluating mutiple generations per prompt
         # easiest and probably cleanest solution is to copy each row in dl_eval multiple times
 
         if dl_eval.drop_last or dl_eval.shuffle:
