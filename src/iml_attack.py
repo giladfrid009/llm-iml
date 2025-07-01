@@ -128,12 +128,9 @@ def cosine_similarity_loss(univ_activ: torch.Tensor, sample_activ: torch.Tensor,
         sample_activ (torch.Tensor): Sample activations of shape (batch_size, seq_length, hidden_dim).
         target_mask (torch.Tensor): Mask indicating which tokens are targets of shape (batch_size, seq_length).
     """
-    num_targets = torch.sum(target_mask.float(), dim=-1)  # (batch_size)
-    target_mask = target_mask.unsqueeze(-1)  # (batch_size, seq_length, 1)
-    univ_activ = univ_activ.masked_fill(~target_mask, 0.0)  # (batch_size, seq_length, hidden_dim)
-    sample_activ = sample_activ.masked_fill(~target_mask, 0.0)  # (batch_size, seq_length, hidden_dim)
     cos_sim = torch.cosine_similarity(univ_activ, sample_activ, dim=-1)  # (batch_size, seq_length)
-    loss = 1 - cos_sim.sum(dim=-1) / num_targets  # (batch_size)
+    loss_matrix = (1 - cos_sim) * target_mask.bool()  # (batch_size, seq_length)
+    loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
     return loss
 
 

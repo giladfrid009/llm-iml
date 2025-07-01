@@ -31,31 +31,6 @@ class SoftPrompt(Attack):
         self.mixed_precision = mixed_precision
         self.kv_caching = kv_caching
 
-    def _align_preds(
-        self,
-        logits: torch.Tensor,
-        input_ids: torch.Tensor,
-        target_mask: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Aligns the predictions with the target tokens for loss calculation.
-
-        Args:
-            logits (torch.Tensor): Model output logits.
-            input_ids (torch.Tensor): Input token IDs.
-            target_mask (torch.Tensor): Mask indicating target tokens.
-
-        Returns:
-            tuple[torch.Tensor, torch.Tensor]: Tuple containing aligned logits and target IDs.
-        """
-        logits = logits[:, :-1, :]
-        input_ids = input_ids[:, 1:]
-        target_mask = target_mask[:, 1:]
-
-        target_ids = input_ids[target_mask].view(-1)
-        pred_logits = logits[target_mask].view(-1, logits.size(-1))
-        return pred_logits, target_ids
-
     def _init_embedding(self, num_inputs: int, **kwargs) -> torch.Tensor:
         return torch.randn(
             size=(num_inputs, self.num_tokens, self.embed_dim),
@@ -98,6 +73,24 @@ class SoftPrompt(Attack):
             new_token_dict["target_mask"] = token_dict["target_mask"][:, kv_idx:]
 
         return new_token_dict
+
+    def criterion(
+        self,
+        logits: torch.Tensor,
+        input_ids: torch.Tensor,
+        target_mask: torch.Tensor,
+    ) -> torch.Tensor:
+
+        # align prdicted logits and target_ids
+        logits = logits[:, :-1]  # remove new token
+        target_ids = input_ids[:, 1:].clone()  # remove BOS token
+        target_mask = target_mask[:, 1:].clone()  # remove BOS token
+
+        # compute CE loss
+        loss_matrix = torch.nn.functional.cross_entropy(logits.swapdims(-1, -2), target_ids, reduction="none")
+        loss_matrix = loss_matrix * target_mask.bool()
+        loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
+        return loss
 
     def fit(
         self,
@@ -150,16 +143,7 @@ class SoftPrompt(Attack):
                         adv_mask=token_dict["adv_mask"],
                     )
 
-                    pred_logits, target_ids = self._align_preds(
-                        logits=result.logits,
-                        input_ids=token_dict["input_ids"],
-                        target_mask=token_dict["target_mask"],
-                    )
-
-                    # TODO: currently in the loss caclulation, we give uniform weights to all tokens.
-                    # i think instead we should first average per-sequence and then average over the sequences.
-                    # but it is an annoying implementation since we do mask_select here to choose the target tokens.
-                    loss = torch.nn.functional.cross_entropy(pred_logits, target_ids)
+                    loss = self.criterion(logits=result.logits, input_ids=token_dict["input_ids"], target_mask=token_dict["target_mask"])
 
                 scaler.scale(loss).backward()
                 scaler.step(optim)
