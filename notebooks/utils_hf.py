@@ -29,7 +29,7 @@ def load_hf_tokenizer(
     tokenizer_name: str,
     chat_template: str | None = None,
     tokenizer_kwargs: dict | None = None,
-    *,
+    trust_remote_code: bool = False,
     hf_token: str | None = None,
 ) -> PreTrainedTokenizer:
 
@@ -64,6 +64,7 @@ def load_hf_model(
     device_map: str = "cuda:0",
     tokenizer_name: str | None = None,
     adapter_name: str | None = None,
+    trust_remote_code: bool = False,
     *,
     chat_template: str | None = None,
     model_kwargs: dict | None = None,
@@ -88,6 +89,7 @@ def load_hf_model(
         model_name,
         torch_dtype=torch_dtype,
         device_map=device_map,
+        trust_remote_code=trust_remote_code,
         **model_kwargs,
     )
 
@@ -104,6 +106,7 @@ def load_hf_model(
     tokenizer = load_hf_tokenizer(
         tokenizer_name,
         chat_template=chat_template,
+        trust_remote_code=trust_remote_code,
         tokenizer_kwargs=tokenizer_kwargs,
     )
 

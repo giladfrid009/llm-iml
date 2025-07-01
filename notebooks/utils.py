@@ -20,11 +20,12 @@ SUPPORTED_MODELS = [
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "meta-llama/Llama-3.2-1B-Instruct",
     "meta-llama/Llama-2-7b-chat-hf",
-    "lmsys/vicuna-7b-v1.5",  # NOTE: no chat template
+    "lmsys/vicuna-7b-v1.5",
     "mistralai/Mistral-7B-Instruct-v0.3",
     "tiiuae/falcon-7b-instruct",
-    "mosaicml/mpt-7b-chat",  # NOTE: no chat template
-    "microsoft/Orca-2-7b",  # NOTE: no chat template
+    "tiiuae/Falcon3-7B-Instruct",
+    "mosaicml/mpt-7b-chat",
+    "microsoft/Orca-2-7b",
     "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/Phi-4-mini-instruct",
     "upstage/SOLAR-10.7B-Instruct-v1.0",
@@ -34,7 +35,7 @@ SUPPORTED_MODELS = [
     "google/gemma-2b-it",
     "google/gemma-2-2b-it",
     "google/gemma-3-1b-it",
-    "ContinuousAT/Llama-2-7B-CAT"  # NOTE: adapter
+    "ContinuousAT/Llama-2-7B-CAT",
     "apple/OpenELM-1_1B-Instruct",
 ]
 
@@ -61,27 +62,25 @@ def load_model(
     if model_name not in SUPPORTED_MODELS:
         raise ValueError(f"Model '{model_name}' is not supported. Supported models are: {SUPPORTED_MODELS}")
 
+    # Model-Dependent configurations
+
     if model_name == "lmsys/vicuna-7b-v1.5":
         kwargs.update({"chat_template": VICUNA_TEMPLATE})
 
     elif model_name == "mosaicml/mpt-7b-chat":
-        kwargs.update(
-            {
-                "tokenizer_name": "EleutherAI/gpt-neox-20b",
-                "chat_template": MPT_TEMPLATE,
-            }
-        )
+        kwargs.update({"tokenizer_name": "EleutherAI/gpt-neox-20b", "chat_template": MPT_TEMPLATE})
 
     elif model_name == "microsoft/Orca-2-7b":
         kwargs.update({"chat_template": ORCA_TEMPLATE})
 
+    elif model_name == "microsoft/Phi-3-mini-4k-instruct":
+        kwargs.update({"trust_remote_code": True})
+
+    elif model_name == "microsoft/Phi-4-mini-instruct":
+        kwargs.update({"trust_remote_code": True})
+
     elif model_name == "ContinuousAT/Llama-2-7B-CAT":
-        kwargs.update(
-            {
-                "model_name": "meta-llama/Llama-2-7b-chat-hf",
-                "adapter_name": "ContinuousAT/Llama-2-7B-CAT",
-            }
-        )
+        kwargs.update({"model_name": "meta-llama/Llama-2-7b-chat-hf", "adapter_name": "ContinuousAT/Llama-2-7B-CAT"})
 
     elif model_name == "apple/OpenELM-1_1B-Instruct":
         kwargs.update({"trust_remote_code": True})
@@ -90,7 +89,7 @@ def load_model(
     kwargs.setdefault("device_map", device_map)
     kwargs.setdefault("torch_dtype", torch_dtype)
     kwargs.setdefault("hf_token", hf_token)
-    
+
     # print kwargs
     print("Model Config:")
     for key, value in kwargs.items():
