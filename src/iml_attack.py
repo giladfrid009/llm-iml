@@ -447,6 +447,34 @@ class IML_Attack:
             float | None: Loss value for the optimization step, or None if no loss is computed.
 
         """
+        
+        # NOTE: IDEA: instead of using a fixed target, generate affirmative responses from the 
+        # per-sample attacks and use them as targets instead.
+        # We should add attack parameter `dynamic_targets` which enables / disables it.
+        # CONS: 
+        # 1. very slow since we need to generate responses, but if we use `skip_failed_attacks=True` then 
+        # no additional time cost since we generate it anyways.
+        # 2. need to be careful with tokenization, tokenize the new generated response as the target
+        # PROS: 
+        # 1. dynamic targets instead of forced ones
+        # 2. will allow to support attacks which do not recieve target argument
+        # 3. correctness - `skip_failed_attacks` judges the actual generated responses
+        
+        # NOTE: IDEA: let the per-sample attacks to also modify the prompt and not only the adversarial tokens.
+        # Even more generally - the per-sample attack returns a new adversarial prompt (which may or may not incorporate adv tokens).
+        # combined with the previous idea, we then generate an affirmative response to the adver input and use it as the target.
+        # CONS:
+        # 1. if we allow to modify also the input from the per-sample attack then the affirmative target 
+        # might not even correspond to the original prompt, therefore its not clear what we're optimizing in that case
+        # 2. in that case the returned outputs should be adversarial embeddings and not adversarial input tokens, since SoftPrompt works on the 
+        # embedding level. Therefore we need to support that.
+        # PROS:
+        # 1. allows unconstrained use of all per-sample attack altogether:
+        #   - for example the per-sample attack doesnt have to use the exact number of adver tokens as the universal attack
+        #   - new supported attacks:  direct request attack and also human_jailbreaks, and all attacker-LLM based attacks.
+        
+        
+        
         self.optimizer.zero_grad()
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
