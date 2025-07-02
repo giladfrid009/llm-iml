@@ -31,7 +31,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior, num_generate, verbose=False):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False):
         """
         Generates test cases for a single behavior
 
@@ -42,7 +42,6 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         """
         # ========== Behavior and Target str ==========
         # get required variables from behavior dictionary
-        behavior_dict = behavior
         behavior = behavior_dict["Behavior"]
         context_str = behavior_dict["ContextString"]
         behavior_id = behavior_dict["BehaviorID"]

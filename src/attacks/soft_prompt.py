@@ -83,8 +83,8 @@ class SoftPrompt(Attack):
 
         # align prdicted logits and target_ids
         logits = logits[:, :-1]  # remove new token
-        target_ids = input_ids[:, 1:].clone()  # remove BOS token
-        target_mask = target_mask[:, 1:].clone()  # remove BOS token
+        target_ids = input_ids[:, 1:]  # remove BOS token
+        target_mask = target_mask[:, 1:]  # remove BOS token
 
         # compute CE loss
         loss_matrix = torch.nn.functional.cross_entropy(logits.swapdims(-1, -2), target_ids, reduction="none")

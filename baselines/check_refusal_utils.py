@@ -39,7 +39,11 @@ REFUSAL_PREFIXES = [
 
 
 def check_refusal_completions(
-    model=None, tokenizer=None, inputs: List[str] = None, completions: List[str] = None, generation_batch_size=512
+    model=None,
+    tokenizer=None,
+    inputs: List[str] = None,
+    completions: List[str] = None,
+    generation_batch_size=512,
 ):
     """
     Generate function to check for refusal prefixes in the completions from inputs

@@ -40,7 +40,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         **model_kwargs,
     ):
         """
-        :param adv_model: 
+        :param adv_model:
         :param num_steps: the number of optimization steps to use
         :param adv_string_init: the initial adversarial string to start with
         :param allow_non_ascii: whether to allow non-ascii characters when sampling candidate updates
@@ -81,7 +81,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior_dict, verbose=False, **kwargs):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate=1, verbose=False):
         """
         Generates test cases for a single behavior
 
@@ -266,7 +266,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
 
         return test_case, logs
 
-    def compute_candidates_loss(self, search_batch_size, input_embeds, target_ids):
+    def compute_candidates_loss(self, search_batch_size: int, input_embeds: torch.Tensor, target_ids: torch.Tensor) -> torch.Tensor:
         if self.search_batch_size != search_batch_size:
             print(f"INFO: Setting candidates search_batch_size to {search_batch_size})")
             self.search_batch_size = search_batch_size

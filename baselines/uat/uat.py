@@ -56,7 +56,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
         **model_kwargs,
     ):
         """
-        :param adv_model: 
+        :param adv_model:
         :param num_steps: the number of optimization steps to use
         :param adv_string_init: the initial adversarial string to start with
         :param use_prefix_cache: whether to use KV cache for static prefix tokens (WARNING: Not all models support this)
@@ -126,7 +126,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
         loss = torch.cat(loss_list, dim=0)
         return loss
 
-    def generate_test_cases_single_behavior(self, behavior_dict, verbose=False, **kwargs):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False):
         """
         Generates test cases for a single behavior
 

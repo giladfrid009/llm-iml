@@ -73,7 +73,7 @@ class GCG(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior_dict, verbose=False, **kwargs):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate=1, verbose=False):
         """
         Generates test cases for a single behavior
 

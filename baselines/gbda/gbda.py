@@ -9,7 +9,16 @@ import json
 
 # ============================== GBDA CLASS DEFINITION ============================== #
 class GBDA(SingleBehaviorRedTeamingMethod):
-    def __init__(self, adv_model, num_optim_tokens=20, num_steps=50, lr=0.2, noise_scale=0.2, targets_path=None, **model_kwargs):
+    def __init__(
+        self,
+        adv_model,
+        num_optim_tokens=20,
+        num_steps=50,
+        lr=0.2,
+        noise_scale=0.2,
+        targets_path=None,
+        **model_kwargs,
+    ):
         """
         :param target_model: a dictionary specifying the target model (kwargs to load_model_and_tokenizer)
         :param num_optim_tokens: the number of tokens in each test case
@@ -34,7 +43,7 @@ class GBDA(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior, num_generate, verbose=False):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False):
         """
         Generates test cases for a single behavior
 
@@ -45,7 +54,6 @@ class GBDA(SingleBehaviorRedTeamingMethod):
         """
         # ========== Behavior and Target str ==========
         # get required variables from behavior dictionary
-        behavior_dict = behavior
         behavior = behavior_dict["Behavior"]
         context_str = behavior_dict["ContextString"]
         behavior_id = behavior_dict["BehaviorID"]
