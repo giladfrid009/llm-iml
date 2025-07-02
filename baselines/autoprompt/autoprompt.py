@@ -18,8 +18,12 @@ from baselines.autoprompt.autoprompt_utils import sample_control_autoprompt, get
 # 1. accept an instance of AdverModel instead of creating new model and tokenizer inside RedTeamingMethod
 #        - make sure that get_template still works
 # 2. accept batch of conversations and targets instead of targets_path
-# 3. make the method use exact number of tokens and not a random adv_string_init
+# 3. make the method use exact number of tokens and not a random adv_string_init which gets tokenized to unknown number of tokens
+# 4. initialization - instead of initial `adv_string_init`, accept an `embeds_init` parameter.
 
+# TODO: CHECK:
+# 1. use_prefix_cache=True modifies an attribute of the model, makes sure its not a problem, 
+# especially since the model is afterwards used outside of this attack.
 
 # ============================== GCG CLASS DEFINITION ============================== #
 class AutoPrompt(SingleBehaviorRedTeamingMethod):
@@ -53,7 +57,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         :param early_stopping: an alternate form of early stopping, based solely on early_stopping_min_loss
         :param early_stopping_min_loss: the loss at which to stop optimization if early_stopping is True
         """
-        super().__init__(adv_model, **model_kwargs)  # assigns self.model, self.tokenizer, and self.model_name_or_path
+        super().__init__(adv_model, **model_kwargs)
         self.num_steps = num_steps
         self.adv_string_init = adv_string_init
         self.allow_non_ascii = allow_non_ascii
@@ -81,7 +85,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior_dict, num_generate=1, verbose=False):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate=1, verbose=False) -> str:
         """
         Generates test cases for a single behavior
 
@@ -125,7 +129,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         early_stopping_min_loss = self.early_stopping_min_loss
 
         embed_layer = model.get_input_embeddings()
-        vocab_size = embed_layer.weight.shape[0]  # can be larger than tokenizer.vocab_size for some models
+        vocab_size: int = embed_layer.weight.shape[0]  # can be larger than tokenizer.vocab_size for some models
         vocab_embeds = embed_layer(torch.arange(0, vocab_size).long().to(device))
 
         not_allowed_tokens = None if allow_non_ascii else get_nonascii_toks(tokenizer)
@@ -152,8 +156,6 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
                 self.prefix_cache = outputs.past_key_values
 
         # ========== run optimization ========== #
-        all_losses = []
-        all_test_cases = []
         for i in range(num_steps):
             # ========== compute coordinate token_gradient ========== #
             # create input
@@ -169,7 +171,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
                 input_embeds = torch.cat([before_embeds, behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
                 outputs = model(inputs_embeds=input_embeds)
 
-            logits = outputs.logits
+            logits: torch.Tensor = outputs.logits
 
             # compute loss
             # Shift so that tokens < n predict n
@@ -178,7 +180,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
             shift_labels = target_ids
             # Flatten the tokens
             loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = loss_fct.forward(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
             token_grad = torch.autograd.grad(outputs=[loss], inputs=[optim_ids_onehot])[0]
 
@@ -232,16 +234,14 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
                 )
 
             # Auto Find Batch Size for foward candidates (each time go OOM will decay search_batch_size // 2)
-            loss = find_executable_batch_size(self.compute_candidates_loss, self.search_batch_size)(input_embeds, target_ids)
+            loss: torch.Tensor = find_executable_batch_size(self.compute_candidates_loss, self.search_batch_size)(input_embeds, target_ids)
 
             # ========== Update the optim_ids with the best candidate ========== #
             optim_ids = sampled_top_indices[loss.argmin()].unsqueeze(0)
 
             test_case_ids = torch.cat([behavior_ids, optim_ids], dim=1)
             test_case = tokenizer.decode(test_case_ids[0])
-            all_test_cases.append(test_case)
             current_loss = loss.min().item()
-            all_losses.append(current_loss)
 
             # ========== Eval and Early Stopping ========== #
             if (i % eval_steps == 0) or (i == num_steps - 1):
@@ -262,9 +262,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
             torch.cuda.empty_cache()
             gc.collect()
 
-        logs = {"final_loss": current_loss, "all_losses": all_losses, "all_test_cases": all_test_cases}
-
-        return test_case, logs
+        return test_case
 
     def compute_candidates_loss(self, search_batch_size: int, input_embeds: torch.Tensor, target_ids: torch.Tensor) -> torch.Tensor:
         if self.search_batch_size != search_batch_size:
@@ -290,7 +288,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
                     outputs = self.model(inputs_embeds=input_embeds_batch, past_key_values=prefix_cache_batch)
                 else:
                     outputs = self.model(inputs_embeds=input_embeds_batch)
-            logits = outputs.logits
+            logits: torch.Tensor = outputs.logits
 
             # compute loss
             # Shift so that tokens < n predict n
@@ -299,7 +297,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
             shift_labels = target_ids.repeat(input_embeds_batch.shape[0], 1)
             # Flatten the tokens
             loss_fct = CrossEntropyLoss(reduction="none")
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = loss_fct.forward(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             loss = loss.view(input_embeds_batch.shape[0], -1).mean(dim=1)
             all_loss.append(loss)
 

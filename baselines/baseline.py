@@ -1,6 +1,6 @@
 # ============================== BASELINE TEMPLATE ============================== #
 import time
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import numpy as np
 import transformers
 import vllm
@@ -18,7 +18,7 @@ class RedTeamingMethod:
     def __init__(self):
         raise NotImplementedError
 
-    def generate_test_cases(self, behaviors: list[dict[str, str]], verbose: bool = False):
+    def generate_test_cases(self, behaviors: list[dict[str, str]], verbose: bool = False) -> dict[str, list[str]]:
         """
         Generates test cases for the provided behaviors.
         For text behaviors, test cases are strings.
@@ -55,7 +55,7 @@ class SingleBehaviorRedTeamingMethod(RedTeamingMethod):
         self.num_test_cases_per_behavior = num_test_cases_per_behavior
         self.test_cases_batch_size = test_cases_batch_size
 
-    def generate_test_cases(self, behaviors: list[dict[str, str]], verbose: bool = False):
+    def generate_test_cases(self, behaviors: list[dict[str, str]], verbose: bool = False) -> dict[str, list[str]]:
         """
         Generates test cases for the provided behaviors. The outputs of this method are passed to the
         save_test_cases method, which saves test cases and logs to disk.
@@ -72,48 +72,39 @@ class SingleBehaviorRedTeamingMethod(RedTeamingMethod):
             self.num_test_cases_per_behavior = 1
 
         test_cases = {}
-        logs = {}
-        for behavior_dict in tqdm(behaviors, total=len(behaviors)):
+        for behavior_dict in tqdm(behaviors, total=len(behaviors), disable=not verbose):
             start_time = time.time()
             # break it down into batches
             num_batches = int(np.ceil(self.num_test_cases_per_behavior / self.test_cases_batch_size))
             remainder = self.num_test_cases_per_behavior % self.test_cases_batch_size
             current_test_cases = []
-            current_logs = []
-            for j in range(num_batches):
+            
+            for j in tqdm(range(num_batches), disable=not verbose, desc="Attack"):
                 # Calculate the current batch size
                 if j == num_batches - 1 and remainder != 0:
                     current_batch_size = remainder
                 else:
                     current_batch_size = self.test_cases_batch_size
 
-                if verbose:
-                    print(f"Generating batch {j+1}/{num_batches} with size {current_batch_size}")
-
-                batch_test_cases, batch_logs = self.generate_test_cases_single_behavior(
+                batch_test_cases = self.generate_test_cases_single_behavior(
                     behavior_dict=behavior_dict,
                     num_generate=current_batch_size,
                     verbose=verbose,
                 )
 
-                if isinstance(batch_test_cases, list) and (len(batch_test_cases) == len(batch_logs)):
+                if isinstance(batch_test_cases, list):
                     current_test_cases.extend(batch_test_cases)
-                    current_logs.extend(batch_logs)
                 else:
                     current_test_cases.append(batch_test_cases)
-                    current_logs.append(batch_logs)
 
             # add test cases and info to the output dictionaries
             behavior_id = behavior_dict["BehaviorID"]
 
             test_cases[behavior_id] = current_test_cases
-            logs[behavior_id] = current_logs
 
-            if verbose:
-                print(f"Time elapsed (s): {time.time() - start_time}")
-        return test_cases, logs
+        return test_cases
 
-    def generate_test_cases_single_behavior(self, behavior_dict: dict[str, str], num_generate: int, verbose: bool):
+    def generate_test_cases_single_behavior(self, behavior_dict: dict[str, str], num_generate: int, verbose: bool) -> list[str] | str:
         """
         Generates test cases for a specific behavior. This is the main method that should be implemented by subclasses.
 
@@ -125,6 +116,6 @@ class SingleBehaviorRedTeamingMethod(RedTeamingMethod):
         :param behavior_dict: a behavior dictionary specifying the behavior to generate test cases for
         :param num_generate: the number of test cases to generate (for attacks that can generate multiple test cases at once)
         :param verbose: whether to print progress
-        :return: (list(test_cases), list(logs)) OR (test_case, logs); a list of test cases and logs for the behavior, or a single test case and logs
+        :return: list(test_cases) OR test_case; a list of test cases or a single test.
         """
         raise NotImplementedError

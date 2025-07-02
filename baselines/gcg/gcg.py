@@ -1,7 +1,7 @@
 import gc
 import json
 import os
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import torch
 from torch.nn import CrossEntropyLoss
 
@@ -47,7 +47,7 @@ class GCG(SingleBehaviorRedTeamingMethod):
         :param early_stopping_min_loss: the loss at which to stop optimization if early_stopping is True
         :param starting_search_batch_size: the initial search_batch_size; will auto reduce later in case of OOM
         """
-        super().__init__(adv_model, **model_kwargs)  # assigns self.model, self.tokenizer, and self.model_name_or_path
+        super().__init__(adv_model, **model_kwargs)
         self.num_steps = num_steps
         self.adv_string_init = adv_string_init
         self.allow_non_ascii = allow_non_ascii
@@ -73,7 +73,7 @@ class GCG(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior_dict, num_generate=1, verbose=False):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate=1, verbose=False) -> str:
         """
         Generates test cases for a single behavior
 
@@ -95,7 +95,6 @@ class GCG(SingleBehaviorRedTeamingMethod):
         if context_str:
             behavior = f"{context_str}\n\n---\n\n{behavior}"
 
-        print(f"Behavior: {behavior_id} || Target: {target}")
         ### Targeted Model and Tokenier ###
         model = self.model
         device = model.device
@@ -117,7 +116,7 @@ class GCG(SingleBehaviorRedTeamingMethod):
         early_stopping_min_loss = self.early_stopping_min_loss
 
         embed_layer = model.get_input_embeddings()
-        vocab_size = embed_layer.weight.shape[0]  # can be larger than tokenizer.vocab_size for some models
+        vocab_size: int = embed_layer.weight.shape[0]  # can be larger than tokenizer.vocab_size for some models
         vocab_embeds = embed_layer(torch.arange(0, vocab_size).long().to(model.device))
 
         not_allowed_tokens = None if allow_non_ascii else get_nonascii_toks(tokenizer)
@@ -144,8 +143,6 @@ class GCG(SingleBehaviorRedTeamingMethod):
                 self.prefix_cache = outputs.past_key_values
 
         # ========== run optimization ========== #
-        all_losses = []
-        all_test_cases = []
         for i in tqdm(range(num_steps)):
             # ========== compute coordinate token_gradient ========== #
             # create input
@@ -161,7 +158,7 @@ class GCG(SingleBehaviorRedTeamingMethod):
                 input_embeds = torch.cat([before_embeds, behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
                 outputs = model(inputs_embeds=input_embeds)
 
-            logits = outputs.logits
+            logits: torch.Tensor = outputs.logits
 
             # compute loss
             # Shift so that tokens < n predict n
@@ -170,13 +167,18 @@ class GCG(SingleBehaviorRedTeamingMethod):
             shift_labels = target_ids
             # Flatten the tokens
             loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = loss_fct.forward(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
             token_grad = torch.autograd.grad(outputs=[loss], inputs=[optim_ids_onehot])[0]
 
             # ========== Sample a batch of new tokens based on the coordinate gradient. ========== #
             sampled_top_indices = sample_control(
-                optim_ids.squeeze(0), token_grad.squeeze(0), search_width, topk=256, temp=1, not_allowed_tokens=not_allowed_tokens
+                optim_ids.squeeze(0),
+                token_grad.squeeze(0),
+                search_width,
+                topk=256,
+                temp=1,
+                not_allowed_tokens=not_allowed_tokens,
             )
 
             # ========= Filter sampled_top_indices that aren't the same after detokenize->retokenize ========= #
@@ -224,16 +226,14 @@ class GCG(SingleBehaviorRedTeamingMethod):
                 )
 
             # Auto Find Batch Size for foward candidates (each time go OOM will decay search_batch_size // 2)
-            loss = find_executable_batch_size(self.compute_candidates_loss, self.search_batch_size)(input_embeds, target_ids)
+            loss: torch.Tensor = find_executable_batch_size(self.compute_candidates_loss, self.search_batch_size)(input_embeds, target_ids)
 
             # ========== Update the optim_ids with the best candidate ========== #
             optim_ids = sampled_top_indices[loss.argmin()].unsqueeze(0)
 
             test_case_ids = torch.cat([behavior_ids, optim_ids], dim=1)
             test_case = tokenizer.decode(test_case_ids[0])
-            all_test_cases.append(test_case)
             current_loss = loss.min().item()
-            all_losses.append(current_loss)
 
             # ========== Eval and Early Stopping ========== #
             if (i % eval_steps == 0) or (i == num_steps - 1):
@@ -257,11 +257,9 @@ class GCG(SingleBehaviorRedTeamingMethod):
             torch.cuda.empty_cache()
             gc.collect()
 
-        logs = {"final_loss": current_loss, "all_losses": all_losses, "all_test_cases": all_test_cases}
+        return test_case
 
-        return test_case, logs
-
-    def compute_candidates_loss(self, search_batch_size, input_embeds, target_ids):
+    def compute_candidates_loss(self, search_batch_size: int, input_embeds: torch.Tensor, target_ids: torch.Tensor) -> torch.Tensor:
         if self.search_batch_size != search_batch_size:
             print(f"INFO: Setting candidates search_batch_size to {search_batch_size})")
             self.search_batch_size = search_batch_size
@@ -285,7 +283,7 @@ class GCG(SingleBehaviorRedTeamingMethod):
                     outputs = self.model(inputs_embeds=input_embeds_batch, past_key_values=prefix_cache_batch)
                 else:
                     outputs = self.model(inputs_embeds=input_embeds_batch)
-            logits = outputs.logits
+            logits: torch.Tensor = outputs.logits
 
             # compute loss
             # Shift so that tokens < n predict n
@@ -294,7 +292,7 @@ class GCG(SingleBehaviorRedTeamingMethod):
             shift_labels = target_ids.repeat(input_embeds_batch.shape[0], 1)
             # Flatten the tokens
             loss_fct = CrossEntropyLoss(reduction="none")
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = loss_fct.forward(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             loss = loss.view(input_embeds_batch.shape[0], -1).mean(dim=1)
             all_loss.append(loss)
 

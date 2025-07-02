@@ -1,6 +1,7 @@
 import torch
 from torch.nn import CrossEntropyLoss
-from tqdm import tqdm
+from tqdm.auto import tqdm
+import numpy as np
 
 # https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
@@ -11,7 +12,7 @@ import json
 
 
 # ============================== UTILS FOR UAT ============================== #
-def hotflip_attack(averaged_grad, embedding_matrix, trigger_token_ids, increase_loss=False, num_candidates=1):
+def hotflip_attack(averaged_grad: torch.Tensor, embedding_matrix: torch.Tensor, trigger_token_ids, increase_loss:bool=False, num_candidates:int=1) -> np.ndarray | int:
     """
     The "Hotflip" attack described in Equation (2) of the paper. This code is heavily inspired by
     the nice code of Paul Michel here https://github.com/pmichel31415/translate/blob/paul/
@@ -52,7 +53,6 @@ class UAT(SingleBehaviorRedTeamingMethod):
         use_prefix_cache=True,
         num_candidates=3,
         targets_path=None,
-        eval_steps=10,
         **model_kwargs,
     ):
         """
@@ -62,9 +62,8 @@ class UAT(SingleBehaviorRedTeamingMethod):
         :param use_prefix_cache: whether to use KV cache for static prefix tokens (WARNING: Not all models support this)
         :param num_candidates: the number of candidates to consider at each step
         :param targets_path: the path to the targets JSON file
-        :param eval_steps: the number of steps between evaluations
         """
-        super().__init__(adv_model, **model_kwargs)  # assigns self.model, self.tokenizer, and self.model_name_or_path
+        super().__init__(adv_model, **model_kwargs)
         self.num_steps = num_steps
         self.adv_string_init = adv_string_init
         self.use_prefix_cache = use_prefix_cache
@@ -76,9 +75,6 @@ class UAT(SingleBehaviorRedTeamingMethod):
             self.behavior_id_to_target = json.load(file)
         self.targets_path = targets_path
 
-        ### Eval Vars ###
-        self.eval_steps = eval_steps
-
         template = get_template(self.tokenizer)
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
@@ -86,7 +82,14 @@ class UAT(SingleBehaviorRedTeamingMethod):
     def extract_grad_hook(self, module, grad_in, grad_out):
         self.extracted_grads.append(grad_out[0])
 
-    def get_loss(self, search_batch_size, input_embeds, target_embeds, target_ids, no_grad=True):
+    def get_loss(
+        self,
+        search_batch_size: int,
+        input_embeds: torch.Tensor,
+        target_embeds: torch.Tensor,
+        target_ids: torch.Tensor,
+        no_grad: bool = True,
+    ) -> torch.Tensor:
         loss_list = []
         for i in range(0, input_embeds.shape[0], search_batch_size):
             input_embeds_batch = input_embeds[i : i + search_batch_size]
@@ -112,7 +115,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
                 else:
                     outputs = self.model(inputs_embeds=input_embeds)
 
-            logits = outputs.logits
+            logits: torch.Tensor = outputs.logits
             # compute loss
             # Shift so that tokens < n predict n
             tmp = input_embeds.shape[1] - target_embeds.shape[1]
@@ -120,13 +123,13 @@ class UAT(SingleBehaviorRedTeamingMethod):
             shift_labels = target_ids.repeat(current_batch_size, 1)
             # Flatten the tokens
             loss_fct = CrossEntropyLoss(reduction="none")
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = loss_fct.forward(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             loss = loss.view(current_batch_size, -1).mean(dim=1)
             loss_list.append(loss)
         loss = torch.cat(loss_list, dim=0)
         return loss
 
-    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False) -> str:
         """
         Generates test cases for a single behavior
 
@@ -154,19 +157,16 @@ class UAT(SingleBehaviorRedTeamingMethod):
         num_steps = self.num_steps
         before_tc = self.before_tc
         after_tc = self.after_tc
-        eval_steps = self.eval_steps
 
         # handle setup for behaviors with context strings
         if context_str:
             behavior = f"{context_str}\n\n---\n\n{behavior}"
 
-        print(f"Behavior: {behavior_id} || Target: {target}")
-
         # ========= add gradient hooks to embeddings =========
         embed_layer = model.get_input_embeddings()
         embed_layer.weight.requires_grad = True
         embed_layer.register_backward_hook(self.extract_grad_hook)
-        embedding_weight = embed_layer.weight.detach()
+        embedding_weight: torch.Tensor = embed_layer.weight.detach()
 
         # ========== setup trigger_tokens and input_embeds components ========== #
         trigger_tokens = tokenizer(adv_string_init, return_tensors="pt", add_special_tokens=False).to(device)["input_ids"][0]
@@ -203,8 +203,6 @@ class UAT(SingleBehaviorRedTeamingMethod):
         end_iter = False
 
         # ========== run optimization ========== #
-        all_losses = []
-        all_test_cases = []
         for i in tqdm(range(num_steps), desc=f"UAT"):
             if end_iter:
                 break
@@ -287,12 +285,4 @@ class UAT(SingleBehaviorRedTeamingMethod):
             test_case_ids = torch.cat([behavior_ids, trigger_tokens.unsqueeze(0)], dim=1)
             test_case = tokenizer.decode(test_case_ids[0])
 
-            all_losses.append(curr_best_loss.item())
-            all_test_cases.append(test_case)
-            # ========== Eval ========== #
-            if i % eval_steps == 0:
-                print("Step {} | Test Case: {} | Loss: {:.3f}".format(i, test_case, best_loss.item()))
-                print()
-
-        logs = {"best_loss": best_loss.item(), "all_losses": all_losses, "all_test_cases": all_test_cases}
-        return test_case, logs
+        return test_case

@@ -474,7 +474,6 @@ class IML_Attack:
         #   - new supported attacks:  direct request attack and also human_jailbreaks, and all attacker-LLM based attacks.
         
         
-        
         self.optimizer.zero_grad()
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):

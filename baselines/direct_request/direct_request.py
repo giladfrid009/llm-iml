@@ -5,7 +5,7 @@ class DirectRequest(RedTeamingMethod):
     def __init__(self, **kwargs):
         pass
 
-    def generate_test_cases(self, behaviors, verbose=False):
+    def generate_test_cases(self, behaviors, verbose=False) -> dict[str, list[str]]:
         """
         Generates test cases for the provided behaviors by simply returning the behavior string as the test case.
         Since the behavior strings are formatted as commands, they can be directly used as test cases.
@@ -22,6 +22,7 @@ class DirectRequest(RedTeamingMethod):
             if context_str:
                 behavior = f"{context_str}\n\n---\n\n{behavior}"
             test_cases[behavior_id] = [behavior]
-        return test_cases, None
+        
+        return test_cases
 
     

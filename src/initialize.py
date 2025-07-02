@@ -52,7 +52,7 @@ class Initializer:
         Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
         The mean and std are computed per embedding dimension across all original embeddings.
         """
-        orig_weight = adver_model.orig_embedder.weight
+        orig_weight: torch.Tensor = adver_model.orig_embedder.weight # type: ignore
         mean = torch.mean(orig_weight, dim=0)
         std = torch.std(orig_weight, dim=0)
 

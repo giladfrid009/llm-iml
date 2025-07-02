@@ -99,11 +99,13 @@ class SoftPrompt(Attack):
         embeds_init: torch.Tensor | None = None,
     ) -> torch.Tensor:
 
-        # TODO: important: add early stopping. If logits.argmax() == target_ids, then stop optimizing for this sample
+        # TODO: IMPORTANT: add early stopping. If logits.argmax() == target_ids, then stop optimizing for this sample
         # whats cool is that it doesnt require us to call expensive generate()
         # to filter the cache object for early stopping see:
         # https://github.com/huggingface/transformers/blob/main/src/transformers/generation/utils.py
         # in the _contrastive_search method, they use DynamicCache.batch_select_indices()
+        # Note that early stopping can be loss-based instead. That will not require additional forward passes for the 
+        # early stopping check.
 
         token_dict = self.adv_model.tokenize(conversations, target_texts)
 

@@ -31,7 +31,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False):
+    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False) -> list[str]:
         """
         Generates test cases for a single behavior
 
@@ -84,8 +84,6 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, num_steps)
 
         # ========== run optimization ========== #
-        all_losses = []
-        all_test_cases = []
         for i in range(num_steps):
             # ========== compute logits with concatenated optim embeds and target text ========== #
             optim_embeds_projected = project_soft_embeds.apply(optim_embeds.to(model.dtype))
@@ -102,7 +100,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
             )
 
             outputs = self.model(inputs_embeds=input_embeds)
-            logits = outputs.logits
+            logits: torch.Tensor = outputs.logits
 
             # ========== compute loss ========== #
             # Shift so that tokens < n predict n
@@ -111,7 +109,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
             shift_labels = target_ids.repeat(num_generate, 1)
             # Flatten the tokens
             loss_fct = CrossEntropyLoss(reduction="none")
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = loss_fct.forward(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             loss = loss.view(num_generate, -1).mean(dim=1)
 
             # ========== update optim_embeds ========== #
@@ -128,24 +126,11 @@ class PEZ(SingleBehaviorRedTeamingMethod):
             nn_indices = torch.cat([behavior_ids.repeat(num_generate, 1), nn_indices], dim=1)
             test_cases = tokenizer.batch_decode(nn_indices, skip_special_tokens=True)
 
-            # ========= Saving and logging test cases ========= #
-            current_loss = loss.detach().cpu().tolist()
-            all_test_cases.append(test_cases)
-            all_losses.append(current_loss)
-
-        logs = [
-            {
-                "final_loss": current_loss[i],
-                "all_losses": [loss[i] for loss in all_losses],
-                "all_test_cases": [test_cases[i] for test_cases in all_test_cases],
-            }
-            for i in range(num_generate)
-        ]
-        return test_cases, logs
+        return test_cases
 
 
 # ============================== UTILS FOR PEZ ============================== #
-def nn_project(curr_embeds, embedding_layer):
+def nn_project(curr_embeds: torch.Tensor, embedding_layer: torch.nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
     batch_size, seq_len, emb_dim = curr_embeds.shape
 
     # Using the sentence transformers semantic search which is
@@ -154,7 +139,7 @@ def nn_project(curr_embeds, embedding_layer):
     curr_embeds = curr_embeds.reshape((-1, emb_dim))
     curr_embeds = normalize_embeddings(curr_embeds)  # queries
 
-    embedding_matrix = embedding_layer.weight
+    embedding_matrix: torch.Tensor = embedding_layer.weight
     embedding_matrix = normalize_embeddings(embedding_matrix)  # corpus
 
     hits = semantic_search(curr_embeds, embedding_matrix, query_chunk_size=curr_embeds.shape[0], top_k=3, score_function=dot_score)

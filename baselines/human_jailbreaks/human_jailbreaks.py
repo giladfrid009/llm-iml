@@ -16,7 +16,7 @@ class HumanJailbreaks(RedTeamingMethod):
         self.random_subset = random_subset
         self.seed = seed
 
-    def generate_test_cases(self, behaviors, verbose=False, **kwargs):
+    def generate_test_cases(self, behaviors, verbose=False, **kwargs) -> dict[str, list[str]]:
         test_cases = {}
 
         if type(self.random_subset) == int:
@@ -43,6 +43,6 @@ class HumanJailbreaks(RedTeamingMethod):
             for jb in jailbreaks:
                 _test_cases.append(f"{jb}\n\n{behavior}")
             test_cases[behavior_id] = _test_cases
-        return test_cases, {}
+        return test_cases
 
    
