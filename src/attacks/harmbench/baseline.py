@@ -18,7 +18,7 @@ class RedTeamingMethod(Attack):
         self.model = adv_mode.model
         self.tokenizer = adv_mode.tokenizer
 
-    def generate_test_cases(self, behaviors: list[str], targets: list[str]) -> list[str]:
+    def generate_test_cases(self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None) -> list[str]:
         raise NotImplementedError
 
     def fit(
@@ -35,7 +35,7 @@ class RedTeamingMethod(Attack):
         assert all(conv[-1]["role"] == "user" for conv in conversations)
 
         behaviors = [conv[-1]["content"] for conv in conversations]
-        test_cases = self.generate_test_cases(behaviors, target_texts)
+        test_cases = self.generate_test_cases(behaviors, target_texts, init_embeds)
 
         # TODO: IMPLEMENT, what is test_cases even?
         raise NotImplementedError("Subclasses must implement this method.")
@@ -55,7 +55,7 @@ class SingleBehaviorRedTeamingMethod(RedTeamingMethod):
         """ """
         super().__init__(adv_model, verbose)
 
-    def generate_test_cases(self, behaviors: list[str], targets: list[str]) -> list[str]:
+    def generate_test_cases(self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None) -> list[str]:
 
         if len(behaviors) != len(targets):
             raise ValueError("The number of behaviors must match the number of targets.")

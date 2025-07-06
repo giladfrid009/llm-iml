@@ -3,8 +3,8 @@ import torch
 from torch.nn import CrossEntropyLoss
 import numpy as np
 from tqdm.auto import tqdm
-from baselines.baseline import SingleBehaviorRedTeamingMethod
-from baselines.model_utils import get_template
+from src.attacks.harmbench.baseline import SingleBehaviorRedTeamingMethod
+from src.attacks.harmbench.model_utils import get_template
 import json
 
 
@@ -17,7 +17,7 @@ class GBDA(SingleBehaviorRedTeamingMethod):
         num_steps=50,
         lr=0.2,
         noise_scale=0.2,
-        **model_kwargs,
+        verbose: bool = True,
     ):
         """
         :param target_model: a dictionary specifying the target model (kwargs to load_model_and_tokenizer)
@@ -26,7 +26,7 @@ class GBDA(SingleBehaviorRedTeamingMethod):
         :param lr: the learning rate to use
         :param noise_scale: amount of noise to use for random initialization
         """
-        super().__init__(adv_model, **model_kwargs)
+        super().__init__(adv_model, verbose)
         self.num_optim_tokens = num_optim_tokens
         self.num_steps = num_steps
         self.lr = lr
@@ -36,7 +36,7 @@ class GBDA(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str, init_embeds: torch.Tensor | None = None) -> str:
         """
         Generates test cases for a single behavior
 
@@ -59,7 +59,7 @@ class GBDA(SingleBehaviorRedTeamingMethod):
         device = model.device
         before_tc = self.before_tc
         after_tc = self.after_tc
-        embed_layer = self.model.get_input_embeddings()
+        embed_layer: torch.nn.Embedding = self.model.get_input_embeddings()
 
         # ========== Init Cache Embeds ========
         cache_input_ids = tokenizer([before_tc], padding=False)["input_ids"]  # some tokenizer have <s> for before_tc

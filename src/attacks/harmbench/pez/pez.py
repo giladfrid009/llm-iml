@@ -1,8 +1,8 @@
 import torch
 from sentence_transformers.util import semantic_search, dot_score, normalize_embeddings
 from torch.nn import CrossEntropyLoss
-from baselines.model_utils import get_template
-from baselines.baseline import SingleBehaviorRedTeamingMethod
+from src.attacks.harmbench.model_utils import get_template
+from src.attacks.harmbench.baseline import SingleBehaviorRedTeamingMethod
 import json
 
 
@@ -14,7 +14,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         num_optim_tokens=20,
         num_steps=100,
         lr=1e-3,
-        **model_kwargs,
+        verbose: bool = True,
     ):
         """
         :param target_model: a dictionary specifying the target model (kwargs to load_model_and_tokenizer)
@@ -22,7 +22,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         :param num_steps: the number of optimization steps
         :param lr: the learning rate for soft embeddings
         """
-        super().__init__(adv_model, **model_kwargs)
+        super().__init__(adv_model, verbose)
         self.num_optim_tokens = num_optim_tokens
         self.num_steps = num_steps
         self.lr = lr
@@ -31,7 +31,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str, init_embeds: torch.Tensor | None = None) -> str:
         """
         Generates test cases for a single behavior
 
@@ -52,7 +52,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         device = model.device
         before_tc = self.before_tc
         after_tc = self.after_tc
-        embed_layer = self.model.get_input_embeddings()
+        embed_layer: torch.nn.Embedding = self.model.get_input_embeddings()
         project_soft_embeds.embed_layer = embed_layer  # have to set this here to allow using different models
 
         # ========== Init Cache Embeds ========

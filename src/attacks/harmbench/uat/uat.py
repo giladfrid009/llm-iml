@@ -5,14 +5,16 @@ import numpy as np
 
 # https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
-from baselines.baseline import SingleBehaviorRedTeamingMethod
-from baselines.model_utils import get_template
+from src.attacks.harmbench.baseline import SingleBehaviorRedTeamingMethod
+from src.attacks.harmbench.model_utils import get_template
 from copy import deepcopy
 import json
 
 
 # ============================== UTILS FOR UAT ============================== #
-def hotflip_attack(averaged_grad: torch.Tensor, embedding_matrix: torch.Tensor, trigger_token_ids, increase_loss:bool=False, num_candidates:int=1) -> np.ndarray | int:
+def hotflip_attack(
+    averaged_grad: torch.Tensor, embedding_matrix: torch.Tensor, trigger_token_ids, increase_loss: bool = False, num_candidates: int = 1
+) -> np.ndarray | int:
     """
     The "Hotflip" attack described in Equation (2) of the paper. This code is heavily inspired by
     the nice code of Paul Michel here https://github.com/pmichel31415/translate/blob/paul/
@@ -28,7 +30,9 @@ def hotflip_attack(averaged_grad: torch.Tensor, embedding_matrix: torch.Tensor, 
     """
     averaged_grad = averaged_grad
     embedding_matrix = embedding_matrix
-    trigger_token_embeds = torch.nn.functional.embedding(torch.LongTensor(trigger_token_ids).cuda(), embedding_matrix).detach().unsqueeze(0) # TODO: WHY IS IT UNUSED?
+    trigger_token_embeds = (
+        torch.nn.functional.embedding(torch.LongTensor(trigger_token_ids).cuda(), embedding_matrix).detach().unsqueeze(0)
+    )  # TODO: WHY IS IT UNUSED?
     averaged_grad = averaged_grad.unsqueeze(0)
 
     # einsum does not support half precision, so we rewrite as bmm.
@@ -52,7 +56,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
         adv_string_init="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
         use_prefix_cache=True,
         num_candidates=3,
-        **model_kwargs,
+        verbose: bool = True,
     ):
         """
         :param adv_model:
@@ -61,7 +65,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
         :param use_prefix_cache: whether to use KV cache for static prefix tokens (WARNING: Not all models support this)
         :param num_candidates: the number of candidates to consider at each step
         """
-        super().__init__(adv_model, **model_kwargs)
+        super().__init__(adv_model, verbose)
         self.num_steps = num_steps
         self.adv_string_init = adv_string_init
         self.use_prefix_cache = use_prefix_cache
@@ -121,7 +125,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
         loss = torch.cat(loss_list, dim=0)
         return loss
 
-    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str, init_embeds: torch.Tensor | None = None) -> str:
         """
         Generates test cases for a single behavior
 
@@ -143,12 +147,11 @@ class UAT(SingleBehaviorRedTeamingMethod):
         before_tc = self.before_tc
         after_tc = self.after_tc
 
-
         # ========= add gradient hooks to embeddings =========
-        embed_layer = model.get_input_embeddings()
+        embed_layer: torch.nn.Embedding = model.get_input_embeddings()
         embed_layer.weight.requires_grad = True
         embed_layer.register_backward_hook(self.extract_grad_hook)
-        embedding_weight: torch.Tensor = embed_layer.weight.detach()
+        embedding_weight = embed_layer.weight.detach()
 
         # ========== setup trigger_tokens and input_embeds components ========== #
         trigger_tokens = tokenizer(adv_string_init, return_tensors="pt", add_special_tokens=False).to(device)["input_ids"][0]
