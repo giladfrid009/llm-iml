@@ -1,14 +1,11 @@
 from tqdm.auto import tqdm
-import numpy as np
-import transformers
-import vllm
 
 from src.adver_model import AdverModel
+from src.attacks.attack import Attack
+import torch
 
 
-class RedTeamingMethod:
-    default_dependencies = [transformers, vllm]
-
+class RedTeamingMethod(Attack):
     """
     A template for a red teaming method that generates test cases given a set of behaviors
     """
@@ -23,6 +20,25 @@ class RedTeamingMethod:
 
     def generate_test_cases(self, behaviors: list[str], targets: list[str]) -> list[str]:
         raise NotImplementedError
+
+    def fit(
+        self,
+        conversations: list[list[dict[str, str]]],
+        target_texts: list[str],
+        init_embeds: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+
+        if len(conversations) != len(target_texts):
+            raise ValueError("The number of conversations must match the number of target texts.")
+
+        assert all(len(conv) == 1 for conv in conversations)
+        assert all(conv[-1]["role"] == "user" for conv in conversations)
+
+        behaviors = [conv[-1]["content"] for conv in conversations]
+        test_cases = self.generate_test_cases(behaviors, target_texts)
+
+        # TODO: IMPLEMENT, what is test_cases even?
+        raise NotImplementedError("Subclasses must implement this method.")
 
 
 class SingleBehaviorRedTeamingMethod(RedTeamingMethod):

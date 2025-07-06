@@ -28,7 +28,7 @@ def hotflip_attack(averaged_grad: torch.Tensor, embedding_matrix: torch.Tensor, 
     """
     averaged_grad = averaged_grad
     embedding_matrix = embedding_matrix
-    trigger_token_embeds = torch.nn.functional.embedding(torch.LongTensor(trigger_token_ids).cuda(), embedding_matrix).detach().unsqueeze(0)
+    trigger_token_embeds = torch.nn.functional.embedding(torch.LongTensor(trigger_token_ids).cuda(), embedding_matrix).detach().unsqueeze(0) # TODO: WHY IS IT UNUSED?
     averaged_grad = averaged_grad.unsqueeze(0)
 
     # einsum does not support half precision, so we rewrite as bmm.
@@ -193,7 +193,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
                 if end_iter:
                     break
                 # Get average gradient w.r.t. the triggers
-                extracted_grads = []  # clear the gradient from past iterations
+                extracted_grads = []  # clear the gradient from past iterations # TODO: WHY IS IT UNUSED?
                 self.extracted_grads = []
                 loss.backward(retain_graph=True)
 
