@@ -52,7 +52,6 @@ class UAT(SingleBehaviorRedTeamingMethod):
         adv_string_init="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
         use_prefix_cache=True,
         num_candidates=3,
-        targets_path=None,
         **model_kwargs,
     ):
         """
@@ -61,19 +60,12 @@ class UAT(SingleBehaviorRedTeamingMethod):
         :param adv_string_init: the initial adversarial string to start with
         :param use_prefix_cache: whether to use KV cache for static prefix tokens (WARNING: Not all models support this)
         :param num_candidates: the number of candidates to consider at each step
-        :param targets_path: the path to the targets JSON file
         """
         super().__init__(adv_model, **model_kwargs)
         self.num_steps = num_steps
         self.adv_string_init = adv_string_init
         self.use_prefix_cache = use_prefix_cache
         self.num_candidates = num_candidates
-
-        if targets_path is None:
-            raise ValueError("targets_path must be specified")
-        with open(targets_path, "r", encoding="utf-8") as file:
-            self.behavior_id_to_target = json.load(file)
-        self.targets_path = targets_path
 
         template = get_template(self.tokenizer)
         self.template = template
@@ -129,7 +121,7 @@ class UAT(SingleBehaviorRedTeamingMethod):
         loss = torch.cat(loss_list, dim=0)
         return loss
 
-    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
 
@@ -140,13 +132,6 @@ class UAT(SingleBehaviorRedTeamingMethod):
         # starting search_batch_size, will auto reduce batch_size later if go OOM (resets for every new behavior)
         self.search_batch_size = self.num_candidates
 
-        # unpack list from behaviors.csv row
-        # ========== Behavior meta data ==========
-        behavior = behavior_dict["Behavior"]
-        context_str = behavior_dict["ContextString"]
-        behavior_id = behavior_dict["BehaviorID"]
-        target = self.behavior_id_to_target[behavior_id]
-        behavior += " "
         ### Targeted Model and Tokenier ###
         model = self.model
         device = model.device
@@ -158,9 +143,6 @@ class UAT(SingleBehaviorRedTeamingMethod):
         before_tc = self.before_tc
         after_tc = self.after_tc
 
-        # handle setup for behaviors with context strings
-        if context_str:
-            behavior = f"{context_str}\n\n---\n\n{behavior}"
 
         # ========= add gradient hooks to embeddings =========
         embed_layer = model.get_input_embeddings()

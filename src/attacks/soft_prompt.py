@@ -31,11 +31,11 @@ class SoftPrompt(Attack):
         self.mixed_precision = mixed_precision
         self.kv_caching = kv_caching
 
-    def _init_embedding(self, num_inputs: int, **kwargs) -> torch.Tensor:
+    def _init_embedding(self, num_inputs: int) -> torch.Tensor:
         return torch.randn(
-            size=(num_inputs, self.num_tokens, self.embed_dim),
-            device=self.device,
-            dtype=self.embed_dtype,
+            size=(num_inputs, self.adv_model.num_tokens, self.adv_model.adv_embedder.embed_dim),
+            device=self.adv_model.device,
+            dtype=self.adv_model.adv_embedder.embed_dtype,
             requires_grad=True,
         )
 
@@ -96,7 +96,7 @@ class SoftPrompt(Attack):
         self,
         conversations: list[list[dict[str, str]]],
         target_texts: list[str],
-        embeds_init: torch.Tensor | None = None,
+        init_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
 
         # TODO: IMPORTANT: add early stopping. If logits.argmax() == target_ids, then stop optimizing for this sample
@@ -113,7 +113,7 @@ class SoftPrompt(Attack):
             with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                 token_dict = self._compute_cache(token_dict)
 
-        adv_embeds = embeds_init
+        adv_embeds = init_embeds
         if adv_embeds is not None:
             adv_embeds = adv_embeds.clone().detach()
             adv_embeds.requires_grad_(True)

@@ -8,30 +8,30 @@ import json
 
 # ============================== PEZ CLASS DEFINITION ============================== #
 class PEZ(SingleBehaviorRedTeamingMethod):
-    def __init__(self, adv_model, num_optim_tokens=20, num_steps=100, lr=1e-3, targets_path=None, **model_kwargs):
+    def __init__(
+        self,
+        adv_model,
+        num_optim_tokens=20,
+        num_steps=100,
+        lr=1e-3,
+        **model_kwargs,
+    ):
         """
         :param target_model: a dictionary specifying the target model (kwargs to load_model_and_tokenizer)
         :param num_optim_tokens: the number of tokens to optimize
         :param num_steps: the number of optimization steps
         :param lr: the learning rate for soft embeddings
-        :param targets_path: the path to the targets JSON file
         """
         super().__init__(adv_model, **model_kwargs)
         self.num_optim_tokens = num_optim_tokens
         self.num_steps = num_steps
         self.lr = lr
 
-        if targets_path is None:
-            raise ValueError("targets_path must be specified")
-        with open(targets_path, "r", encoding="utf-8") as file:
-            self.behavior_id_to_target = json.load(file)
-        self.targets_path = targets_path
-
         template = get_template(self.tokenizer)
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior_dict, num_generate, verbose=False) -> list[str]:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
 
@@ -40,19 +40,8 @@ class PEZ(SingleBehaviorRedTeamingMethod):
         :param verbose: whether to print progress
         :return: a list of test case and a list of logs
         """
-        # ========== Behavior and Target str ==========
-        # get required variables from behavior dictionary
-        behavior = behavior_dict["Behavior"]
-        context_str = behavior_dict["ContextString"]
-        behavior_id = behavior_dict["BehaviorID"]
-
-        target = self.behavior_id_to_target[behavior_id]
-        behavior += " "
-        # handle setup for behaviors with context strings
-        if context_str:
-            behavior = f"{context_str}\n\n---\n\n{behavior}"
-
         # PEZ hyperparams
+        num_generate = 1
         num_optim_tokens = self.num_optim_tokens
         num_steps = self.num_steps
         lr = self.lr
@@ -126,7 +115,7 @@ class PEZ(SingleBehaviorRedTeamingMethod):
             nn_indices = torch.cat([behavior_ids.repeat(num_generate, 1), nn_indices], dim=1)
             test_cases = tokenizer.batch_decode(nn_indices, skip_special_tokens=True)
 
-        return test_cases
+        return test_cases[0]
 
 
 # ============================== UTILS FOR PEZ ============================== #

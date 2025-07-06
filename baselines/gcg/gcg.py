@@ -18,7 +18,6 @@ class GCG(SingleBehaviorRedTeamingMethod):
     def __init__(
         self,
         adv_model,
-        targets_path,
         num_steps=50,
         adv_string_init="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
         allow_non_ascii=False,
@@ -34,7 +33,6 @@ class GCG(SingleBehaviorRedTeamingMethod):
     ):
         """
         :param target_model: a dictionary specifying the target model (kwargs to load_model_and_tokenizer)
-        :param targets_path: the path to the targets JSON file
         :param num_steps: the number of optimization steps to use
         :param adv_string_init: the initial adversarial string to start with
         :param allow_non_ascii: whether to allow non-ascii characters when sampling candidate updates
@@ -57,9 +55,6 @@ class GCG(SingleBehaviorRedTeamingMethod):
             print(f"WARNING: setting model.config.use_cache={use_prefix_cache}")
             self.model.config.use_cache = use_prefix_cache
 
-        with open(targets_path, "r", encoding="utf-8") as file:
-            self.behavior_id_to_target = json.load(file)
-
         ### Eval Vars ###
         self.eval_steps = eval_steps
         self.eval_with_check_refusal = eval_with_check_refusal
@@ -73,27 +68,16 @@ class GCG(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior_dict, num_generate=1, verbose=False) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
 
         :param behavior: a dictionary specifying the behavior to generate test cases for
-        :param verbose: whether to print progress
         :return: a test case and logs
         """
 
         # starting search_batch_size, will auto reduce batch_size later if go OOM (resets for every new behavior)
         self.search_batch_size = self.starting_search_batch_size if self.starting_search_batch_size else self.search_width
-
-        # ========== Behavior and Target str ==========
-        behavior = behavior_dict["Behavior"]
-        context_str = behavior_dict["ContextString"]
-        behavior_id = behavior_dict["BehaviorID"]
-
-        target = self.behavior_id_to_target[behavior_id]
-        behavior += " "
-        if context_str:
-            behavior = f"{context_str}\n\n---\n\n{behavior}"
 
         ### Targeted Model and Tokenier ###
         model = self.model
@@ -101,6 +85,7 @@ class GCG(SingleBehaviorRedTeamingMethod):
         tokenizer = self.tokenizer
 
         ### GCG hyperparams ###
+        verbose = self.verbose
         num_steps = self.num_steps
         adv_string_init = self.adv_string_init
         allow_non_ascii = self.allow_non_ascii

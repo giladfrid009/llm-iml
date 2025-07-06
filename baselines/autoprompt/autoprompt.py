@@ -19,7 +19,7 @@ from baselines.autoprompt.autoprompt_utils import sample_control_autoprompt, get
 #        - make sure that get_template still works
 # 2. accept batch of conversations and targets instead of targets_path
 # 3. make the method use exact number of tokens and not a random adv_string_init which gets tokenized to unknown number of tokens
-# 4. initialization - instead of initial `adv_string_init`, accept an `embeds_init` parameter.
+# 4. initialization - instead of initial `adv_string_init`, accept an `init_embeds` parameter.
 
 # TODO: CHECK:
 # 1. use_prefix_cache=True modifies an attribute of the model, makes sure its not a problem, 
@@ -35,7 +35,6 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         allow_non_ascii=False,
         search_width=512,
         use_prefix_cache=True,
-        targets_path=None,
         eval_steps=10,
         eval_with_check_refusal=False,
         check_refusal_min_loss=0.1,
@@ -50,7 +49,6 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         :param allow_non_ascii: whether to allow non-ascii characters when sampling candidate updates
         :param search_width: the number of candidates to sample at each step
         :param use_prefix_cache: whether to use KV cache for static prefix tokens (WARNING: Not all models support this)
-        :param targets_path: the path to the targets JSON file
         :param eval_steps: the number of steps between each evaluation
         :param eval_with_check_refusal: whether to generate and check for refusal every eval_steps; used for early stopping
         :param check_refusal_min_loss: a minimum loss before checking for refusal
@@ -67,12 +65,6 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
             print(f"WARNING: setting model.config.use_cache={use_prefix_cache}")
             self.model.config.use_cache = use_prefix_cache
 
-        if targets_path is None:
-            raise ValueError("targets_path must be specified")
-        with open(targets_path, "r", encoding="utf-8") as file:
-            self.behavior_id_to_target = json.load(file)
-        self.targets_path = targets_path
-
         ### Eval Vars ###
         self.eval_steps = eval_steps
         self.eval_with_check_refusal = eval_with_check_refusal
@@ -85,7 +77,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior_dict, num_generate=1, verbose=False) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
 
@@ -96,18 +88,7 @@ class AutoPrompt(SingleBehaviorRedTeamingMethod):
 
         # starting search_batch_size, will auto reduce batch_size later if go OOM (resets for every new behavior)
         self.search_batch_size = self.search_width
-
-        # ========== Behavior and Target str ==========
-        behavior = behavior_dict["Behavior"]
-        context_str = behavior_dict["ContextString"]
-        behavior_id = behavior_dict["BehaviorID"]
-
-        target = self.behavior_id_to_target[behavior_id]
-        behavior += " "
-        if context_str:
-            behavior = f"{context_str}\n\n---\n\n{behavior}"
-
-        print(f"Behavior: {behavior_id} || Target: {target}")
+        
         ### Targeted Model and Tokenier ###
         model = self.model
         device = model.device

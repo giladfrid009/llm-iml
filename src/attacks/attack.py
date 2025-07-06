@@ -1,7 +1,6 @@
 from src.adver_model import AdverModel
 import torch
 from abc import ABC, abstractmethod
-import copy
 
 
 class Attack(ABC):
@@ -14,39 +13,25 @@ class Attack(ABC):
         self.verbose = verbose
 
     @property
-    def num_tokens(self) -> int:
-        """
-        Returns the number of adversarial tokens to be injected.
-        """
-        return self.adv_model.num_tokens
-
-    @property
     def device(self) -> torch.device:
         """
         Returns the device on which the model is located.
         """
         return self.adv_model.device
 
-    @property
-    def embed_dim(self) -> int:
-        """
-        Returns the embedding dimension of the model.
-        """
-        return self.adv_model.adv_embedder.embed_dim
-
-    @property
-    def embed_dtype(self) -> torch.dtype:
-        """
-        Returns the embedding dtype of the model.
-        """
-        return self.adv_model.adv_embedder.embed_dtype
-
+    # TODO: should probably modify the signature if this method
+    # not all attacks need or use target_texts
+    # the signature should support all LLM attack types.
+    
+    # i think its fine to recieve a dictionary of conversations as all attack methods attack
+    # chat models 
+    # its fine to assume the conversations are already well formatted and the user prompt is the full prompt
     @abstractmethod
     def fit(
         self,
         conversations: list[list[dict[str, str]]],
         target_texts: list[str],
-        embeds_init: torch.Tensor | None = None,
+        init_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Fit the attack model to the input and target texts.
@@ -55,7 +40,7 @@ class Attack(ABC):
             conversations (list[list[dict[str, str]]]): List of conversations, where each conversation is a list of messages.
                 Each message is a dictionary with keys "role" and "content".
             target_texts (list[str]): List of target texts.
-            embeds_init (torch.Tensor | None): Initial adversarial embedding.
+            init_embeds (torch.Tensor | None): Initial adversarial embedding.
 
         Returns:
             torch.Tensor: Adversarial embedding of shape (batch_size, num_tokens, embedding_dim).

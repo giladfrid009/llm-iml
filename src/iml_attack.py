@@ -205,15 +205,15 @@ class IML_Attack:
 
     @property
     def num_tokens(self) -> int:
-        return self.internal_attack.num_tokens
+        return self.adv_model.num_tokens
 
     @property
     def embed_dim(self) -> int:
-        return self.internal_attack.embed_dim
+        return self.adv_model.adv_embedder.embed_dim
 
     @property
     def device(self) -> torch.device:
-        return self.internal_attack.device
+        return self.adv_model.device
 
     @property
     def judge(self) -> Evaluator:
@@ -499,8 +499,8 @@ class IML_Attack:
 
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
-                embeds_init = self.univ_embeds.expand(len(conversations), -1, -1)
-                sample_embed = self.internal_attack.fit(conversations, target_text, embeds_init=embeds_init)
+                init_embeds = self.univ_embeds.expand(len(conversations), -1, -1)
+                sample_embed = self.internal_attack.fit(conversations, target_text, init_embeds=init_embeds)
 
             # skip failed per-sample attacks
             if self.skip_failed_attacks:
