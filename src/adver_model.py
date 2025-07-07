@@ -21,8 +21,8 @@ class AdverEmbedding(nn.Module):
         self.device = utils.extract_device(embedder)
 
         # internal params for caching
-        self._embed_dim: int = None
-        self._embed_dtype: torch.dtype = None
+        self._embed_dim: int = None # type: ignore
+        self._embed_dtype: torch.dtype = None # type: ignore
 
     @property
     def embed_dim(self) -> int:
@@ -89,7 +89,7 @@ class AdverModel(nn.Module):
             tokenizer.add_special_tokens({"additional_special_tokens": [self.adv_token]})
 
         # adv embedder
-        self.orig_embedder = self.model.get_input_embeddings()
+        self.orig_embedder: torch.nn.Embedding = self.model.get_input_embeddings() # type: ignore
         self.adv_embedder = AdverEmbedding(self.orig_embedder)
 
         # params

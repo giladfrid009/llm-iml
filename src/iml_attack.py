@@ -151,6 +151,7 @@ class IML_Attack:
         gen_config: GenConfig | None = None,
         skip_already_fooled: bool = False,
         skip_failed_attacks: bool = True,
+        dynamic_labels: bool = False,
         log_dir: str | None = None,
     ):
         """
@@ -168,6 +169,7 @@ class IML_Attack:
             gen_config (GenConfig  | None): Default generation configuration.
             skip_already_fooled (bool): If True, skips samples that are already successfully fooled.
             skip_failed_attacks (bool): If True, skips samples where the internal attack fails.
+            dynamic_labels (bool): If True, use dynamically generated labels for the UAP optimization.
             log_dir (str | None): Directory to save logs. If None, no logging is performed.
         """
         self.adv_model = adv_model
@@ -193,6 +195,7 @@ class IML_Attack:
         self.optimizer = optim_factory([self.univ_embeds])
         self.skip_already_fooled = skip_already_fooled
         self.skip_failed_attacks = skip_failed_attacks
+        self.dynamic_labels = dynamic_labels # TODO: implement dynamic labels
 
         self.best_metric = -float("inf")
         self.best_embeds = self.univ_embeds.clone().detach()
