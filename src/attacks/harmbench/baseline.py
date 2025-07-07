@@ -61,7 +61,7 @@ class SingleBehaviorRedTeamingMethod(RedTeamingMethod):
             raise ValueError("The number of behaviors must match the number of targets.")
 
         test_cases = []
-        for beh, tgt in tqdm(zip(behaviors, targets), disable=not self.verbose):
+        for beh, tgt in tqdm(zip(behaviors, targets), total=len(behaviors), disable=not self.verbose):
             test_case = self.generate_test_cases_single_behavior(beh, tgt)
             test_cases.append(test_case)
         return test_cases

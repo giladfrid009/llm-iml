@@ -36,6 +36,8 @@ class Logger:
         """
         clean_hparams = {}
         for k, v in hparams.items():
+            if isinstance(v, dict):
+                self.register_hparams({f"{k}/{k2}": v2 for k2, v2 in v.items()})
             if isinstance(v, torch.Tensor) and v.numel() == 1:
                 v = v.item()
             elif isinstance(v, tuple):

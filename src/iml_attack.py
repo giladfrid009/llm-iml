@@ -4,6 +4,7 @@ from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
 from src.logger import Logger
+from src.config import GenConfig
 
 from typing import Any
 import torch
@@ -147,7 +148,7 @@ class IML_Attack:
         evaluators: list[Evaluator],
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
-        pred_kwargs: dict[str, Any] | None = None,
+        gen_config: GenConfig | None = None,
         skip_already_fooled: bool = False,
         skip_failed_attacks: bool = True,
         log_dir: str | None = None,
@@ -164,7 +165,7 @@ class IML_Attack:
                 - if int, evaluates every `eval_freq` epochs.
                 - if float, evaluates every `round(eval_freq * len(dl_train))` batches.
             mixed_precision (bool): Whether to use mixed precision training.
-            pred_kwargs (dict[str, Any] | None): Additional keyword arguments for `AdverModel.chat`.
+            gen_config (GenConfig  | None): Default generation configuration.
             skip_already_fooled (bool): If True, skips samples that are already successfully fooled.
             skip_failed_attacks (bool): If True, skips samples where the internal attack fails.
             log_dir (str | None): Directory to save logs. If None, no logging is performed.
@@ -175,7 +176,11 @@ class IML_Attack:
 
         self.evaluators = evaluators
         self.eval_freq = eval_freq
-        self.pred_kwargs = pred_kwargs if pred_kwargs is not None else {}
+
+        if gen_config is None:
+            gen_config = GenConfig()
+
+        self.gen_config = gen_config
 
         self.mixed_precision = mixed_precision
         self.grad_scaler = torch.GradScaler(enabled=mixed_precision)
@@ -233,7 +238,7 @@ class IML_Attack:
             "iml_attack/optimizer": self.optimizer.__class__.__name__,
             "iml_attack/internal_attack": self.internal_attack.__class__.__name__,
             "iml_attack/eval_freq": self.eval_freq,
-            "iml_attack/pred_kwargs": self.pred_kwargs,
+            "iml_attack/gen_config": self.gen_config.get_hparams() if self.gen_config else {},
             "iml_attack/evaluators": (e.name for e in self.evaluators),
             "iml_attack/log_dir": self.logger.root_dir if self.logger else None,
         }
@@ -254,7 +259,8 @@ class IML_Attack:
     def predict(
         self,
         adv_model: AdverModel,
-        dl_eval: DF_Batcher,
+        dl: DF_Batcher,
+        config: GenConfig | None = None,
         **kwargs: Any,
     ) -> list[str]:
         """
@@ -262,23 +268,24 @@ class IML_Attack:
 
         Args:
             adv_model (AdverModel): The adversarial model to use for text generation.
-            dl_eval (DF_Batcher): Data loader for evaluation.
+            dl (DF_Batcher): Data loader with prompts for generation.
+            config (GenConfig | None): Generation configuration to use for the model.
             **kwargs (dict): Additional keyword arguments for `AdverModel.chat`.
 
         Returns:
             list[str]: List of generated responses.
         """
 
-        kwargs = kwargs if kwargs else self.pred_kwargs
-        dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
+        config = config if config else self.gen_config
+        dl = dl.copy(shuffle=False, drop_last=False)
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
 
             all_responses = []
-            for batch_data in tqdm(dl_eval, desc="Generating", leave=False):
+            for batch_data in tqdm(dl, desc="Generating", leave=False):
                 prompts = batch_data["prompt"]
                 conversations = [[{"role": "user", "content": prm}] for prm in prompts]
-                responses = adv_model.chat(conversations, **kwargs)
+                responses = adv_model.chat(conversations, config=config, **kwargs)
                 all_responses.extend(responses)
 
         return all_responses
@@ -289,6 +296,7 @@ class IML_Attack:
         adv_model: AdverModel,
         evalers: list[Evaluator] | Evaluator,
         dl_eval: DF_Batcher,
+        gen_config: GenConfig | None = None,
         update_best: bool = False,
         **kwargs: Any,
     ) -> list[float]:
@@ -299,6 +307,7 @@ class IML_Attack:
             adv_model (AdverModel): The adversarial model to evaluate.
             evalers (list[Evaluator]): List of evaluators to use for evaluation.
             dl_eval (DF_Batcher): Data loader for evaluation.
+            gen_config (GenConfig | None): Generation configuration to use for the model.
             update_best (bool): If True, updates the best metric and embeddings if the current evaluation is better.
             **kwargs (dict): Additional keyword arguments for `AdverModel.chat`.
 
@@ -319,7 +328,13 @@ class IML_Attack:
             )
             dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
 
-        all_responses = self.predict(adv_model, dl_eval, **kwargs)
+        all_responses = self.predict(
+            adv_model=adv_model,
+            dl=dl_eval,
+            config=gen_config,
+            **kwargs,
+        )
+
         dl_eval.set_column("response", all_responses)
 
         metrics = []
@@ -447,33 +462,32 @@ class IML_Attack:
             float | None: Loss value for the optimization step, or None if no loss is computed.
 
         """
-        
-        # NOTE: IDEA: instead of using a fixed target, generate affirmative responses from the 
+
+        # NOTE: IDEA: instead of using a fixed target, generate affirmative responses from the
         # per-sample attacks and use them as targets instead.
         # We should add attack parameter `dynamic_targets` which enables / disables it.
-        # CONS: 
-        # 1. very slow since we need to generate responses, but if we use `skip_failed_attacks=True` then 
+        # CONS:
+        # 1. very slow since we need to generate responses, but if we use `skip_failed_attacks=True` then
         # no additional time cost since we generate it anyways.
         # 2. need to be careful with tokenization, tokenize the new generated response as the target
-        # PROS: 
+        # PROS:
         # 1. dynamic targets instead of forced ones
         # 2. will allow to support attacks which do not recieve target argument
         # 3. correctness - `skip_failed_attacks` judges the actual generated responses
-        
+
         # NOTE: IDEA: let the per-sample attacks to also modify the prompt and not only the adversarial tokens.
         # Even more generally - the per-sample attack returns a new adversarial prompt (which may or may not incorporate adv tokens).
         # combined with the previous idea, we then generate an affirmative response to the adver input and use it as the target.
         # CONS:
-        # 1. if we allow to modify also the input from the per-sample attack then the affirmative target 
+        # 1. if we allow to modify also the input from the per-sample attack then the affirmative target
         # might not even correspond to the original prompt, therefore its not clear what we're optimizing in that case
-        # 2. in that case the returned outputs should be adversarial embeddings and not adversarial input tokens, since SoftPrompt works on the 
+        # 2. in that case the returned outputs should be adversarial embeddings and not adversarial input tokens, since SoftPrompt works on the
         # embedding level. Therefore we need to support that.
         # PROS:
         # 1. allows unconstrained use of all per-sample attack altogether:
         #   - for example the per-sample attack doesnt have to use the exact number of adver tokens as the universal attack
         #   - new supported attacks:  direct request attack and also human_jailbreaks, and all attacker-LLM based attacks.
-        
-        
+
         self.optimizer.zero_grad()
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
@@ -486,7 +500,7 @@ class IML_Attack:
             if self.skip_already_fooled:
                 with torch.inference_mode():
                     self.adv_model.set_embeddings(self.univ_embeds)
-                    responses = self.adv_model.chat(conversations, **self.pred_kwargs)
+                    responses = self.adv_model.chat(conversations, self.gen_config)
                     data["response"] = responses
                     eval_result = self.judge.process_batch(data)
 
@@ -506,7 +520,7 @@ class IML_Attack:
             if self.skip_failed_attacks:
                 with torch.inference_mode():
                     self.adv_model.set_embeddings(sample_embed)
-                    responses = self.adv_model.chat(conversations, **self.pred_kwargs)
+                    responses = self.adv_model.chat(conversations, self.gen_config)
                     data["response"] = responses
                     eval_result = self.judge.process_batch(data)
 

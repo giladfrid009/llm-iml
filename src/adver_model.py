@@ -11,6 +11,7 @@ from transformers.tokenization_utils_base import BatchEncoding
 
 from src import tokenize
 from src import utils
+from src.config import GenConfig
 
 
 class AdverEmbedding(nn.Module):
@@ -236,21 +237,12 @@ class AdverModel(nn.Module):
 
         return tokenized.to(self.device)
 
-    def forward(
+    def forward_embeds(
         self,
-        input_ids: torch.Tensor,
+        inputs_embeds: torch.Tensor,
         attention_mask: torch.Tensor,
-        adv_mask: torch.Tensor | None = None,
         **kwargs,
     ):
-
-        # prepare adversarial embeddings
-        adv_embeds = self.adv_embeds if adv_mask is not None else None
-        if adv_embeds is not None and adv_embeds.size(0) == 1:
-            adv_embeds = adv_embeds.expand(input_ids.size(0), -1, -1)
-
-        inputs_embeds = self.adv_embedder.forward(input_ids, adv_embeds, adv_mask)
-
         return self.model(
             input_ids=None,
             inputs_embeds=inputs_embeds,
@@ -258,12 +250,60 @@ class AdverModel(nn.Module):
             **kwargs,
         )
 
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        adv_mask: torch.Tensor | None = None,
+        **kwargs,
+    ):
+        # prepare adversarial embeddings
+        adv_embeds = self.adv_embeds if adv_mask is not None else None
+        if adv_embeds is not None and adv_embeds.size(0) == 1:
+            adv_embeds = adv_embeds.expand(input_ids.size(0), -1, -1)
+
+        inputs_embeds = self.adv_embedder.forward(input_ids, adv_embeds, adv_mask)
+
+        return self.forward_embeds(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            **kwargs,
+        )
+
+    @torch.inference_mode()
+    def generate_embeds(
+        self,
+        inputs_embeds: torch.Tensor,
+        attention_mask: torch.Tensor,
+        config: GenConfig | None = None,
+        **kwargs,
+    ) -> GenerateDecoderOnlyOutput:
+
+        if config is None:
+            config = GenConfig()
+
+        full_config = copy.deepcopy(self.model.generation_config)
+        config.patch_params(generation_config=full_config)
+
+        return self.model.generate(
+            inputs=None,
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            generation_config=full_config,
+            bos_token_id=self.tokenizer.bos_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.pad_token_id,
+            use_model_defaults=False,
+            **kwargs,
+        )  # type: ignore
+
+    @torch.inference_mode()
     def generate(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
         adv_mask: torch.Tensor | None = None,
-        max_length: int = 100,
+        config: GenConfig | None = None,
         **kwargs,
     ) -> GenerateDecoderOnlyOutput:
 
@@ -274,28 +314,18 @@ class AdverModel(nn.Module):
 
         inputs_embeds = self.adv_embedder.forward(input_ids, adv_embeds, adv_mask)
 
-        # greedy by default
-        kwargs.setdefault("do_sample", False)
-        kwargs.setdefault("temperature", 1.0)
-        kwargs.setdefault("top_p", 1.0)
-        kwargs.setdefault("top_k", None)
-
-        return self.model.generate(
-            inputs=None,
+        return self.generate_embeds(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            max_length=max_length,
-            pad_token_id=self.tokenizer.pad_token_id,
-            eos_token_id=self.tokenizer.eos_token_id,
-            use_model_defaults=True,
+            config=config,
             **kwargs,
-        )  # type: ignore
+        )
 
     @torch.inference_mode()
     def chat(
         self,
         conversations: list[list[dict[str, str]]],
-        max_length: int = 100,
+        config: GenConfig | None = None,
         **kwargs,
     ) -> list[str]:
         """
@@ -316,7 +346,7 @@ class AdverModel(nn.Module):
             input_ids=token_dict["input_ids"],
             attention_mask=token_dict["attention_mask"],
             adv_mask=token_dict["adv_mask"],
-            max_length=max_length,
+            config=config,
             **kwargs,
         )
 

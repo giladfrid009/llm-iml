@@ -166,7 +166,7 @@ def chat(
     adver_token: str,
 ) -> BatchEncoding:
     """
-    Regular tokenization function which applies left padding to a batch of conversations.
+    Regular chat tokenization function which applies left padding to a batch of conversations.
 
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
