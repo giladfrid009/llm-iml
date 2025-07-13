@@ -1,10 +1,10 @@
 from src.attacks.harmbench.human_jailbreaks.jailbreaks import JAILBREAKS
-from src.attacks.harmbench.baseline import RedTeamingMethod
+from src.attacks.harmbench.baseline import HarmBenchAttack
 from src.adver_model import AdverModel
 import random
 import torch
 
-class HumanJailbreaks(RedTeamingMethod):
+class HumanJailbreaks(HarmBenchAttack):
     """
     Jailbreaks designed by humans
     """

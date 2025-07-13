@@ -2,12 +2,12 @@ import torch
 from sentence_transformers.util import semantic_search, dot_score, normalize_embeddings
 from torch.nn import CrossEntropyLoss
 from src.attacks.harmbench.model_utils import get_template
-from src.attacks.harmbench.baseline import SingleBehaviorRedTeamingMethod
+from src.attacks.harmbench.baseline import IndivHarmBenchAttack
 import json
 
 
 # ============================== PEZ CLASS DEFINITION ============================== #
-class PEZ(SingleBehaviorRedTeamingMethod):
+class PEZ(IndivHarmBenchAttack):
     def __init__(
         self,
         adv_model,

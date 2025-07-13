@@ -3,13 +3,13 @@ import torch
 from torch.nn import CrossEntropyLoss
 import numpy as np
 from tqdm.auto import tqdm
-from src.attacks.harmbench.baseline import SingleBehaviorRedTeamingMethod
+from src.attacks.harmbench.baseline import IndivHarmBenchAttack
 from src.attacks.harmbench.model_utils import get_template
 import json
 
 
 # ============================== GBDA CLASS DEFINITION ============================== #
-class GBDA(SingleBehaviorRedTeamingMethod):
+class GBDA(IndivHarmBenchAttack):
     def __init__(
         self,
         adv_model,

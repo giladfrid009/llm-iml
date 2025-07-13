@@ -4,125 +4,21 @@ from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
 from src.logger import Logger
-from src.config import GenConfig
+from src.config import GenConfig, StopCriteria
 
 from typing import Any
 import torch
 from tqdm.auto import tqdm
-import time
 from typing import Iterable, Callable
 import warnings
 import pathlib
 from functools import partial
 
 
-class StopCriteria:
-    def __init__(
-        self,
-        max_epochs: int = 100,
-        max_evals: int | None = None,
-        max_time: float | None = None,
-        target_value: float | None = None,
-        patience: int | None = None,
-        patience_delta: float = 1e-4,
-    ):
-        """
-        Container for various stopping criteria.
-
-        Args:
-            max_epochs: Maximum number of epochs.
-            max_evals: Maximum number of evaluation steps.
-            max_time: Maximum training time in seconds.
-            target_value: Target value to stop training when reached. This value should be maximized.
-            patience: Number of evaluation steps without sufficient improvement.
-            patience_delta: Minimum improvement delta to reset patience.
-
-        Raises:
-            ValueError: If any of the arguments are invalid.
-        """
-        if max_epochs <= 0:
-            raise ValueError("Max epochs must be greater than 0.")
-        if max_evals is not None and max_evals <= 0:
-            raise ValueError("Max evals must be greater than 0.")
-        if max_time is not None and max_time <= 0:
-            raise ValueError("Max time must be greater than 0.")
-        if patience is not None and patience <= 0:
-            raise ValueError("Patience must be greater than 0.")
-        if patience_delta < 0:
-            raise ValueError("Patience delta must be greater than or equal to 0.")
-
-        self.max_epochs = max_epochs
-        self.max_evals = max_evals
-        self.max_time = max_time
-        self.target_value = target_value
-        self.patience = patience
-        self.patience_delta = patience_delta
-
-        # Internal state
-        self._epoch = 0
-        self._total_evals = 0
-        self._start_time = time.time()
-        self._best_value = -float("inf")
-        self._patience_counter = 0
-        self.reset()
-
-    def get_hparams(self) -> dict:
-        return {
-            "stop/max_epochs": self.max_epochs,
-            "stop/max_evals": self.max_evals,
-            "stop/max_time": self.max_time,
-            "stop/target_value": self.target_value,
-            "stop/patience": self.patience,
-            "stop/patience_delta": self.patience_delta,
-        }
-
-    def reset(self) -> None:
-        """Reset internal state."""
-        self._epoch = 0
-        self._total_evals = 0
-        self._start_time = time.time()
-        self._best_value = -float("inf")
-        self._patience_counter = 0
-
-    def update(self, epoch: int, value: float | None) -> None:
-        """Update internal state with new metrics."""
-        self._epoch = epoch
-        self._total_evals += 1
-
-        if value is not None:
-            if (value - self._best_value) >= self.patience_delta:
-                self._best_value = value
-                self._patience_counter = 0
-            else:
-                self._patience_counter += 1
-
-    def should_stop(self) -> bool:
-        """Check if any stopping condition is met."""
-        if self.target_value is not None and self._best_value >= self.target_value:
-            print(f"Stopping: Target value reached :: ({self.target_value})")
-            return True
-
-        if self._epoch >= self.max_epochs:
-            print(f"Stopping: Max epochs reached :: ({self.max_epochs})")
-            return True
-
-        if self.max_evals is not None and self._total_evals >= self.max_evals:
-            print(f"Stopping: Max evals reached :: ({self.max_evals})")
-            return True
-
-        if self.patience is not None and self._patience_counter >= self.patience:
-            print(f"Stopping: Patience exceeded :: ({self.patience})")
-            return True
-
-        if self.max_time is not None and (time.time() - self._start_time) > self.max_time:
-            print(f"Stopping: Max time reached :: ({self.max_time} sec)")
-            return True
-
-        return False
-
-
 # NOTE: currently loss is over all target tokens and not a single token per sample
-def cosine_similarity_loss(univ_activ: torch.Tensor, sample_activ: torch.Tensor, target_mask: torch.Tensor) -> torch.Tensor:
+def cosine_similarity_loss(
+    univ_activ: torch.Tensor, sample_activ: torch.Tensor, target_mask: torch.Tensor
+) -> torch.Tensor:
     """
     Args:
         univ_activ (torch.Tensor): Universal activations of shape (batch_size, seq_length, hidden_dim).
@@ -195,7 +91,7 @@ class IML_Attack:
         self.optimizer = optim_factory([self.univ_embeds])
         self.skip_already_fooled = skip_already_fooled
         self.skip_failed_attacks = skip_failed_attacks
-        self.dynamic_labels = dynamic_labels # TODO: implement dynamic labels
+        self.dynamic_labels = dynamic_labels  # TODO: implement dynamic labels
 
         self.best_metric = -float("inf")
         self.best_embeds = self.univ_embeds.clone().detach()
@@ -268,6 +164,7 @@ class IML_Attack:
     ) -> list[str]:
         """
         Generates model responses for the evaluation data loader.
+        Sets the "response" column in the data loader with the generated responses.
 
         Args:
             adv_model (AdverModel): The adversarial model to use for text generation.
@@ -290,6 +187,8 @@ class IML_Attack:
                 conversations = [[{"role": "user", "content": prm}] for prm in prompts]
                 responses = adv_model.chat(conversations, config=config, **kwargs)
                 all_responses.extend(responses)
+
+        dl.set_column("response", all_responses)
 
         return all_responses
 
@@ -331,14 +230,7 @@ class IML_Attack:
             )
             dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
 
-        all_responses = self.predict(
-            adv_model=adv_model,
-            dl=dl_eval,
-            config=gen_config,
-            **kwargs,
-        )
-
-        dl_eval.set_column("response", all_responses)
+        self.predict(adv_model=adv_model, dl=dl_eval, config=gen_config, **kwargs)
 
         metrics = []
         for evaluator in evalers:
@@ -505,7 +397,7 @@ class IML_Attack:
                     self.adv_model.set_embeddings(self.univ_embeds)
                     responses = self.adv_model.chat(conversations, self.gen_config)
                     data["response"] = responses
-                    eval_result = self.judge.process_batch(data)
+                    eval_result = self.judge.eval_batch(data)
 
                     mask_fooled = eval_result >= 1.0
                     if mask_fooled.all():
@@ -525,7 +417,7 @@ class IML_Attack:
                     self.adv_model.set_embeddings(sample_embed)
                     responses = self.adv_model.chat(conversations, self.gen_config)
                     data["response"] = responses
-                    eval_result = self.judge.process_batch(data)
+                    eval_result = self.judge.eval_batch(data)
 
                     mask_succ = eval_result >= 1.0
                     if not mask_succ.any():

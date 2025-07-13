@@ -1,4 +1,5 @@
 {
     "python.analysis.typeCheckingMode": "standard",
-    "python.analysis.autoImportCompletions": false
+    "python.analysis.autoImportCompletions": false,
+    "docwriter.style": "Google"
 }

@@ -7,14 +7,14 @@ from torch.nn import CrossEntropyLoss
 
 # https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
-from src.attacks.harmbench.baseline import SingleBehaviorRedTeamingMethod
+from src.attacks.harmbench.baseline import IndivHarmBenchAttack
 from src.attacks.harmbench.model_utils import get_template
 from src.attacks.harmbench.check_refusal_utils import check_refusal_completions
 from src.attacks.harmbench.gcg.gcg_utils import sample_control, get_nonascii_toks
 
 
 # ============================== GCG CLASS DEFINITION ============================== #
-class GCG(SingleBehaviorRedTeamingMethod):
+class GCG(IndivHarmBenchAttack):
     def __init__(
         self,
         adv_model,

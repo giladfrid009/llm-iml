@@ -1,8 +1,8 @@
-from src.attacks.harmbench.baseline import RedTeamingMethod
+from src.attacks.harmbench.baseline import HarmBenchAttack
 from src.adver_model import AdverModel
 import torch
 
-class DirectRequest(RedTeamingMethod):
+class DirectRequest(HarmBenchAttack):
     def __init__(self, adv_mode: AdverModel, verbose: bool = True):
         super().__init__(adv_mode, verbose)
 

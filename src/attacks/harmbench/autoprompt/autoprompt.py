@@ -7,7 +7,7 @@ from torch.nn import CrossEntropyLoss
 
 # https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
-from src.attacks.harmbench.baseline import SingleBehaviorRedTeamingMethod
+from src.attacks.harmbench.baseline import IndivHarmBenchAttack
 from src.attacks.harmbench.model_utils import get_template
 from src.attacks.harmbench.check_refusal_utils import check_refusal_completions
 from src.attacks.harmbench.autoprompt.autoprompt_utils import sample_control_autoprompt, get_nonascii_toks
@@ -26,7 +26,7 @@ from src.attacks.harmbench.autoprompt.autoprompt_utils import sample_control_aut
 # especially since the model is afterwards used outside of this attack.
 
 # ============================== GCG CLASS DEFINITION ============================== #
-class AutoPrompt(SingleBehaviorRedTeamingMethod):
+class AutoPrompt(IndivHarmBenchAttack):
     def __init__(
         self,
         adv_model,

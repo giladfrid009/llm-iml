@@ -124,7 +124,7 @@ class StrongRejectEvaluator(Evaluator):
         score = torch.dot(values, probs.softmax(dim=0)).item()
         return score
 
-    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
+    def eval_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts, returning the evaluation metric.
 

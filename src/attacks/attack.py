@@ -22,9 +22,9 @@ class Attack(ABC):
     # TODO: should probably modify the signature if this method
     # not all attacks need or use target_texts
     # the signature should support all LLM attack types.
-    
+
     # i think its fine to recieve a dictionary of conversations as all attack methods attack
-    # chat models 
+    # chat models
     # its fine to assume the conversations are already well formatted and the user prompt is the full prompt
     @abstractmethod
     def fit(
@@ -40,9 +40,42 @@ class Attack(ABC):
             conversations (list[list[dict[str, str]]]): List of conversations, where each conversation is a list of messages.
                 Each message is a dictionary with keys "role" and "content".
             target_texts (list[str]): List of target texts.
-            init_embeds (torch.Tensor | None): Initial adversarial embedding.
+            init_embeds (torch.Tensor | None): Initial embeddings to use for the attack.
 
         Returns:
             torch.Tensor: Adversarial embedding of shape (batch_size, num_tokens, embedding_dim).
         """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+
+class TextAttack(Attack):
+    """
+    Base class for text-based attacks.
+    This class is used for attacks that generate adversarial text inputs.
+    """
+
+    def __init__(
+        self,
+        adv_model: AdverModel,
+        verbose: bool = True,
+    ):
+        super().__init__(adv_model, verbose)
+
+    def fit(
+        self,
+        conversations: list[list[dict[str, str]]],
+        target_texts: list[str],
+        init_embeds: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        attacked_conversations = self.fit_text(conversations, target_texts)
+        token_dict = self.adv_model.tokenize(attacked_conversations)
+        embeds = self.adv_model.embed(token_dict["input_ids"])
+        return embeds
+
+    @abstractmethod
+    def fit_text(
+        self,
+        conversations: list[list[dict[str, str]]],
+        target_texts: list[str],
+    ) -> list[list[dict[str, str]]]:
         raise NotImplementedError("Subclasses must implement this method.")

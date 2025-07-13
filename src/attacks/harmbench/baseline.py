@@ -1,11 +1,13 @@
 from tqdm.auto import tqdm
 
+from abc import abstractmethod
 from src.adver_model import AdverModel
-from src.attacks.attack import Attack
+from src.attacks.attack import TextAttack
 import torch
+import copy
 
 
-class RedTeamingMethod(Attack):
+class HarmBenchAttack(TextAttack):
     """
     A template for a red teaming method that generates test cases given a set of behaviors
     """
@@ -18,15 +20,16 @@ class RedTeamingMethod(Attack):
         self.model = adv_mode.model
         self.tokenizer = adv_mode.tokenizer
 
+    @abstractmethod
     def generate_test_cases(self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None) -> list[str]:
         raise NotImplementedError
 
-    def fit(
+    # TODO: what about init_embeds?
+    def fit_text(
         self,
         conversations: list[list[dict[str, str]]],
         target_texts: list[str],
-        init_embeds: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> list[list[dict[str, str]]]:
 
         if len(conversations) != len(target_texts):
             raise ValueError("The number of conversations must match the number of target texts.")
@@ -35,13 +38,20 @@ class RedTeamingMethod(Attack):
         assert all(conv[-1]["role"] == "user" for conv in conversations)
 
         behaviors = [conv[-1]["content"] for conv in conversations]
-        test_cases = self.generate_test_cases(behaviors, target_texts, init_embeds)
+        
+        # TODO: what about init_embeds?
+        test_cases = self.generate_test_cases(behaviors, target_texts, init_embeds=None)
 
-        # TODO: IMPLEMENT, what is test_cases even?
-        raise NotImplementedError("Subclasses must implement this method.")
+        # TODO: vefify that we indeed need to concatenate it,
+        # and whether we need to add space or not (compare agaisnt original implementation)
+        results = copy.deepcopy(conversations)
+        for conv, test_case in zip(results, test_cases):
+            conv[-1]["content"] += test_case
+
+        return results
 
 
-class SingleBehaviorRedTeamingMethod(RedTeamingMethod):
+class IndivHarmBenchAttack(HarmBenchAttack):
     """
     A template method that generates test cases for a single behavior and model
     (e.g., used by GCG, PEZ, GBDA, UAT, AutoPrompt)
@@ -66,5 +76,6 @@ class SingleBehaviorRedTeamingMethod(RedTeamingMethod):
             test_cases.append(test_case)
         return test_cases
 
+    @abstractmethod
     def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         raise NotImplementedError

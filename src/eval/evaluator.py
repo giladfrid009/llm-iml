@@ -6,6 +6,12 @@ from typing import Any
 from src.data import DF_Batcher
 from tqdm.auto import tqdm
 
+# TODO: format evaluator as a generic function F(prompt, response) -> float
+# without any additional fields. 
+# The "context" field should be removed and integrated as part of the prompt.
+# that overall change will allow to not use dataframes or some weird data formats.
+# but instead use a structured input and output. 
+# that also works well with an attack, which is formatted as a generic function F(prompt, target) -> embedding
 
 class Evaluator(ABC):
     def __init__(
@@ -38,7 +44,7 @@ class Evaluator(ABC):
         raise NotImplementedError("This method should be overridden by subclasses.")
 
     @abstractmethod
-    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
+    def eval_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts, returning the evaluation metric.
 
@@ -68,7 +74,7 @@ class Evaluator(ABC):
         index = 0
 
         for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=not self.verbose, leave=False):
-            batch_metric = self.process_batch(batch_data).cpu()
+            batch_metric = self.eval_batch(batch_data).cpu()
             metrics[index : index + batch_metric.size(0)] = batch_metric
             index += batch_metric.size(0)
 
@@ -123,7 +129,7 @@ class MultiEvaluator(Evaluator):
             hparams.update(params)
         return hparams
 
-    def process_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
+    def eval_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
         """
         Processes a batch of input and target texts using multiple evaluators,
         and combines their results using the specified combine function.
@@ -136,6 +142,6 @@ class MultiEvaluator(Evaluator):
         """
         metrics = []
         for evaluator in self.evaluators:
-            batch_metric = evaluator.process_batch(data)
+            batch_metric = evaluator.eval_batch(data)
             metrics.append(batch_metric.cpu())
         return self.combine_fn(*metrics)

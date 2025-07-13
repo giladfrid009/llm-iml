@@ -21,8 +21,8 @@ class AdverEmbedding(nn.Module):
         self.device = utils.extract_device(embedder)
 
         # internal params for caching
-        self._embed_dim: int = None # type: ignore
-        self._embed_dtype: torch.dtype = None # type: ignore
+        self._embed_dim: int = None  # type: ignore
+        self._embed_dtype: torch.dtype = None  # type: ignore
 
     @property
     def embed_dim(self) -> int:
@@ -58,6 +58,9 @@ class AdverEmbedding(nn.Module):
         if inputs.shape != adv_mask.shape:
             raise ValueError(f"Shape mismatch: input {inputs.shape}, adv_mask {adv_mask.shape}")
 
+        if adv_embeds.size(0) == 1:
+            adv_embeds = adv_embeds.expand(inputs.size(0), *adv_embeds.shape[1:])
+
         assert inputs.ndim + 1 == adv_embeds.ndim
         assert inputs.size(0) == adv_embeds.size(0)
         assert inputs.ndim == adv_mask.ndim
@@ -89,7 +92,7 @@ class AdverModel(nn.Module):
             tokenizer.add_special_tokens({"additional_special_tokens": [self.adv_token]})
 
         # adv embedder
-        self.orig_embedder: torch.nn.Embedding = self.model.get_input_embeddings() # type: ignore
+        self.orig_embedder: torch.nn.Embedding = self.model.get_input_embeddings()  # type: ignore
         self.adv_embedder = AdverEmbedding(self.orig_embedder)
 
         # params
@@ -153,7 +156,9 @@ class AdverModel(nn.Module):
             strict (bool): If True, number of adversarial tokens must match to `self.num_tokens`.
         """
         assert adv_embeds.ndim == 3, "Adversarial embeddings must be a 3D tensor (batch_size, num_tokens, embed_dim)"
-        assert adv_embeds.size(2) == self.adv_embedder.embed_dim, "Adversarial embeddings must match the embed_dim of the model"
+        assert (
+            adv_embeds.size(2) == self.adv_embedder.embed_dim
+        ), "Adversarial embeddings must match the embed_dim of the model"
 
         num_tokens = adv_embeds.size(1)
         if num_tokens != self.num_tokens and strict:
@@ -237,12 +242,37 @@ class AdverModel(nn.Module):
 
         return tokenized.to(self.device)
 
-    def forward_embeds(
+    def embed(
         self,
-        inputs_embeds: torch.Tensor,
+        inputs: torch.Tensor,
+        adv_embeds: torch.Tensor | None = None,
+        adv_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        return self.adv_embedder.forward(inputs, adv_embeds, adv_mask)
+
+    def forward(
+        self,
+        input_ids: torch.Tensor | None,
         attention_mask: torch.Tensor,
+        adv_mask: torch.Tensor | None = None,
+        inputs_embeds: torch.Tensor | None = None,
         **kwargs,
     ):
+
+        if inputs_embeds is None and input_ids is None:
+            raise ValueError("Either `inputs_embeds` or `input_ids` must be provided.")
+
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("Only one of `inputs_embeds` or `input_ids` should be provided.")
+
+        if input_ids is not None and adv_mask is not None and self.adv_embeds is not None:
+            # embed inputs and inject adversarial embeddings
+            inputs_embeds = self.embed(input_ids, self.adv_embeds, adv_mask)
+
+        elif input_ids is not None and (adv_mask is None or self.adv_embeds is None):
+            # embed inputs without adversarial embeddings
+            inputs_embeds = self.embed(input_ids, None, None)
+
         return self.model(
             input_ids=None,
             inputs_embeds=inputs_embeds,
@@ -250,40 +280,36 @@ class AdverModel(nn.Module):
             **kwargs,
         )
 
-    def forward(
+    @torch.inference_mode()
+    def generate(
         self,
-        input_ids: torch.Tensor,
+        input_ids: torch.Tensor | None,
         attention_mask: torch.Tensor,
         adv_mask: torch.Tensor | None = None,
-        **kwargs,
-    ):
-        # prepare adversarial embeddings
-        adv_embeds = self.adv_embeds if adv_mask is not None else None
-        if adv_embeds is not None and adv_embeds.size(0) == 1:
-            adv_embeds = adv_embeds.expand(input_ids.size(0), -1, -1)
-
-        inputs_embeds = self.adv_embedder.forward(input_ids, adv_embeds, adv_mask)
-
-        return self.forward_embeds(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            **kwargs,
-        )
-
-    @torch.inference_mode()
-    def generate_embeds(
-        self,
-        inputs_embeds: torch.Tensor,
-        attention_mask: torch.Tensor,
+        inputs_embeds: torch.Tensor | None = None,
         config: GenConfig | None = None,
         **kwargs,
-    ) -> GenerateDecoderOnlyOutput:
+    ) -> GenerateDecoderOnlyOutput | torch.Tensor:
+
+        if inputs_embeds is None and input_ids is None:
+            raise ValueError("Either `inputs_embeds` or `input_ids` must be provided.")
+
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("Only one of `inputs_embeds` or `input_ids` should be provided.")
 
         if config is None:
             config = GenConfig()
 
         full_config = copy.deepcopy(self.model.generation_config)
         config.patch_params(generation_config=full_config)
+
+        if input_ids is not None and adv_mask is not None and self.adv_embeds is not None:
+            # embed inputs and inject adversarial embeddings
+            inputs_embeds = self.embed(input_ids, self.adv_embeds, adv_mask)
+
+        elif input_ids is not None and (adv_mask is None or self.adv_embeds is None):
+            # embed inputs without adversarial embeddings
+            inputs_embeds = self.embed(input_ids, None, None)
 
         return self.model.generate(
             inputs=None,
@@ -296,30 +322,6 @@ class AdverModel(nn.Module):
             use_model_defaults=False,
             **kwargs,
         )  # type: ignore
-
-    @torch.inference_mode()
-    def generate(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
-        adv_mask: torch.Tensor | None = None,
-        config: GenConfig | None = None,
-        **kwargs,
-    ) -> GenerateDecoderOnlyOutput:
-
-        # prepare adversarial embeddings
-        adv_embeds = self.adv_embeds if adv_mask is not None else None
-        if adv_embeds is not None and adv_embeds.size(0) == 1:
-            adv_embeds = adv_embeds.expand(input_ids.size(0), -1, -1)
-
-        inputs_embeds = self.adv_embedder.forward(input_ids, adv_embeds, adv_mask)
-
-        return self.generate_embeds(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            config=config,
-            **kwargs,
-        )
 
     @torch.inference_mode()
     def chat(
@@ -342,12 +344,13 @@ class AdverModel(nn.Module):
 
         token_dict = self.tokenize(conversations)
 
-        result = self.generate(
+        result: torch.Tensor = self.generate(
             input_ids=token_dict["input_ids"],
             attention_mask=token_dict["attention_mask"],
             adv_mask=token_dict["adv_mask"],
             config=config,
+            return_dict_in_generate=False,
             **kwargs,
-        )
+        )  # type: ignore
 
         return self.tokenizer.batch_decode(result, skip_special_tokens=True)
