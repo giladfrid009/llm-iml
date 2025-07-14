@@ -95,7 +95,7 @@ class Initializer:
         text: str,
         strict: bool = True,
         pad_word: str = ".",
-        verbose: bool = False,
+        verbose: bool = True,
     ):
         """
         Initialize adversarial embeddings from a string of text.

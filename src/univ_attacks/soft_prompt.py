@@ -2,17 +2,17 @@ from src.adv_model import AdvModel
 from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack
+from src.fgsm_optim import FGSM
 
 from typing import Any
 import torch
-from typing import Iterable, Callable
 
 
 class UnivSoftPrompt(UnivAttack):
     def __init__(
         self,
         adv_model: AdvModel,
-        optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
+        optimizer: FGSM,
         evaluators: list[Evaluator],
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
@@ -28,8 +28,9 @@ class UnivSoftPrompt(UnivAttack):
             log_dir=log_dir,
         )
 
-        self.optimizer = optim_factory([self.univ_embeds])
-        self.logger.register_hparams({"iml/optimizer": self.optimizer.__class__.__name__})
+        self.optimizer = optimizer
+        
+        self.logger.register_hparams({"univ_soft_prompt/optimizer": self.optimizer.__class__.__name__})
         self.logger.register_hparams({"optim/name": self.optimizer.__class__.__name__})
         self.logger.register_hparams({f"optim/{k}": v for k, v in self.optimizer.param_groups[0].items()})
 
@@ -39,15 +40,15 @@ class UnivSoftPrompt(UnivAttack):
         input_ids: torch.Tensor,
         target_mask: torch.Tensor,
     ) -> torch.Tensor:
-        # align prdicted logits and target_ids
+        # align predicted logits and target_ids
         logits = logits[:, :-1]  # remove new token
         target_ids = input_ids[:, 1:]  # remove BOS token
         target_mask = target_mask[:, 1:]  # remove BOS token
 
-        # compute CE loss
-        loss_matrix = torch.nn.functional.cross_entropy(logits.swapdims(-1, -2), target_ids, reduction="none")
-        loss_matrix = loss_matrix * target_mask.bool()
-        loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
+        # compute flat CE loss
+        target_logits = logits[target_mask].view(-1, logits.size(-1))
+        target_ids = target_ids[target_mask].view(-1)
+        loss = torch.nn.functional.cross_entropy(target_logits, target_ids, reduction="mean")
         return loss
 
     def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int) -> float | None:
@@ -55,15 +56,14 @@ class UnivSoftPrompt(UnivAttack):
 
         # construct input conversations
         input_text, target_text = data["prompt"], data["target"]
-        input_convs = [[{"role": "user", "content": prm}] for prm in input_text]
-        token_dict = self.adv_model.tokenize(input_convs, target_text)
+        conversations = [[{"role": "user", "content": prm}] for prm in input_text]
+        token_dict = self.adv_model.tokenize(conversations, target_text)
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
             result = self.adv_model.forward(
                 input_ids=token_dict["input_ids"],
                 attention_mask=token_dict["attention_mask"],
                 adv_mask=token_dict["adv_mask"],
-                return_dict=False,
             )
 
             loss = self.criterion(
