@@ -1,14 +1,14 @@
+from src.sample_attacks.harm_bench.utils import get_template
+from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.adv_model import AdvModel
+
 import torch
 from sentence_transformers.util import semantic_search, dot_score, normalize_embeddings
 from torch.nn import CrossEntropyLoss
 
-from src.sample_attacks.harmbench.model_utils import get_template
-from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
-from src.adv_model import AdvModel
-
 
 # ============================== PEZ CLASS DEFINITION ============================== #
-class PEZ(IndivHarmBenchAttack):
+class PEZ(SequentialHarmBenchAttack):
     def __init__(
         self,
         adv_model: AdvModel,
@@ -32,9 +32,7 @@ class PEZ(IndivHarmBenchAttack):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(
-        self, behavior: str, target: str, init_embeds: torch.Tensor | None = None
-    ) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
 

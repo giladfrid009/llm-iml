@@ -1,4 +1,4 @@
-from src.sample_attacks.harmbench.baseline import HarmBenchAttack
+from src.sample_attacks.harm_bench.baseline import HarmBenchAttack
 from src.adv_model import AdvModel
 
 

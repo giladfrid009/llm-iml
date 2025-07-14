@@ -33,7 +33,6 @@ class HarmBenchAttack(SampleAttack):
         assert all(conv[-1]["role"] == "user" for conv in conversations)
 
         behaviors = [conv[-1]["content"] for conv in conversations]
-
         test_cases = self.generate_test_cases(behaviors, target_texts)
 
         # TODO: verify that we indeed need to concatenate it,
@@ -49,7 +48,7 @@ class HarmBenchAttack(SampleAttack):
         raise NotImplementedError
 
 
-class IndivHarmBenchAttack(HarmBenchAttack):
+class SequentialHarmBenchAttack(HarmBenchAttack):
     """
     A template method that generates test cases for a single behavior and model
     (e.g., used by GCG, PEZ, GBDA, UAT, AutoPrompt)

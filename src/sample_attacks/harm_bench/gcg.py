@@ -1,20 +1,65 @@
-import gc
+from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.sample_attacks.harm_bench.utils import get_template, check_refusal_completions
+from src.adv_model import AdvModel
 
+import gc
+from tqdm.auto import tqdm
 import torch
 from torch.nn import CrossEntropyLoss
 
 # https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
 
-from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
-from src.sample_attacks.harmbench.model_utils import get_template
-from src.sample_attacks.harmbench.check_refusal_utils import check_refusal_completions
-from src.sample_attacks.harmbench.autoprompt.autoprompt_utils import sample_control_autoprompt, get_nonascii_toks
-from src.adv_model import AdvModel
+
+########## GCG Utils ##########
+def sample_control(control_toks, grad, search_width, topk=256, temp=1, not_allowed_tokens=None):
+    if not_allowed_tokens is not None:
+        # grad[:, not_allowed_tokens.to(grad.device)] = np.infty
+        grad = grad.clone()
+        grad[:, not_allowed_tokens.to(grad.device)] = grad.max() + 1
+
+    top_indices = (-grad).topk(topk, dim=1).indices
+    control_toks = control_toks.to(grad.device)
+
+    original_control_toks = control_toks.repeat(search_width, 1)
+    new_token_pos = torch.arange(0, len(control_toks), len(control_toks) / search_width, device=grad.device).type(
+        torch.int64
+    )
+
+    new_token_val = torch.gather(
+        top_indices[new_token_pos], 1, torch.randint(0, topk, (search_width, 1), device=grad.device)
+    )
+    new_control_toks = original_control_toks.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
+
+    return new_control_toks
+
+
+def get_nonascii_toks(tokenizer, device="cpu"):
+    def is_ascii(s):
+        return s.isascii() and s.isprintable()
+
+    ascii_toks = []
+    for i in range(3, tokenizer.vocab_size):
+        if not is_ascii(tokenizer.decode([i])):
+            ascii_toks.append(i)
+
+    if tokenizer.bos_token_id is not None:
+        ascii_toks.append(tokenizer.bos_token_id)
+    if tokenizer.eos_token_id is not None:
+        ascii_toks.append(tokenizer.eos_token_id)
+    if tokenizer.pad_token_id is not None:
+        ascii_toks.append(tokenizer.pad_token_id)
+    if tokenizer.unk_token_id is not None:
+        ascii_toks.append(tokenizer.unk_token_id)
+
+    if "Baichuan2" in tokenizer.name_or_path:
+        ascii_toks += [i for i in range(101, 1000)]
+
+    return torch.tensor(ascii_toks, device=device)
 
 
 # ============================== GCG CLASS DEFINITION ============================== #
-class AutoPrompt(IndivHarmBenchAttack):
+class GCG(SequentialHarmBenchAttack):
     def __init__(
         self,
         adv_model: AdvModel,
@@ -27,11 +72,12 @@ class AutoPrompt(IndivHarmBenchAttack):
         eval_with_check_refusal=False,
         check_refusal_min_loss=0.1,
         early_stopping=False,
-        early_stopping_min_loss=0.1,  # early stopping min loss criteria
+        early_stopping_min_loss=0.1,
+        starting_search_batch_size=None,
         verbose: bool = True,
     ):
         """
-        :param adv_model:
+        :param target_model: a dictionary specifying the target model (kwargs to load_model_and_tokenizer)
         :param num_steps: the number of optimization steps to use
         :param adv_string_init: the initial adversarial string to start with
         :param allow_non_ascii: whether to allow non-ascii characters when sampling candidate updates
@@ -42,6 +88,7 @@ class AutoPrompt(IndivHarmBenchAttack):
         :param check_refusal_min_loss: a minimum loss before checking for refusal
         :param early_stopping: an alternate form of early stopping, based solely on early_stopping_min_loss
         :param early_stopping_min_loss: the loss at which to stop optimization if early_stopping is True
+        :param starting_search_batch_size: the initial search_batch_size; will auto reduce later in case of OOM
         """
         super().__init__(adv_model, verbose)
         self.num_steps = num_steps
@@ -59,25 +106,25 @@ class AutoPrompt(IndivHarmBenchAttack):
         self.check_refusal_min_loss = check_refusal_min_loss
         self.early_stopping = early_stopping
         self.early_stopping_min_loss = early_stopping_min_loss
+        self.starting_search_batch_size = starting_search_batch_size
 
         ## Instruction template
         template = get_template(self.tokenizer)
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(
-        self, behavior: str, target: str, init_embeds: torch.Tensor | None = None
-    ) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
 
         :param behavior: a dictionary specifying the behavior to generate test cases for
-        :param verbose: whether to print progress
         :return: a test case and logs
         """
 
         # starting search_batch_size, will auto reduce batch_size later if go OOM (resets for every new behavior)
-        self.search_batch_size = self.search_width
+        self.search_batch_size = (
+            self.starting_search_batch_size if self.starting_search_batch_size else self.search_width
+        )
 
         ### Targeted Model and Tokenier ###
         model = self.model
@@ -85,6 +132,7 @@ class AutoPrompt(IndivHarmBenchAttack):
         tokenizer = self.tokenizer
 
         ### GCG hyperparams ###
+        verbose = self.verbose
         num_steps = self.num_steps
         adv_string_init = self.adv_string_init
         allow_non_ascii = self.allow_non_ascii
@@ -101,7 +149,7 @@ class AutoPrompt(IndivHarmBenchAttack):
 
         embed_layer: torch.nn.Embedding = model.get_input_embeddings()
         vocab_size = embed_layer.weight.shape[0]  # can be larger than tokenizer.vocab_size for some models
-        vocab_embeds = embed_layer(torch.arange(0, vocab_size).long().to(device))
+        vocab_embeds = embed_layer(torch.arange(0, vocab_size).long().to(model.device))
 
         not_allowed_tokens = None if allow_non_ascii else get_nonascii_toks(tokenizer)
         # remove redundant tokens
@@ -129,7 +177,7 @@ class AutoPrompt(IndivHarmBenchAttack):
                 self.prefix_cache = outputs.past_key_values
 
         # ========== run optimization ========== #
-        for i in range(num_steps):
+        for i in tqdm(range(num_steps)):
             # ========== compute coordinate token_gradient ========== #
             # create input
             optim_ids_onehot = torch.zeros((1, num_optim_tokens, vocab_size), device=device, dtype=model.dtype)
@@ -160,7 +208,7 @@ class AutoPrompt(IndivHarmBenchAttack):
             token_grad = torch.autograd.grad(outputs=[loss], inputs=[optim_ids_onehot])[0]
 
             # ========== Sample a batch of new tokens based on the coordinate gradient. ========== #
-            sampled_top_indices = sample_control_autoprompt(
+            sampled_top_indices = sample_control(
                 optim_ids.squeeze(0),
                 token_grad.squeeze(0),
                 search_width,
@@ -234,13 +282,16 @@ class AutoPrompt(IndivHarmBenchAttack):
 
             # ========== Eval and Early Stopping ========== #
             if (i % eval_steps == 0) or (i == num_steps - 1):
-                print(f"\n===>Step {i}\n===>Test Case: {test_case}\n===>Loss: {current_loss}")
+                p_output = f"\n===>Step {i}\n===>Test Case: {test_case}\n===>Loss: {current_loss}"
                 if eval_with_check_refusal and current_loss < check_refusal_min_loss:
                     input_str = self.template.format(instruction=test_case)
                     is_refusal, completions, _ = check_refusal_completions(model, tokenizer, inputs=[input_str])
-                    print("===>Completion:", completions[0])
+                    p_output += f"\n\n===>Completion: {completions[0]}"
                     if not is_refusal[0]:
                         break
+
+                if verbose:
+                    print(p_output)
 
             if early_stopping and current_loss < early_stopping_min_loss:
                 print(f"Early stopping at step {i} with loss {current_loss}")
@@ -291,5 +342,9 @@ class AutoPrompt(IndivHarmBenchAttack):
             loss = loss_fct.forward(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             loss = loss.view(input_embeds_batch.shape[0], -1).mean(dim=1)
             all_loss.append(loss)
+
+            del outputs, logits, loss
+            torch.cuda.empty_cache()
+            gc.collect()
 
         return torch.cat(all_loss, dim=0)

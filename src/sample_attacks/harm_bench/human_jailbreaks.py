@@ -1,8 +1,8 @@
-import random
-
-from src.sample_attacks.harmbench.human_jailbreaks.jailbreaks import JAILBREAKS
-from src.sample_attacks.harmbench.baseline import HarmBenchAttack
+from src.sample_attacks.harm_bench.human_jailbreaks_utils.manual_jailbreaks import MANUAL_JAILBREAKS
+from src.sample_attacks.harm_bench.baseline import HarmBenchAttack
 from src.adv_model import AdvModel
+
+import random
 
 
 class HumanJailbreaks(HarmBenchAttack):
@@ -23,6 +23,6 @@ class HumanJailbreaks(HarmBenchAttack):
         self.seed = seed
 
     def generate_test_cases(self, behaviors: list[str], targets: list[str]) -> list[str]:
-        jailbreaks = random.choices(JAILBREAKS, k=len(behaviors))
+        jailbreaks = random.choices(MANUAL_JAILBREAKS, k=len(behaviors))
         test_cases = [f"{jb}\n\n{beh}" for jb, beh in zip(jailbreaks, behaviors)]
         return test_cases

@@ -1,15 +1,15 @@
-import torch
-from torch.nn import CrossEntropyLoss
-import numpy as np
-from tqdm.auto import tqdm
-
-from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
-from src.sample_attacks.harmbench.model_utils import get_template
+from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.sample_attacks.harm_bench.utils import get_template
 from src.adv_model import AdvModel
 
 
+import torch
+from torch.nn import CrossEntropyLoss
+import numpy as np
+
+
 # ============================== GBDA CLASS DEFINITION ============================== #
-class GBDA(IndivHarmBenchAttack):
+class GBDA(SequentialHarmBenchAttack):
     def __init__(
         self,
         adv_model: AdvModel,
@@ -36,9 +36,7 @@ class GBDA(IndivHarmBenchAttack):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(
-        self, behavior: str, target: str, init_embeds: torch.Tensor | None = None
-    ) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
 

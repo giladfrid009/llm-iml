@@ -1,15 +1,13 @@
+from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.sample_attacks.harm_bench.utils import get_template
+from src.adv_model import AdvModel
+
 import torch
 from torch.nn import CrossEntropyLoss
 from tqdm.auto import tqdm
 import numpy as np
 from copy import deepcopy
-
-# https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
-
-from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
-from src.sample_attacks.harmbench.model_utils import get_template
-from src.adv_model import AdvModel
 
 
 # ============================== UTILS FOR UAT ============================== #
@@ -55,7 +53,7 @@ def hotflip_attack(
 
 
 # ============================== GCG CLASS DEFINITION ============================== #
-class UAT(IndivHarmBenchAttack):
+class UAT(SequentialHarmBenchAttack):
     def __init__(
         self,
         adv_model: AdvModel,
@@ -132,9 +130,7 @@ class UAT(IndivHarmBenchAttack):
         loss = torch.cat(loss_list, dim=0)
         return loss
 
-    def generate_test_cases_single_behavior(
-        self, behavior: str, target: str, init_embeds: torch.Tensor | None = None
-    ) -> str:
+    def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
 
