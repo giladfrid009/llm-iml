@@ -156,6 +156,13 @@ class ActivationExtractor:
         self._remove_hooks()
 
 
+def sum_aggregator(losses: Tensor) -> Tensor:
+    """
+    Default aggregator function that sums losses across layers.
+    """
+    return torch.sum(losses, dim=-1)
+
+
 class ActivationLoss(torch.nn.Module):
     def __init__(
         self,
@@ -190,7 +197,7 @@ class ActivationLoss(torch.nn.Module):
         super().__init__()
 
         if aggr_fn is None:
-            aggr_fn = lambda losses: torch.sum(losses, dim=-1)
+            aggr_fn = sum_aggregator
 
         self.loss_fn = loss_fn
         self.aggr_fn = aggr_fn
