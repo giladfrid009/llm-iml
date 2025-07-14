@@ -1,8 +1,8 @@
 from tqdm.auto import tqdm
 
 from abc import abstractmethod
-from src.adver_model import AdverModel
-from src.attacks.attack import TextAttack
+from src.adv_model import AdvModel
+from src.sample_attack import TextAttack
 import torch
 import copy
 
@@ -12,7 +12,7 @@ class HarmBenchAttack(TextAttack):
     A template for a red teaming method that generates test cases given a set of behaviors
     """
 
-    def __init__(self, adv_mode: AdverModel, verbose: bool):
+    def __init__(self, adv_mode: AdvModel, verbose: bool):
         self.adv_model = adv_mode
         self.verbose = verbose
 
@@ -21,7 +21,9 @@ class HarmBenchAttack(TextAttack):
         self.tokenizer = adv_mode.tokenizer
 
     @abstractmethod
-    def generate_test_cases(self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None) -> list[str]:
+    def generate_test_cases(
+        self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None
+    ) -> list[str]:
         raise NotImplementedError
 
     # TODO: what about init_embeds?
@@ -38,7 +40,7 @@ class HarmBenchAttack(TextAttack):
         assert all(conv[-1]["role"] == "user" for conv in conversations)
 
         behaviors = [conv[-1]["content"] for conv in conversations]
-        
+
         # TODO: what about init_embeds?
         test_cases = self.generate_test_cases(behaviors, target_texts, init_embeds=None)
 
@@ -59,13 +61,15 @@ class IndivHarmBenchAttack(HarmBenchAttack):
 
     def __init__(
         self,
-        adv_model: AdverModel,
+        adv_model: AdvModel,
         verbose: bool,
     ):
         """ """
         super().__init__(adv_model, verbose)
 
-    def generate_test_cases(self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None) -> list[str]:
+    def generate_test_cases(
+        self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None
+    ) -> list[str]:
 
         if len(behaviors) != len(targets):
             raise ValueError("The number of behaviors must match the number of targets.")

@@ -88,7 +88,9 @@ class StrongRejectEvaluator(Evaluator):
         """
         name = type(self).__name__
         hparams = {}
-        hparams.update({f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()})
+        hparams.update(
+            {f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()}
+        )
         hparams.update({f"{name}/llm_config/{k}": v for k, v in self.llm_config.__dict__.items()})
         hparams.update({f"{name}/serve_config/{k}": v for k, v in self.serve_config.__dict__.items()})
         return hparams
@@ -104,7 +106,10 @@ class StrongRejectEvaluator(Evaluator):
         Returns:
             list[str]: Formatted inputs ready for model evaluation.
         """
-        return [STRONG_REJECT_PROMPT.format(forbidden_prompt=inp, response=resp) for inp, resp in zip(input_texts, response_texts)]
+        return [
+            STRONG_REJECT_PROMPT.format(forbidden_prompt=inp, response=resp)
+            for inp, resp in zip(input_texts, response_texts)
+        ]
 
     def _compute_score(self, resp: ResponseOutput) -> float:
         """

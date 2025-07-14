@@ -71,7 +71,7 @@ class AdverEmbedding(nn.Module):
         return embedded.masked_scatter(mask=adv_mask.unsqueeze(-1), source=adv_embeds)
 
 
-class AdverModel(nn.Module):
+class AdvModel(nn.Module):
     def __init__(
         self,
         model: PreTrainedModel,
@@ -104,10 +104,10 @@ class AdverModel(nn.Module):
 
     def get_hparams(self) -> dict:
         return {
-            "adver_model/model_name": self.model.name_or_path,
-            "adver_model/tokenizer_name": self.tokenizer.name_or_path,
-            "adver_model/num_tokens": self.num_tokens,
-            "adver_model/adv_token": self.adv_token,
+            "adv_model/model_name": self.model.name_or_path,
+            "adv_model/tokenizer_name": self.tokenizer.name_or_path,
+            "adv_model/num_tokens": self.num_tokens,
+            "adv_model/adv_token": self.adv_token,
         }
 
     def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
@@ -133,7 +133,7 @@ class AdverModel(nn.Module):
         closest_indices = torch.argmin(dists, dim=-1)  # shape [b, n]
         self.adv_embeds = self.orig_embedder(closest_indices)  # shape [b, n, d]
 
-    def train(self, mode: bool = True) -> "AdverModel":
+    def train(self, mode: bool = True) -> "AdvModel":
         """
         Overrides the default train() method to ensure the inner model remains in evaluation mode.
 
@@ -141,7 +141,7 @@ class AdverModel(nn.Module):
             mode (bool): Training mode flag (True for training, False for evaluation).
 
         Returns:
-            AdverModel: Self.
+            AdvModel: Self.
         """
         self.training = mode
         return self

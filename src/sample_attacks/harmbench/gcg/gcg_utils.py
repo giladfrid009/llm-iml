@@ -13,9 +13,13 @@ def sample_control(control_toks, grad, search_width, topk=256, temp=1, not_allow
     control_toks = control_toks.to(grad.device)
 
     original_control_toks = control_toks.repeat(search_width, 1)
-    new_token_pos = torch.arange(0, len(control_toks), len(control_toks) / search_width, device=grad.device).type(torch.int64)
+    new_token_pos = torch.arange(0, len(control_toks), len(control_toks) / search_width, device=grad.device).type(
+        torch.int64
+    )
 
-    new_token_val = torch.gather(top_indices[new_token_pos], 1, torch.randint(0, topk, (search_width, 1), device=grad.device))
+    new_token_val = torch.gather(
+        top_indices[new_token_pos], 1, torch.randint(0, topk, (search_width, 1), device=grad.device)
+    )
     new_control_toks = original_control_toks.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
 
     return new_control_toks

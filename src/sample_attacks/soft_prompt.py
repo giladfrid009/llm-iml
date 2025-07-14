@@ -8,14 +8,14 @@ from transformers.cache_utils import Cache, DynamicCache
 
 LegacyCache = tuple[tuple[torch.Tensor], tuple[torch.Tensor]]
 
-from src.adver_model import AdverModel
-from src.attacks.attack import Attack
+from src.adv_model import AdvModel
+from src.sample_attack import SampleAttack
 
 
-class SoftPrompt(Attack):
+class SoftPrompt(SampleAttack):
     def __init__(
         self,
-        adv_model: AdverModel,
+        adv_model: AdvModel,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
         early_stopping: bool = True,
@@ -104,7 +104,7 @@ class SoftPrompt(Attack):
         # to filter the cache object for early stopping see:
         # https://github.com/huggingface/transformers/blob/main/src/transformers/generation/utils.py
         # in the _contrastive_search method, they use DynamicCache.batch_select_indices()
-        # Note that early stopping can be loss-based instead. That will not require additional forward passes for the 
+        # Note that early stopping can be loss-based instead. That will not require additional forward passes for the
         # early stopping check.
 
         token_dict = self.adv_model.tokenize(conversations, target_texts)
@@ -145,7 +145,9 @@ class SoftPrompt(Attack):
                         adv_mask=token_dict["adv_mask"],
                     )
 
-                    loss = self.criterion(logits=result.logits, input_ids=token_dict["input_ids"], target_mask=token_dict["target_mask"])
+                    loss = self.criterion(
+                        logits=result.logits, input_ids=token_dict["input_ids"], target_mask=token_dict["target_mask"]
+                    )
 
                 scaler.scale(loss).backward()
                 scaler.step(optim)

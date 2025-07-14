@@ -106,12 +106,16 @@ class HarmBenchEvaluator(Evaluator):
         """
         name = type(self).__name__
         hparams = {f"{name}/use_context": self.use_context}
-        hparams.update({f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()})
+        hparams.update(
+            {f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()}
+        )
         hparams.update({f"{name}/llm_config/{k}": v for k, v in self.llm_config.__dict__.items()})
         hparams.update({f"{name}/serve_config/{k}": v for k, v in self.serve_config.__dict__.items()})
         return hparams
 
-    def _fmt_inputs(self, input_texts: list[str], response_texts: list[str], contex_texts: list[str] | None = None) -> list[str]:
+    def _fmt_inputs(
+        self, input_texts: list[str], response_texts: list[str], contex_texts: list[str] | None = None
+    ) -> list[str]:
         """
         Formats the input texts and response texts into the required prompt format.
 

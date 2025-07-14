@@ -2,18 +2,24 @@ import torch
 from torch.nn import CrossEntropyLoss
 from tqdm.auto import tqdm
 import numpy as np
+from copy import deepcopy
 
 # https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
-from src.attacks.harmbench.baseline import IndivHarmBenchAttack
-from src.attacks.harmbench.model_utils import get_template
-from copy import deepcopy
-import json
+
+from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
+from src.sample_attacks.harmbench.model_utils import get_template
+from src.adv_model import AdvModel
+
 
 
 # ============================== UTILS FOR UAT ============================== #
 def hotflip_attack(
-    averaged_grad: torch.Tensor, embedding_matrix: torch.Tensor, trigger_token_ids, increase_loss: bool = False, num_candidates: int = 1
+    averaged_grad: torch.Tensor,
+    embedding_matrix: torch.Tensor,
+    trigger_token_ids,
+    increase_loss: bool = False,
+    num_candidates: int = 1,
 ) -> np.ndarray | int:
     """
     The "Hotflip" attack described in Equation (2) of the paper. This code is heavily inspired by
@@ -31,7 +37,9 @@ def hotflip_attack(
     averaged_grad = averaged_grad
     embedding_matrix = embedding_matrix
     trigger_token_embeds = (
-        torch.nn.functional.embedding(torch.LongTensor(trigger_token_ids).cuda(), embedding_matrix).detach().unsqueeze(0)
+        torch.nn.functional.embedding(torch.LongTensor(trigger_token_ids).cuda(), embedding_matrix)
+        .detach()
+        .unsqueeze(0)
     )  # TODO: WHY IS IT UNUSED?
     averaged_grad = averaged_grad.unsqueeze(0)
 
@@ -51,7 +59,7 @@ def hotflip_attack(
 class UAT(IndivHarmBenchAttack):
     def __init__(
         self,
-        adv_model,
+        adv_model: AdvModel,
         num_steps=50,
         adv_string_init="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
         use_prefix_cache=True,
@@ -125,7 +133,9 @@ class UAT(IndivHarmBenchAttack):
         loss = torch.cat(loss_list, dim=0)
         return loss
 
-    def generate_test_cases_single_behavior(self, behavior: str, target: str, init_embeds: torch.Tensor | None = None) -> str:
+    def generate_test_cases_single_behavior(
+        self, behavior: str, target: str, init_embeds: torch.Tensor | None = None
+    ) -> str:
         """
         Generates test cases for a single behavior
 
@@ -154,7 +164,9 @@ class UAT(IndivHarmBenchAttack):
         embedding_weight = embed_layer.weight.detach()
 
         # ========== setup trigger_tokens and input_embeds components ========== #
-        trigger_tokens = tokenizer(adv_string_init, return_tensors="pt", add_special_tokens=False).to(device)["input_ids"][0]
+        trigger_tokens = tokenizer(adv_string_init, return_tensors="pt", add_special_tokens=False).to(device)[
+            "input_ids"
+        ][0]
         trigger_token_length = len(trigger_tokens)
 
         behavior_ids = tokenizer(behavior, return_tensors="pt", add_special_tokens=False).to(device)["input_ids"]
@@ -180,7 +192,8 @@ class UAT(IndivHarmBenchAttack):
             input_embeds = torch.cat([embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
         else:
             input_embeds = torch.cat(
-                [before_embeds, behavior_embeds, embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1
+                [before_embeds, behavior_embeds, embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds],
+                dim=1,
             )
         loss = self.get_loss(1, input_embeds, target_embeds, target_ids, no_grad=False)
         best_loss = loss
@@ -223,7 +236,12 @@ class UAT(IndivHarmBenchAttack):
                 candidates_embeds = embed_layer(candidates_tokens)
                 if self.use_prefix_cache:
                     input_embeds_candidates = torch.cat(
-                        [candidates_embeds, after_embeds.repeat(len(candidates), 1, 1), target_embeds.repeat(len(candidates), 1, 1)], dim=1
+                        [
+                            candidates_embeds,
+                            after_embeds.repeat(len(candidates), 1, 1),
+                            target_embeds.repeat(len(candidates), 1, 1),
+                        ],
+                        dim=1,
                     )
                 else:
                     input_embeds_candidates = torch.cat(
@@ -260,10 +278,19 @@ class UAT(IndivHarmBenchAttack):
                 model.zero_grad()
 
                 if self.use_prefix_cache:
-                    input_embeds = torch.cat([embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1)
+                    input_embeds = torch.cat(
+                        [embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1
+                    )
                 else:
                     input_embeds = torch.cat(
-                        [before_embeds, behavior_embeds, embed_layer(trigger_tokens.unsqueeze(0)), after_embeds, target_embeds], dim=1
+                        [
+                            before_embeds,
+                            behavior_embeds,
+                            embed_layer(trigger_tokens.unsqueeze(0)),
+                            after_embeds,
+                            target_embeds,
+                        ],
+                        dim=1,
                     )
                 loss = self.get_loss(1, input_embeds, target_embeds, target_ids, no_grad=False)
 

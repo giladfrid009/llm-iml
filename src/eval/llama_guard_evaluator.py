@@ -22,7 +22,7 @@ SUPPORTED_MODELS = [
 class LlamaGuardEvaluator(Evaluator):
     """
     Evaluator using the a LlamaGuard model.
-    
+
     ### Supported models:
     - `meta-llama/LlamaGuard-7b`
     - `meta-llama/Meta-Llama-Guard-2-8B`
@@ -44,7 +44,9 @@ class LlamaGuardEvaluator(Evaluator):
             raise ValueError(f"Unsupported model: {model_name}. Supported models are: {SUPPORTED_MODELS}")
 
         if llm_config is not None and llm_config.model_name != model_name:
-            raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
+            raise ValueError(
+                f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
+            )
 
         super().__init__(
             name=model_name,
@@ -53,7 +55,7 @@ class LlamaGuardEvaluator(Evaluator):
         )
 
         if llm_config is None:
-            max_model_len=4096 if model_name == "meta-llama/Llama-Guard-4-12B" else None
+            max_model_len = 4096 if model_name == "meta-llama/Llama-Guard-4-12B" else None
             llm_config = LLMConfig(model_name=model_name, dtype="bfloat16", max_model_len=max_model_len)
 
         if sampling_params is None:
@@ -72,17 +74,19 @@ class LlamaGuardEvaluator(Evaluator):
 
         # start vllm service
         self.model.start()
-        
+
     def get_hparams(self) -> dict:
         """
         Returns the hyperparameters of the evaluator as a dictionary.
-        
+
         Returns:
             dict: Hyperparameters of the evaluator.
         """
         name = type(self).__name__
         hparams = {}
-        hparams.update({f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()})
+        hparams.update(
+            {f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()}
+        )
         hparams.update({f"{name}/llm_config/{k}": v for k, v in self.llm_config.__dict__.items()})
         hparams.update({f"{name}/serve_config/{k}": v for k, v in self.serve_config.__dict__.items()})
         return hparams

@@ -1,23 +1,37 @@
 import gc
 import json
 import os
-from tqdm.auto import tqdm
+
 import torch
 from torch.nn import CrossEntropyLoss
 
 # https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
-from src.attacks.harmbench.baseline import IndivHarmBenchAttack
-from src.attacks.harmbench.model_utils import get_template
-from src.attacks.harmbench.check_refusal_utils import check_refusal_completions
-from src.attacks.harmbench.gcg.gcg_utils import sample_control, get_nonascii_toks
+
+from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
+from src.sample_attacks.harmbench.model_utils import get_template
+from src.sample_attacks.harmbench.check_refusal_utils import check_refusal_completions
+from src.sample_attacks.harmbench.autoprompt.autoprompt_utils import sample_control_autoprompt, get_nonascii_toks
+from src.adv_model import AdvModel
+
+# TODO: NEEDED CHANGES
+# 0. figure out wtf is going on with the expected datasets, and which HarmBench datasets are which.
+# 1. accept an instance of AdvModel instead of creating new model and tokenizer inside RedTeamingMethod
+#        - make sure that get_template still works
+# 2. accept batch of conversations and targets instead of targets_path
+# 3. make the method use exact number of tokens and not a random adv_string_init which gets tokenized to unknown number of tokens
+# 4. initialization - instead of initial `adv_string_init`, accept an `init_embeds` parameter.
+
+# TODO: CHECK:
+# 1. use_prefix_cache=True modifies an attribute of the model, makes sure its not a problem,
+# especially since the model is afterwards used outside of this attack.
 
 
 # ============================== GCG CLASS DEFINITION ============================== #
-class GCG(IndivHarmBenchAttack):
+class AutoPrompt(IndivHarmBenchAttack):
     def __init__(
         self,
-        adv_model,
+        adv_model: AdvModel,
         num_steps=50,
         adv_string_init="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
         allow_non_ascii=False,
@@ -27,12 +41,11 @@ class GCG(IndivHarmBenchAttack):
         eval_with_check_refusal=False,
         check_refusal_min_loss=0.1,
         early_stopping=False,
-        early_stopping_min_loss=0.1,
-        starting_search_batch_size=None,
+        early_stopping_min_loss=0.1,  # early stopping min loss criteria
         verbose: bool = True,
     ):
         """
-        :param target_model: a dictionary specifying the target model (kwargs to load_model_and_tokenizer)
+        :param adv_model:
         :param num_steps: the number of optimization steps to use
         :param adv_string_init: the initial adversarial string to start with
         :param allow_non_ascii: whether to allow non-ascii characters when sampling candidate updates
@@ -43,7 +56,6 @@ class GCG(IndivHarmBenchAttack):
         :param check_refusal_min_loss: a minimum loss before checking for refusal
         :param early_stopping: an alternate form of early stopping, based solely on early_stopping_min_loss
         :param early_stopping_min_loss: the loss at which to stop optimization if early_stopping is True
-        :param starting_search_batch_size: the initial search_batch_size; will auto reduce later in case of OOM
         """
         super().__init__(adv_model, verbose)
         self.num_steps = num_steps
@@ -61,23 +73,25 @@ class GCG(IndivHarmBenchAttack):
         self.check_refusal_min_loss = check_refusal_min_loss
         self.early_stopping = early_stopping
         self.early_stopping_min_loss = early_stopping_min_loss
-        self.starting_search_batch_size = starting_search_batch_size
 
         ## Instruction template
         template = get_template(self.tokenizer)
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior: str, target: str, init_embeds: torch.Tensor | None = None) -> str:
+    def generate_test_cases_single_behavior(
+        self, behavior: str, target: str, init_embeds: torch.Tensor | None = None
+    ) -> str:
         """
         Generates test cases for a single behavior
 
         :param behavior: a dictionary specifying the behavior to generate test cases for
+        :param verbose: whether to print progress
         :return: a test case and logs
         """
 
         # starting search_batch_size, will auto reduce batch_size later if go OOM (resets for every new behavior)
-        self.search_batch_size = self.starting_search_batch_size if self.starting_search_batch_size else self.search_width
+        self.search_batch_size = self.search_width
 
         ### Targeted Model and Tokenier ###
         model = self.model
@@ -85,7 +99,6 @@ class GCG(IndivHarmBenchAttack):
         tokenizer = self.tokenizer
 
         ### GCG hyperparams ###
-        verbose = self.verbose
         num_steps = self.num_steps
         adv_string_init = self.adv_string_init
         allow_non_ascii = self.allow_non_ascii
@@ -102,7 +115,7 @@ class GCG(IndivHarmBenchAttack):
 
         embed_layer: torch.nn.Embedding = model.get_input_embeddings()
         vocab_size = embed_layer.weight.shape[0]  # can be larger than tokenizer.vocab_size for some models
-        vocab_embeds = embed_layer(torch.arange(0, vocab_size).long().to(model.device))
+        vocab_embeds = embed_layer(torch.arange(0, vocab_size).long().to(device))
 
         not_allowed_tokens = None if allow_non_ascii else get_nonascii_toks(tokenizer)
         # remove redundant tokens
@@ -118,7 +131,9 @@ class GCG(IndivHarmBenchAttack):
             torch.tensor(input_ids, device=device).unsqueeze(0) for input_ids in cache_input_ids
         ]  # make tensor separately because can't return_tensors='pt' in tokenizer
         before_ids, behavior_ids, after_ids, target_ids = cache_input_ids
-        before_embeds, behavior_embeds, after_embeds, target_embeds = [embed_layer(input_ids) for input_ids in cache_input_ids]
+        before_embeds, behavior_embeds, after_embeds, target_embeds = [
+            embed_layer(input_ids) for input_ids in cache_input_ids
+        ]
 
         if self.use_prefix_cache:
             # precompute KV cache for everything before the optimized tokens
@@ -128,7 +143,7 @@ class GCG(IndivHarmBenchAttack):
                 self.prefix_cache = outputs.past_key_values
 
         # ========== run optimization ========== #
-        for i in tqdm(range(num_steps)):
+        for i in range(num_steps):
             # ========== compute coordinate token_gradient ========== #
             # create input
             optim_ids_onehot = torch.zeros((1, num_optim_tokens, vocab_size), device=device, dtype=model.dtype)
@@ -140,7 +155,9 @@ class GCG(IndivHarmBenchAttack):
                 input_embeds = torch.cat([optim_embeds, after_embeds, target_embeds], dim=1)
                 outputs = model(inputs_embeds=input_embeds, past_key_values=self.prefix_cache)
             else:
-                input_embeds = torch.cat([before_embeds, behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1)
+                input_embeds = torch.cat(
+                    [before_embeds, behavior_embeds, optim_embeds, after_embeds, target_embeds], dim=1
+                )
                 outputs = model(inputs_embeds=input_embeds)
 
             logits: torch.Tensor = outputs.logits
@@ -157,7 +174,7 @@ class GCG(IndivHarmBenchAttack):
             token_grad = torch.autograd.grad(outputs=[loss], inputs=[optim_ids_onehot])[0]
 
             # ========== Sample a batch of new tokens based on the coordinate gradient. ========== #
-            sampled_top_indices = sample_control(
+            sampled_top_indices = sample_control_autoprompt(
                 optim_ids.squeeze(0),
                 token_grad.squeeze(0),
                 search_width,
@@ -172,7 +189,9 @@ class GCG(IndivHarmBenchAttack):
             count = 0
             for j in range(len(sampled_top_indices_text)):
                 # tokenize again
-                tmp = tokenizer(sampled_top_indices_text[j], return_tensors="pt", add_special_tokens=False).to(device)["input_ids"][0]
+                tmp = tokenizer(sampled_top_indices_text[j], return_tensors="pt", add_special_tokens=False).to(device)[
+                    "input_ids"
+                ][0]
                 # if the tokenized text is different, then set the sampled_top_indices to padding_top_indices
                 if not torch.equal(tmp, sampled_top_indices[j]):
                     count += 1
@@ -196,7 +215,12 @@ class GCG(IndivHarmBenchAttack):
             sampled_top_embeds = embed_layer(sampled_top_indices)
             if self.use_prefix_cache:
                 input_embeds = torch.cat(
-                    [sampled_top_embeds, after_embeds.repeat(new_search_width, 1, 1), target_embeds.repeat(new_search_width, 1, 1)], dim=1
+                    [
+                        sampled_top_embeds,
+                        after_embeds.repeat(new_search_width, 1, 1),
+                        target_embeds.repeat(new_search_width, 1, 1),
+                    ],
+                    dim=1,
                 )
             else:
                 input_embeds = torch.cat(
@@ -211,7 +235,9 @@ class GCG(IndivHarmBenchAttack):
                 )
 
             # Auto Find Batch Size for foward candidates (each time go OOM will decay search_batch_size // 2)
-            loss: torch.Tensor = find_executable_batch_size(self.compute_candidates_loss, self.search_batch_size)(input_embeds, target_ids)
+            loss: torch.Tensor = find_executable_batch_size(self.compute_candidates_loss, self.search_batch_size)(
+                input_embeds, target_ids
+            )
 
             # ========== Update the optim_ids with the best candidate ========== #
             optim_ids = sampled_top_indices[loss.argmin()].unsqueeze(0)
@@ -222,16 +248,13 @@ class GCG(IndivHarmBenchAttack):
 
             # ========== Eval and Early Stopping ========== #
             if (i % eval_steps == 0) or (i == num_steps - 1):
-                p_output = f"\n===>Step {i}\n===>Test Case: {test_case}\n===>Loss: {current_loss}"
+                print(f"\n===>Step {i}\n===>Test Case: {test_case}\n===>Loss: {current_loss}")
                 if eval_with_check_refusal and current_loss < check_refusal_min_loss:
                     input_str = self.template.format(instruction=test_case)
                     is_refusal, completions, _ = check_refusal_completions(model, tokenizer, inputs=[input_str])
-                    p_output += f"\n\n===>Completion: {completions[0]}"
+                    print("===>Completion:", completions[0])
                     if not is_refusal[0]:
                         break
-
-                if verbose:
-                    print(p_output)
 
             if early_stopping and current_loss < early_stopping_min_loss:
                 print(f"Early stopping at step {i} with loss {current_loss}")
@@ -244,7 +267,9 @@ class GCG(IndivHarmBenchAttack):
 
         return test_case
 
-    def compute_candidates_loss(self, search_batch_size: int, input_embeds: torch.Tensor, target_ids: torch.Tensor) -> torch.Tensor:
+    def compute_candidates_loss(
+        self, search_batch_size: int, input_embeds: torch.Tensor, target_ids: torch.Tensor
+    ) -> torch.Tensor:
         if self.search_batch_size != search_batch_size:
             print(f"INFO: Setting candidates search_batch_size to {search_batch_size})")
             self.search_batch_size = search_batch_size
@@ -280,9 +305,5 @@ class GCG(IndivHarmBenchAttack):
             loss = loss_fct.forward(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             loss = loss.view(input_embeds_batch.shape[0], -1).mean(dim=1)
             all_loss.append(loss)
-
-            del outputs, logits, loss
-            torch.cuda.empty_cache()
-            gc.collect()
 
         return torch.cat(all_loss, dim=0)

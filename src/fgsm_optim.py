@@ -1,6 +1,7 @@
 import torch
 import torch.optim
 
+
 class GradSign(torch.optim.Optimizer):
     """
     A PyTorch optimizer that applies sign to the gradients of the model's parameters before applying the internal optimizer step.

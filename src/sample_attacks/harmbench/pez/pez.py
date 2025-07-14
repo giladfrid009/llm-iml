@@ -1,16 +1,16 @@
 import torch
 from sentence_transformers.util import semantic_search, dot_score, normalize_embeddings
 from torch.nn import CrossEntropyLoss
-from src.attacks.harmbench.model_utils import get_template
-from src.attacks.harmbench.baseline import IndivHarmBenchAttack
-import json
 
+from src.sample_attacks.harmbench.model_utils import get_template
+from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
+from src.adv_model import AdvModel
 
 # ============================== PEZ CLASS DEFINITION ============================== #
 class PEZ(IndivHarmBenchAttack):
     def __init__(
         self,
-        adv_model,
+        adv_model: AdvModel,
         num_optim_tokens=20,
         num_steps=100,
         lr=1e-3,
@@ -31,7 +31,9 @@ class PEZ(IndivHarmBenchAttack):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior: str, target: str, init_embeds: torch.Tensor | None = None) -> str:
+    def generate_test_cases_single_behavior(
+        self, behavior: str, target: str, init_embeds: torch.Tensor | None = None
+    ) -> str:
         """
         Generates test cases for a single behavior
 
@@ -62,7 +64,9 @@ class PEZ(IndivHarmBenchAttack):
             torch.tensor(input_ids, device=device).unsqueeze(0) for input_ids in cache_input_ids
         ]  # make tensor separately because can't return_tensors='pt' in tokenizer
         before_ids, behavior_ids, after_ids, target_ids = cache_input_ids
-        before_embeds, behavior_embeds, after_embeds, target_embeds = [embed_layer(input_ids) for input_ids in cache_input_ids]
+        before_embeds, behavior_embeds, after_embeds, target_embeds = [
+            embed_layer(input_ids) for input_ids in cache_input_ids
+        ]
 
         # ========== setup optim_embeds, optimizer, and scheduler ========== #
         optim_embeds = torch.randint(embed_layer.weight.shape[0], (num_generate, num_optim_tokens), device=device)
@@ -131,7 +135,9 @@ def nn_project(curr_embeds: torch.Tensor, embedding_layer: torch.nn.Module) -> t
     embedding_matrix: torch.Tensor = embedding_layer.weight
     embedding_matrix = normalize_embeddings(embedding_matrix)  # corpus
 
-    hits = semantic_search(curr_embeds, embedding_matrix, query_chunk_size=curr_embeds.shape[0], top_k=3, score_function=dot_score)
+    hits = semantic_search(
+        curr_embeds, embedding_matrix, query_chunk_size=curr_embeds.shape[0], top_k=3, score_function=dot_score
+    )
 
     nn_indices = torch.tensor([hit[0]["corpus_id"] for hit in hits], device="cuda")
     projected_embeds = embedding_layer(nn_indices)

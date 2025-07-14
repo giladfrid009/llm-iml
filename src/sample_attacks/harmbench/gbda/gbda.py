@@ -3,16 +3,17 @@ import torch
 from torch.nn import CrossEntropyLoss
 import numpy as np
 from tqdm.auto import tqdm
-from src.attacks.harmbench.baseline import IndivHarmBenchAttack
-from src.attacks.harmbench.model_utils import get_template
-import json
+
+from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
+from src.sample_attacks.harmbench.model_utils import get_template
+from src.adv_model import AdvModel
 
 
 # ============================== GBDA CLASS DEFINITION ============================== #
 class GBDA(IndivHarmBenchAttack):
     def __init__(
         self,
-        adv_model,
+        adv_model: AdvModel,
         num_optim_tokens=20,
         num_steps=50,
         lr=0.2,
@@ -36,7 +37,9 @@ class GBDA(IndivHarmBenchAttack):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
-    def generate_test_cases_single_behavior(self, behavior: str, target: str, init_embeds: torch.Tensor | None = None) -> str:
+    def generate_test_cases_single_behavior(
+        self, behavior: str, target: str, init_embeds: torch.Tensor | None = None
+    ) -> str:
         """
         Generates test cases for a single behavior
 
@@ -45,7 +48,7 @@ class GBDA(IndivHarmBenchAttack):
         :param verbose: whether to print progress
         :return: a list of test case and a list of logs
         """
-        
+
         # GBDA hyperparams
         num_generate = 1
         num_optim_tokens = self.num_optim_tokens
@@ -68,7 +71,9 @@ class GBDA(IndivHarmBenchAttack):
             torch.tensor(input_ids, device=device).unsqueeze(0) for input_ids in cache_input_ids
         ]  # make tensor separately because can't return_tensors='pt' in tokenizer
         before_ids, behavior_ids, after_ids, target_ids = cache_input_ids
-        before_embeds, behavior_embeds, after_embeds, target_embeds = [embed_layer(input_ids) for input_ids in cache_input_ids]
+        before_embeds, behavior_embeds, after_embeds, target_embeds = [
+            embed_layer(input_ids) for input_ids in cache_input_ids
+        ]
 
         # ========== setup log_coeffs (the optimizable variables) ========== #
         with torch.no_grad():
@@ -87,7 +92,9 @@ class GBDA(IndivHarmBenchAttack):
 
         # ========== run optimization ========== #
         for i in range(num_steps):
-            coeffs = torch.nn.functional.gumbel_softmax(log_coeffs, hard=False, tau=taus[i]).to(embeddings.dtype)  # B x T x V
+            coeffs = torch.nn.functional.gumbel_softmax(log_coeffs, hard=False, tau=taus[i]).to(
+                embeddings.dtype
+            )  # B x T x V
             optim_embeds = coeffs @ embeddings[None, :, :]  # B x T x D
 
             input_embeds = torch.cat(

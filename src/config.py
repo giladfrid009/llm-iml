@@ -2,13 +2,15 @@ from transformers.generation.configuration_utils import GenerationConfig
 from typing import Any
 import time
 
+
 class GenConfig:
     """
     A configuration class for generation parameters, similar to `GenerationConfig` from Hugging Face Transformers.
-    
-    Important: 
+
+    Important:
     When generating, for all parameters marked as `None` the model default generation config value will be used.
     """
+
     def __init__(
         self,
         *,
@@ -29,7 +31,7 @@ class GenConfig:
 
         for key, value in kwargs.items():
             setattr(self, key, value)
-            
+
         # to fix annoying do_sample warnings:
         if self.do_sample is False:
             self.temperature = 1.0

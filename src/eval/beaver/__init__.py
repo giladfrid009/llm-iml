@@ -41,13 +41,14 @@ from transformers.utils.generic import ModelOutput
 
 from src.eval.beaver.normalize import NormalizeFunction, Normalizer
 
+
 class _LazyAutoMappingInSafeRLHF(_LazyAutoMapping):
     def _load_attr_from_module(self, model_type: str, attr: str) -> Any:
         module_name = model_type_to_module_name(model_type)
         if module_name not in self._modules:
             self._modules[module_name] = importlib.import_module(
-                f'.{module_name}',
-                'src.eval.beaver',
+                f".{module_name}",
+                "src.eval.beaver",
             )
         return getattribute_from_module(self._modules[module_name], attr)
 
@@ -61,7 +62,7 @@ MODEL_FOR_SCORE_MAPPING_NAMES: OrderedDict[str, str] = OrderedDict(
         # ('gpt_neox', 'GPTNeoXForScore'),
         # ('gpt2', 'GPT2ForScore'),
         # ('gptj', 'GPTJForScore'),
-        ('llama', 'LlamaForScore'),
+        ("llama", "LlamaForScore"),
         # ('mistral', 'MistralForScore'),
         # ('opt', 'OPTForScore'),
         # ('phi', 'PhiForScore'),
@@ -74,12 +75,12 @@ MODEL_FOR_SCORE_MAPPING: OrderedDict[str, Any] = _LazyAutoMappingInSafeRLHF(
 )
 
 
-@functools.partial(auto_class_update, head_doc='score model')
+@functools.partial(auto_class_update, head_doc="score model")
 class AutoModelForScore(_BaseAutoModelClass):
     _model_mapping: OrderedDict[str, Any] = MODEL_FOR_SCORE_MAPPING
 
 
-setattr(auto_module, 'MODEL_FOR_SCORE_MAPPING', MODEL_FOR_SCORE_MAPPING)  # noqa: B010
+setattr(auto_module, "MODEL_FOR_SCORE_MAPPING", MODEL_FOR_SCORE_MAPPING)  # noqa: B010
 setattr(auto_module, AutoModelForScore.__name__, AutoModelForScore)
 
 
@@ -114,7 +115,7 @@ class ScoreModelMixin:
     score_head: nn.Linear
     normalizer: Normalizer
     do_normalize: bool = False
-    normalize_function: NormalizeFunction = 'affine'
+    normalize_function: NormalizeFunction = "affine"
     _is_score_head_initialized: bool = False
 
     def init_score_head(self, config: PretrainedConfig, hidden_size: int, **kwargs: Any) -> None:
@@ -123,47 +124,47 @@ class ScoreModelMixin:
             return
 
         self.score_dim = config.score_dim = kwargs.pop(
-            'score_dim',
-            getattr(config, 'score_dim', 1),
+            "score_dim",
+            getattr(config, "score_dim", 1),
         )
         self.score_bias = config.score_bias = kwargs.pop(
-            'score_bias',
-            getattr(config, 'score_bias', True),
+            "score_bias",
+            getattr(config, "score_bias", True),
         )
 
         self.score_head = nn.Linear(hidden_size, config.score_dim, bias=config.score_bias)
         if config.score_bias:
             nn.init.zeros_(self.score_head.bias)
 
-        config.score_type = kwargs.pop('score_type', getattr(config, 'score_type', 'reward'))
-        if config.score_type == 'reward':
-            self.normalize_function = 'affine'
-        elif config.score_type == 'cost':
-            self.normalize_function = 'scale'
-        elif config.score_type == 'critic':
-            self.normalize_function = 'identity'
+        config.score_type = kwargs.pop("score_type", getattr(config, "score_type", "reward"))
+        if config.score_type == "reward":
+            self.normalize_function = "affine"
+        elif config.score_type == "cost":
+            self.normalize_function = "scale"
+        elif config.score_type == "critic":
+            self.normalize_function = "identity"
         else:
             raise ValueError(
                 f"Invalid score type: {config.score_type}. Expected one of 'reward', 'cost', or 'critic'.",
             )
 
         self.do_normalize = config.do_normalize = kwargs.pop(
-            'do_normalize',
-            getattr(config, 'do_normalize', False),
+            "do_normalize",
+            getattr(config, "do_normalize", False),
         )
 
         config.normalizer_type = kwargs.pop(
-            'normalizer_type',
-            getattr(config, 'normalizer_type', None),
+            "normalizer_type",
+            getattr(config, "normalizer_type", None),
         )
-        if config.normalizer_type not in {'RunningMeanStd', 'ExponentialMovingAverage', None}:
+        if config.normalizer_type not in {"RunningMeanStd", "ExponentialMovingAverage", None}:
             raise ValueError(
-                f'Invalid norm type: {config.normalizer_type}.'
+                f"Invalid norm type: {config.normalizer_type}."
                 "Expected one of 'RunningMeanStd', 'ExponentialMovingAverage', or None.",
             )
-        if config.normalizer_type == 'ExponentialMovingAverage':
-            config.momentum = kwargs.pop('momentum', getattr(config, 'momentum', None))
-        momentum = getattr(config, 'momentum', None)
+        if config.normalizer_type == "ExponentialMovingAverage":
+            config.momentum = kwargs.pop("momentum", getattr(config, "momentum", None))
+        momentum = getattr(config, "momentum", None)
         self.normalizer = Normalizer.instantiate(
             normalizer_type=config.normalizer_type,
             normalize_function=self.normalize_function,
@@ -171,8 +172,8 @@ class ScoreModelMixin:
             momentum=momentum,
         )
 
-        mean = getattr(config, 'mean', None)
-        var = getattr(config, 'var', None)
+        mean = getattr(config, "mean", None)
+        var = getattr(config, "var", None)
         self.normalizer.set_mean_var(mean, var)
 
         self._is_score_head_initialized = True
@@ -207,21 +208,14 @@ class ScoreModelMixin:
         end_scores = torch.gather(  # size = (B, 1, D)
             scores,
             dim=1,
-            index=(
-                end_index.to(scores.device)
-                .unsqueeze(dim=1)
-                .unsqueeze(dim=2)
-                .expand(-1, -1, scores.size(-1))
-            ),
+            index=(end_index.to(scores.device).unsqueeze(dim=1).unsqueeze(dim=2).expand(-1, -1, scores.size(-1))),
         )
         end_last_hidden_state = end_last_hidden_state.squeeze(dim=1)  # size = (B, E)
         end_scores = end_scores.squeeze(dim=1)  # size = (B, D)
 
         if self.training:
             if dist.is_initialized():
-                gathered_end_scores_list = [
-                    torch.zeros_like(end_scores) for _ in range(dist.get_world_size())
-                ]
+                gathered_end_scores_list = [torch.zeros_like(end_scores) for _ in range(dist.get_world_size())]
                 dist.all_gather(gathered_end_scores_list, end_scores)
                 gathered_end_scores = torch.cat(gathered_end_scores_list, dim=0)
                 self.normalizer.update(gathered_end_scores)

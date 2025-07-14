@@ -18,7 +18,9 @@ def sample_control_autoprompt(control_toks, grad, search_width, topk=256, temp=1
     new_token_pos = torch.randint(0, len(control_toks), (1,), device=grad.device)
     new_token_pos = new_token_pos.repeat(search_width)
 
-    new_token_val = torch.gather(top_indices[new_token_pos], 1, torch.randint(0, topk, (search_width, 1), device=grad.device))
+    new_token_val = torch.gather(
+        top_indices[new_token_pos], 1, torch.randint(0, topk, (search_width, 1), device=grad.device)
+    )
     new_control_toks = original_control_toks.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
 
     return new_control_toks

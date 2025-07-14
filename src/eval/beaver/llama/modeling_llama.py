@@ -24,6 +24,7 @@ from transformers.models.llama.modeling_llama import _CONFIG_FOR_DOC, LLAMA_INPU
 from transformers.utils.doc import add_start_docstrings_to_model_forward, replace_return_docstrings
 from src.eval.beaver import ScoreModelMixin, ScoreModelOutput
 
+
 class LlamaForScore(ScoreModelMixin, LlamaPreTrainedModel):
     def __init__(self, config: PretrainedConfig, **kwargs: Any) -> None:
         super().__init__(config)

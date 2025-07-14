@@ -7,11 +7,12 @@ from src.data import DF_Batcher
 from tqdm.auto import tqdm
 
 # TODO: format evaluator as a generic function F(prompt, response) -> float
-# without any additional fields. 
+# without any additional fields.
 # The "context" field should be removed and integrated as part of the prompt.
 # that overall change will allow to not use dataframes or some weird data formats.
-# but instead use a structured input and output. 
+# but instead use a structured input and output.
 # that also works well with an attack, which is formatted as a generic function F(prompt, target) -> embedding
+
 
 class Evaluator(ABC):
     def __init__(
@@ -101,8 +102,8 @@ class MultiEvaluator(Evaluator):
         """
         name = " + ".join([evaluator.name for evaluator in evaluators])
 
-        for evaler in evaluators:
-            evaler.verbose = verbose
+        for ev in evaluators:
+            ev.verbose = verbose
 
         super().__init__(
             name=name,

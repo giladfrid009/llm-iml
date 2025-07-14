@@ -57,7 +57,9 @@ class LlamaEvaluator(Evaluator):
             raise ValueError(f"Unsupported model: {model_name}. Supported models are: {SUPPORTED_MODELS}")
 
         if llm_config is not None and llm_config.model_name != model_name:
-            raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
+            raise ValueError(
+                f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
+            )
 
         super().__init__(
             name=model_name,
@@ -99,7 +101,9 @@ class LlamaEvaluator(Evaluator):
         """
         name = type(self).__name__
         hparams = {}
-        hparams.update({f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()})
+        hparams.update(
+            {f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()}
+        )
         hparams.update({f"{name}/llm_config/{k}": v for k, v in self.llm_config.__dict__.items()})
         hparams.update({f"{name}/serve_config/{k}": v for k, v in self.serve_config.__dict__.items()})
         return hparams

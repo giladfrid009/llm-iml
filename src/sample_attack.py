@@ -1,12 +1,12 @@
-from src.adver_model import AdverModel
+from src.adv_model import AdvModel
 import torch
 from abc import ABC, abstractmethod
 
 
-class Attack(ABC):
+class SampleAttack(ABC):
     def __init__(
         self,
-        adv_model: AdverModel,
+        adv_model: AdvModel,
         verbose: bool = True,
     ):
         self.adv_model = adv_model
@@ -48,7 +48,7 @@ class Attack(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
 
-class TextAttack(Attack):
+class TextAttack(SampleAttack):
     """
     Base class for text-based attacks.
     This class is used for attacks that generate adversarial text inputs.
@@ -56,7 +56,7 @@ class TextAttack(Attack):
 
     def __init__(
         self,
-        adv_model: AdverModel,
+        adv_model: AdvModel,
         verbose: bool = True,
     ):
         super().__init__(adv_model, verbose)

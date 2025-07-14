@@ -1,5 +1,4 @@
 from src.eval.evaluator import Evaluator, MultiEvaluator
-
 from src.eval.beaver_evaluator import BeaverEvaluator
 from src.eval.harmbench_evaluator import HarmBenchEvaluator
 from src.eval.llama_evaluator import LlamaEvaluator

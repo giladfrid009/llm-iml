@@ -24,8 +24,8 @@ from torch import nn
 from torch.types import Number
 
 
-NormalizeFunction = Literal['affine', 'scale', 'translate', 'identity']
-NormalizerType = Literal['RunningMeanStd', 'ExponentialMovingAverage']
+NormalizeFunction = Literal["affine", "scale", "translate", "identity"]
+NormalizerType = Literal["RunningMeanStd", "ExponentialMovingAverage"]
 
 
 class Normalizer(nn.Module):
@@ -44,15 +44,15 @@ class Normalizer(nn.Module):
     ) -> None:
         """Initialize."""
         super().__init__()
-        if normalize_function not in {'affine', 'scale', 'translate', 'identity'}:
+        if normalize_function not in {"affine", "scale", "translate", "identity"}:
             raise ValueError(
-                f'Invalid normalization function type: {normalize_function}. ',
+                f"Invalid normalization function type: {normalize_function}. ",
                 'Expected one of "affine", "scale", "translate", "identity".',
             )
         self.normalize_function = normalize_function
-        self.register_buffer('mean', torch.zeros(shape, device=device))
-        self.register_buffer('var', torch.ones(shape, device=device))
-        self.register_buffer('count', torch.zeros(1, dtype=torch.long, device=device))
+        self.register_buffer("mean", torch.zeros(shape, device=device))
+        self.register_buffer("var", torch.ones(shape, device=device))
+        self.register_buffer("count", torch.zeros(1, dtype=torch.long, device=device))
 
     @abstractmethod
     def update(self, data: torch.Tensor) -> None:
@@ -70,16 +70,8 @@ class Normalizer(nn.Module):
         var: torch.Tensor | list[float] | tuple[float, ...] | None,
     ) -> None:
         """Set mean and variance."""
-        mean = (
-            torch.as_tensor(mean, dtype=self.mean.dtype, device=self.mean.device)
-            if mean is not None
-            else self.mean
-        )
-        var = (
-            torch.as_tensor(var, dtype=self.var.dtype, device=self.var.device)
-            if var is not None
-            else self.var
-        )
+        mean = torch.as_tensor(mean, dtype=self.mean.dtype, device=self.mean.device) if mean is not None else self.mean
+        var = torch.as_tensor(var, dtype=self.var.dtype, device=self.var.device) if var is not None else self.var
 
         assert mean.shape == self.mean.shape
         assert var.shape == self.var.shape
@@ -103,16 +95,16 @@ class Normalizer(nn.Module):
         epsilon: Number = 1e-8,
     ) -> torch.Tensor:
         """Normalize input."""
-        if self.normalize_function == 'affine':
+        if self.normalize_function == "affine":
             return (data - self.mean.detach()) / (self.std.detach() + epsilon)
-        if self.normalize_function == 'scale':
+        if self.normalize_function == "scale":
             return data / (self.std.detach() + epsilon)
-        if self.normalize_function == 'translate':
+        if self.normalize_function == "translate":
             return data - self.mean.detach()
-        if self.normalize_function == 'identity':
+        if self.normalize_function == "identity":
             return data
         raise ValueError(
-            f'Invalid normalization function type: {self.normalize_function}. ',
+            f"Invalid normalization function type: {self.normalize_function}. ",
             'Expected one of "affine", "scale", "translate", "identity".',
         )
 
@@ -126,13 +118,13 @@ class Normalizer(nn.Module):
         **kwargs: Any,
     ) -> Normalizer:
         """Get a normalizer."""
-        if normalizer_type == 'RunningMeanStd':
+        if normalizer_type == "RunningMeanStd":
             return RunningMeanStd(
                 normalize_function,
                 shape=shape,
                 device=device,
             )
-        if normalizer_type == 'ExponentialMovingAverage':
+        if normalizer_type == "ExponentialMovingAverage":
             return ExponentialMovingAverage(
                 normalize_function,
                 shape=shape,
@@ -146,7 +138,7 @@ class Normalizer(nn.Module):
                 device=device,
             )
         raise ValueError(
-            f'Invalid normalization function type: {normalizer_type}. '
+            f"Invalid normalization function type: {normalizer_type}. "
             'Expected one of "RunningMeanStd", "ExponentialMovingAverage".',
         )
 
@@ -166,9 +158,7 @@ class RunningMeanStd(Normalizer):
         new_mean = self.mean + delta * batch_count / total_count
         m_a = self.var * self.count
         m_b = batch_var * batch_count
-        m2 = (  # pylint: disable=invalid-name
-            m_a + m_b + torch.square(delta) * (self.count * batch_count / total_count)
-        )
+        m2 = m_a + m_b + torch.square(delta) * (self.count * batch_count / total_count)  # pylint: disable=invalid-name
         new_var = m2 / total_count
 
         self.mean = new_mean
