@@ -1,9 +1,9 @@
-from src.sample_attack import SampleAttack
+from src.sample_attacks.sample_attack import SampleAttack
 from src.adv_model import AdvModel
 from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.eval.evaluator import Evaluator
 from src.config import GenConfig
-from src.univ_attack import UnivAttack
+from src.univ_attacks.univ_attack import UnivAttack
 
 from typing import Any
 import torch

@@ -1,5 +1,5 @@
 from src.adv_model import AdvModel
-from src.sample_attack import SampleAttack, SampleOutput
+from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 
 from typing import Callable, Iterable
 from tqdm.auto import tqdm

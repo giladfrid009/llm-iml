@@ -2,7 +2,7 @@ from tqdm.auto import tqdm
 
 from abc import abstractmethod
 from src.adv_model import AdvModel
-from src.sample_attack import SampleAttack, SampleOutput
+from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 import torch
 import copy
 

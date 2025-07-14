@@ -1,4 +1,4 @@
-from src.sample_attack import SampleAttack, SampleOutput
+from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 from src.sample_attacks.soft_prompt import SoftPrompt
 from src.sample_attacks.harmbench.autoprompt.autoprompt import AutoPrompt
 from src.sample_attacks.harmbench.direct_request.direct_request import DirectRequest
