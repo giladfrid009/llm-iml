@@ -116,7 +116,7 @@ class Initializer:
 
         if not strict:
             # Tokenize without padding or truncation, which may
-            # modify the numeber of adversarial tokens
+            # modify the number of adversarial tokens
             tokenized = tokenizer(
                 text,
                 add_special_tokens=False,
@@ -159,7 +159,7 @@ class Initializer:
             input_ids[attention_mask == 0] = pad_token_id
 
         embeddings = embedder(input_ids)
-        adv_model.set_embeddings(embeddings, strict=False)
+        adv_model.set_embeddings(embeddings, strict=strict)
 
         if verbose:
             ids_list = input_ids.flatten().tolist()

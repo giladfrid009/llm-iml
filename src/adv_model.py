@@ -1,12 +1,11 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from typing import Iterator
+from typing import Iterator, Any
 import copy
 
 from transformers.generation.utils import GenerateDecoderOnlyOutput
 from transformers import PreTrainedModel, PreTrainedTokenizer
-from transformers.tokenization_utils_base import BatchEncoding
 
 from src import tokenize
 from src import utils
@@ -198,12 +197,11 @@ class AdvModel(nn.Module):
             last_msg["content"] += self.adv_token * self.num_tokens
         return conversations
 
-    # TODO: we should use dicts instead of BatchEncoding
     def tokenize(
         self,
         conversations: list[list[dict[str, str]]],
         target_texts: list[str] | None = None,
-    ) -> BatchEncoding:
+    ) -> dict[str, Any]:
         """
         Tokenize the input and target texts.
 
@@ -213,8 +211,8 @@ class AdvModel(nn.Module):
             target_texts (list[str] | None): List of target texts. If None, only input texts are tokenized.
 
         Returns:
-            (BatchEncoding):
-            An instance of `BatchEncoding` containing the tokenized data with the following keys:
+            (dict[str, Any]):
+            An dictionary containing the tokenized data with the following keys:
                 - `input_ids` (torch.IntTensor): Token IDs of the entire tokenized texts.
                 - `attention_mask` (torch.BoolTensor): Attention mask of the entire tokenized texts.
                 - `adv_mask` (torch.BoolTensor): Mask for the adversarial tokens.
@@ -239,7 +237,7 @@ class AdvModel(nn.Module):
                 adver_token=self.adv_token,
             )
 
-        return tokenized.to(self.device)
+        return tokenized.to(self.device).data
 
     def embed(
         self,

@@ -7,7 +7,7 @@ class DF_Batcher:
     """
     Iterate over a pandas DataFrame in column-wise batches.
 
-    Standatd columns which are expected to be present in the DataFrame:
+    Standard columns which are expected to be present in the DataFrame:
     - 'prompt' (str): Input prompt for the model.
     - 'response' (str): Model response or output, should be present for evaluation.
     - 'target' (str): Target response of the model, should be present for training.

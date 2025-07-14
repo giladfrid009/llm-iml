@@ -88,10 +88,13 @@ class BeaverEvaluator(Evaluator):
             truncation=True,
         ).to(self.model.device)
 
-        outputs = self.model.forward(tokenized["input_ids"], tokenized["attention_mask"])
-        scores = outputs.end_scores
+        scores, end_scores = self.model.forward(
+            input_ids=tokenized["input_ids"],
+            attention_mask=tokenized["attention_mask"],
+            return_dict=False,
+        )
 
         if self.binary_thresh is not None:
-            scores = (scores >= self.binary_thresh).float()
+            end_scores = (end_scores >= self.binary_thresh).float()
 
-        return scores
+        return end_scores

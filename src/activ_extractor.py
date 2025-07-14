@@ -167,7 +167,7 @@ class ActivationLoss(torch.nn.Module):
 
         This class is useful when a model produces intermediate activations from multiple
         layers and you want to compute a loss term at each layer, then combine (aggregate)
-        those layerwise losses into a single scalar loss.
+        those layer-wise losses into a single scalar loss.
 
         Args:
             loss_fn (Callable[..., torch.Tensor, **kwargs]):

@@ -60,11 +60,7 @@ class LlamaEvaluator(Evaluator):
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
 
-        super().__init__(
-            name=model_name,
-            verbose=verbose,
-            required_columns=["prompt", "response"],
-        )
+        super().__init__(name=model_name, verbose=verbose)
 
         if llm_config is None:
             if model_name == "meta-llama/Llama-2-7b-chat-hf":

@@ -6,7 +6,6 @@ from tqdm.auto import tqdm
 import torch
 import copy
 
-from transformers.tokenization_utils_base import BatchEncoding
 from transformers.cache_utils import Cache, DynamicCache
 
 LegacyCache = tuple[tuple[torch.Tensor], tuple[torch.Tensor]]
