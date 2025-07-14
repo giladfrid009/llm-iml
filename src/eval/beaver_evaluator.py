@@ -31,11 +31,7 @@ class BeaverEvaluator(Evaluator):
 
         model_name = "PKU-Alignment/beaver-7b-v1.0-cost"
 
-        super().__init__(
-            name=model_name,
-            verbose=verbose,
-            required_columns=["prompt", "response"],
-        )
+        super().__init__(name=model_name, verbose=verbose)
 
         self.binary_thresh = binary_thresh
 
@@ -82,21 +78,11 @@ class BeaverEvaluator(Evaluator):
         return hparams
 
     @torch.inference_mode()
-    def eval_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
-        """
-        Processes a batch of input and target texts, returning the evaluation metric.
-
-        Returns:
-            torch.Tensor: Evaluation metric for each sample in the batch.
-        """
-
-        input_texts = data["prompt"]
-        response_texts = data["response"]
-
-        eval_inputs = self._fmt_inputs(input_texts, response_texts)
+    def eval_batch(self, prompts: list[str], responses: list[str]) -> torch.Tensor:
+        cls_inputs = self._fmt_inputs(prompts, responses)
 
         tokenized = self.tokenizer(
-            eval_inputs,
+            cls_inputs,
             return_tensors="pt",
             padding=True,
             truncation=True,

@@ -1,6 +1,4 @@
 import gc
-import json
-import os
 
 import torch
 from torch.nn import CrossEntropyLoss
@@ -13,18 +11,6 @@ from src.sample_attacks.harmbench.model_utils import get_template
 from src.sample_attacks.harmbench.check_refusal_utils import check_refusal_completions
 from src.sample_attacks.harmbench.autoprompt.autoprompt_utils import sample_control_autoprompt, get_nonascii_toks
 from src.adv_model import AdvModel
-
-# TODO: NEEDED CHANGES
-# 0. figure out wtf is going on with the expected datasets, and which HarmBench datasets are which.
-# 1. accept an instance of AdvModel instead of creating new model and tokenizer inside RedTeamingMethod
-#        - make sure that get_template still works
-# 2. accept batch of conversations and targets instead of targets_path
-# 3. make the method use exact number of tokens and not a random adv_string_init which gets tokenized to unknown number of tokens
-# 4. initialization - instead of initial `adv_string_init`, accept an `init_embeds` parameter.
-
-# TODO: CHECK:
-# 1. use_prefix_cache=True modifies an attribute of the model, makes sure its not a problem,
-# especially since the model is afterwards used outside of this attack.
 
 
 # ============================== GCG CLASS DEFINITION ============================== #

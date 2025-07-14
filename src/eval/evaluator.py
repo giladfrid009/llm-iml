@@ -1,37 +1,22 @@
 from abc import ABC, abstractmethod
-from typing import Callable, List
+from typing import Callable
 
 import torch
-from typing import Any
 from src.data import DF_Batcher
 from tqdm.auto import tqdm
 
-# TODO: format evaluator as a generic function F(prompt, response) -> float
-# without any additional fields.
-# The "context" field should be removed and integrated as part of the prompt.
-# that overall change will allow to not use dataframes or some weird data formats.
-# but instead use a structured input and output.
-# that also works well with an attack, which is formatted as a generic function F(prompt, target) -> embedding
-
 
 class Evaluator(ABC):
-    def __init__(
-        self,
-        name: str,
-        required_columns: list[str],
-        verbose: bool = True,
-    ):
+    def __init__(self, name: str, verbose: bool = True):
         """
         A base class for evaluators that processes batches of data and computes evaluation metrics.
 
         Args:
             name (str): Name of the evaluation method.
-            required_columns (list[str]): List of required columns in the data for evaluation.
             verbose (bool): If True, enables verbose output during evaluation.
         """
         self.name = name
         self.verbose = verbose
-        self.required_columns = required_columns
 
     @abstractmethod
     def get_hparams(self) -> dict:
@@ -45,12 +30,13 @@ class Evaluator(ABC):
         raise NotImplementedError("This method should be overridden by subclasses.")
 
     @abstractmethod
-    def eval_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
+    def eval_batch(self, prompts: list[str], responses: list[str]) -> torch.Tensor:
         """
         Processes a batch of input and target texts, returning the evaluation metric.
 
         Args:
-            eval_data (dict[str, list[Any]]): Tuple containing all relevant data to perform model evaluation
+            prompts (list[str]): List of input prompts for the model.
+            responses (list[str]): List of model responses to evaluate.
 
         Returns:
             torch.Tensor: Evaluation metric for each sample in the batch.
@@ -69,13 +55,13 @@ class Evaluator(ABC):
             float: Average evaluation metric across all samples.
         """
 
-        dl_eval.validate(self.required_columns)
+        dl_eval.validate(["prompt", "response"])
 
         metrics = torch.zeros(dl_eval.n_samples, dtype=torch.float32)
         index = 0
 
         for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=not self.verbose, leave=False):
-            batch_metric = self.eval_batch(batch_data).cpu()
+            batch_metric = self.eval_batch(batch_data["prompt"], batch_data["response"]).cpu()
             metrics[index : index + batch_metric.size(0)] = batch_metric
             index += batch_metric.size(0)
 
@@ -105,11 +91,7 @@ class MultiEvaluator(Evaluator):
         for ev in evaluators:
             ev.verbose = verbose
 
-        super().__init__(
-            name=name,
-            required_columns=[],
-            verbose=verbose,
-        )
+        super().__init__(name=name, verbose=verbose)
 
         self.evaluators = evaluators
         self.combine_fn = combine_fn
@@ -130,7 +112,7 @@ class MultiEvaluator(Evaluator):
             hparams.update(params)
         return hparams
 
-    def eval_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
+    def eval_batch(self, prompts: list[str], responses: list[str]) -> torch.Tensor:
         """
         Processes a batch of input and target texts using multiple evaluators,
         and combines their results using the specified combine function.
@@ -143,6 +125,6 @@ class MultiEvaluator(Evaluator):
         """
         metrics = []
         for evaluator in self.evaluators:
-            batch_metric = evaluator.eval_batch(data)
+            batch_metric = evaluator.eval_batch(prompts, responses)
             metrics.append(batch_metric.cpu())
         return self.combine_fn(*metrics)

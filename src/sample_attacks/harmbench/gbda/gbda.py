@@ -1,4 +1,3 @@
-from typing import List
 import torch
 from torch.nn import CrossEntropyLoss
 import numpy as np

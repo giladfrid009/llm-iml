@@ -33,23 +33,22 @@ class UnivAttack:
             gen_config (GenConfig  | None): Default generation configuration.
             log_dir (str | None): Directory to save logs. If None, no logging is performed.
         """
+        if gen_config is None:
+            gen_config = GenConfig()
+        
         self.adv_model = adv_model
         self.evaluators = evaluators
         self.eval_freq = eval_freq
-
-        if gen_config is None:
-            gen_config = GenConfig()
-
         self.gen_config = gen_config
-
         self.mixed_precision = mixed_precision
         self.grad_scaler = torch.GradScaler(enabled=mixed_precision)
 
-        self.univ_embeds = self.adv_model.get_embeddings(clone=False)
+        # prepare for optimization
         self.univ_embeds.requires_grad_(True)
         if self.univ_embeds.size(0) != 1:
             raise ValueError("Batch size of universal embeddings must be 1.")
 
+        # local params
         self.best_metric = -float("inf")
         self.best_embeds = self.univ_embeds.clone().detach()
 
@@ -60,6 +59,10 @@ class UnivAttack:
         for ev in self.evaluators:
             self.logger.register_hparams(ev.get_hparams())
         self.logger.register_hparams({f"grad_scaler/{k}": v for k, v in self.grad_scaler.state_dict().items()})
+
+    @property
+    def univ_embeds(self) -> torch.Tensor:
+        return self.adv_model.get_embeddings(clone=False)
 
     @property
     def num_tokens(self) -> int:
@@ -245,7 +248,6 @@ class UnivAttack:
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
             # initial evaluation
-            self.adv_model.set_embeddings(self.univ_embeds)
             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
 
             self.save_checkpoint()
@@ -274,7 +276,6 @@ class UnivAttack:
                         if should_stop or (
                             global_step > 0 and global_step % round(self.eval_freq * len(dl_train)) == 0
                         ):
-                            self.adv_model.set_embeddings(self.univ_embeds)
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[0])
 

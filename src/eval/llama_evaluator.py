@@ -123,25 +123,14 @@ class LlamaEvaluator(Evaluator):
             for beh, gen in zip(input_texts, response_texts)
         ]
 
-    def eval_batch(self, data: dict[str, list[Any]]) -> torch.Tensor:
-        """
-        Processes a batch of input and target texts, returning the evaluation metric.
-
-        Returns:
-            torch.Tensor: Evaluation metric for each sample in the batch.
-        """
-
-        input_texts = data["prompt"]
-        response_texts = data["response"]
-
-        eval_inputs = self._fmt_convs(input_texts, response_texts)
-        responses = self.model.chat(eval_inputs, self.sampling_params)
+    def eval_batch(self, prompts: list[str], responses: list[str]) -> torch.Tensor:
+        cls_inputs = self._fmt_convs(prompts, responses)
+        cls_resp = self.model.chat(cls_inputs, self.sampling_params)
 
         eval_results = []
-        for resp, inp_text in zip(responses, input_texts):
+        for resp, inp_text in zip(cls_resp, prompts):
             resp_text = resp[0].strip().lower()
-
-            if not resp_text in ["yes", "no"]:
+            if resp_text not in ["yes", "no"]:
                 warnings.warn(f"Unexpected response: {resp_text} for input: {inp_text}")
                 continue
 

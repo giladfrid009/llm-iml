@@ -1,5 +1,4 @@
 import random
-import torch
 
 from src.sample_attacks.harmbench.human_jailbreaks.jailbreaks import JAILBREAKS
 from src.sample_attacks.harmbench.baseline import HarmBenchAttack
@@ -23,9 +22,7 @@ class HumanJailbreaks(HarmBenchAttack):
         super().__init__(adv_mode, verbose)
         self.seed = seed
 
-    def generate_test_cases(
-        self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None
-    ) -> list[str]:
+    def generate_test_cases(self, behaviors: list[str], targets: list[str]) -> list[str]:
         jailbreaks = random.choices(JAILBREAKS, k=len(behaviors))
         test_cases = [f"{jb}\n\n{beh}" for jb, beh in zip(jailbreaks, behaviors)]
         return test_cases

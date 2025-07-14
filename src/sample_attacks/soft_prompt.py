@@ -1,3 +1,6 @@
+from src.adv_model import AdvModel
+from src.sample_attack import SampleAttack, SampleOutput
+
 from typing import Callable, Iterable
 from tqdm.auto import tqdm
 import torch
@@ -7,9 +10,6 @@ from transformers.tokenization_utils_base import BatchEncoding
 from transformers.cache_utils import Cache, DynamicCache
 
 LegacyCache = tuple[tuple[torch.Tensor], tuple[torch.Tensor]]
-
-from src.adv_model import AdvModel
-from src.sample_attack import SampleAttack
 
 
 class SoftPrompt(SampleAttack):
@@ -96,7 +96,7 @@ class SoftPrompt(SampleAttack):
         conversations: list[list[dict[str, str]]],
         target_texts: list[str],
         init_embeds: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> SampleOutput:
         # TODO: IMPORTANT: add early stopping. If logits.argmax() == target_ids, then stop optimizing for this sample
         # whats cool is that it doesnt require us to call expensive generate()
         # to filter the cache object for early stopping see:
@@ -119,10 +119,8 @@ class SoftPrompt(SampleAttack):
             adv_embeds = self._init_embedding(num_inputs=len(conversations))
             adv_embeds.requires_grad_(True)
 
-        self.adv_model.set_embeddings(adv_embeds)
-
         scaler = torch.GradScaler(enabled=self.mixed_precision)
-        optim = self.optim_factory(self.adv_model.parameters())
+        optim = self.optim_factory([adv_embeds])
 
         with tqdm(range(self.steps), disable=not self.verbose, leave=False, desc="Attack") as pbar:
             for step in pbar:
@@ -139,10 +137,13 @@ class SoftPrompt(SampleAttack):
                         attention_mask=token_dict["attention_mask"],
                         past_key_values=past_keys_values,
                         adv_mask=token_dict["adv_mask"],
+                        adv_embeds=adv_embeds,
                     )
 
                     loss = self.criterion(
-                        logits=result.logits, input_ids=token_dict["input_ids"], target_mask=token_dict["target_mask"]
+                        logits=result.logits,
+                        input_ids=token_dict["input_ids"],
+                        target_mask=token_dict["target_mask"],
                     )
 
                 scaler.scale(loss).backward()
@@ -151,4 +152,4 @@ class SoftPrompt(SampleAttack):
 
                 pbar.set_postfix({"loss": loss.item()})
 
-        return adv_embeds.detach()
+        return SampleOutput(conversations=conversations, adv_embeds=adv_embeds.detach())

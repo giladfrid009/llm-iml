@@ -168,7 +168,7 @@ class AdvModel(nn.Module):
     def get_embeddings(self, clone: bool = False) -> torch.Tensor:
         """
         Get the adversarial embeddings tensor.
-        It is highly recommended to get the embedding throught this method.
+        It is highly recommended to get the embedding through this method.
 
         Args:
             clone (bool): If True, returns a cloned and detached tensor, otherwise returns the original tensor.
@@ -198,6 +198,7 @@ class AdvModel(nn.Module):
             last_msg["content"] += self.adv_token * self.num_tokens
         return conversations
 
+    # TODO: we should use dicts instead of BatchEncoding
     def tokenize(
         self,
         conversations: list[list[dict[str, str]]],
@@ -250,24 +251,18 @@ class AdvModel(nn.Module):
 
     def forward(
         self,
-        input_ids: torch.Tensor | None,
+        input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
         adv_mask: torch.Tensor | None = None,
-        inputs_embeds: torch.Tensor | None = None,
+        adv_embeds: torch.Tensor | None = None,
         **kwargs,
     ):
-        if inputs_embeds is None and input_ids is None:
-            raise ValueError("Either `inputs_embeds` or `input_ids` must be provided.")
+        if adv_embeds is None:
+            adv_embeds = self.adv_embeds
 
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("Only one of `inputs_embeds` or `input_ids` should be provided.")
-
-        if input_ids is not None and adv_mask is not None and self.adv_embeds is not None:
-            # embed inputs and inject adversarial embeddings
-            inputs_embeds = self.embed(input_ids, self.adv_embeds, adv_mask)
-
-        elif input_ids is not None and (adv_mask is None or self.adv_embeds is None):
-            # embed inputs without adversarial embeddings
+        if adv_mask is not None and adv_embeds is not None:
+            inputs_embeds = self.embed(input_ids, adv_embeds, adv_mask)
+        else:
             inputs_embeds = self.embed(input_ids, None, None)
 
         return self.model(
@@ -280,31 +275,25 @@ class AdvModel(nn.Module):
     @torch.inference_mode()
     def generate(
         self,
-        input_ids: torch.Tensor | None,
+        input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
         adv_mask: torch.Tensor | None = None,
-        inputs_embeds: torch.Tensor | None = None,
+        adv_embeds: torch.Tensor | None = None,
         config: GenConfig | None = None,
         **kwargs,
     ) -> GenerateDecoderOnlyOutput | torch.Tensor:
-        if inputs_embeds is None and input_ids is None:
-            raise ValueError("Either `inputs_embeds` or `input_ids` must be provided.")
-
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("Only one of `inputs_embeds` or `input_ids` should be provided.")
-
+        # generation config
         if config is None:
             config = GenConfig()
-
         full_config = copy.deepcopy(self.model.generation_config)
         config.patch_params(generation_config=full_config)
 
-        if input_ids is not None and adv_mask is not None and self.adv_embeds is not None:
-            # embed inputs and inject adversarial embeddings
-            inputs_embeds = self.embed(input_ids, self.adv_embeds, adv_mask)
+        if adv_embeds is None:
+            adv_embeds = self.adv_embeds
 
-        elif input_ids is not None and (adv_mask is None or self.adv_embeds is None):
-            # embed inputs without adversarial embeddings
+        if adv_mask is not None and adv_embeds is not None:
+            inputs_embeds = self.embed(input_ids, adv_embeds, adv_mask)
+        else:
             inputs_embeds = self.embed(input_ids, None, None)
 
         return self.model.generate(
@@ -324,6 +313,7 @@ class AdvModel(nn.Module):
         self,
         conversations: list[list[dict[str, str]]],
         config: GenConfig | None = None,
+        adv_embeds: torch.Tensor | None = None,
         **kwargs,
     ) -> list[str]:
         """
@@ -333,6 +323,8 @@ class AdvModel(nn.Module):
             conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
                 Each message is a dictionary with keys "role" and "content".
             max_length (int): Maximum length of the generated text.
+            config (GenConfig | None): Generation configuration. If None, uses the default generation configuration.
+            adv_embeds (torch.Tensor | None): Override to `self.adv_embeds` for the generation.
 
         Returns:
             list[str]: List of generated adversarial texts.
@@ -344,6 +336,7 @@ class AdvModel(nn.Module):
             input_ids=token_dict["input_ids"],
             attention_mask=token_dict["attention_mask"],
             adv_mask=token_dict["adv_mask"],
+            adv_embeds=adv_embeds,
             config=config,
             return_dict_in_generate=False,
             **kwargs,

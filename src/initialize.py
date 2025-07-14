@@ -112,7 +112,7 @@ class Initializer:
         """
         tokenizer = adv_model.tokenizer
         embedder = adv_model.orig_embedder
-        input_ids = None
+        input_ids: torch.Tensor = None 
 
         if not strict:
             # Tokenize without padding or truncation, which may
@@ -159,7 +159,7 @@ class Initializer:
             input_ids[attention_mask == 0] = pad_token_id
 
         embeddings = embedder(input_ids)
-        adv_model.set_embeddings(embeddings)
+        adv_model.set_embeddings(embeddings, strict=False)
 
         if verbose:
             ids_list = input_ids.flatten().tolist()

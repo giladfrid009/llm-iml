@@ -170,12 +170,13 @@ class ActivationLoss(torch.nn.Module):
         those layerwise losses into a single scalar loss.
 
         Args:
-            loss_fn (Callable[..., torch.Tensor]):
+            loss_fn (Callable[..., torch.Tensor, **kwargs]):
                 A function that computes the loss for a given layer across input activation
                 dictionaries. It is called once per layer.
                 - It must accept one or more Tensors (corresponding to the same layer key
-                  across multiple input dictionaries) and return a Tensor of shape
-                  ``(batch_size,)``, representing the per-sample loss for that layer.
+                  across multiple input dictionaries) and optionally additional kwargs,
+                  and return a Tensor of shape ``(batch_size,)``,
+                  representing the per-sample loss for that layer.
 
             aggr_fn (Callable[[torch.Tensor], torch.Tensor], optional):
                 A function that aggregates the losses across all layers for each sample.
@@ -194,10 +195,10 @@ class ActivationLoss(torch.nn.Module):
         self.loss_fn = loss_fn
         self.aggr_fn = aggr_fn
 
-    def forward(self, *args: dict[str, torch.Tensor]) -> torch.Tensor:
+    def forward(self, *args: dict[str, torch.Tensor], **kwargs) -> torch.Tensor:
         keys = args[0].keys()
         sample = next(iter(args[0].values()))
         losses = torch.empty(size=(sample.size(0), len(keys)), device=sample.device)
         for i, key in enumerate(keys):
-            losses[:, i] = self.loss_fn(*[arg[key] for arg in args])
+            losses[:, i] = self.loss_fn(*[arg[key] for arg in args], **kwargs)
         return self.aggr_fn(losses).mean()
