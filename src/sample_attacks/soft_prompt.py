@@ -80,7 +80,6 @@ class SoftPrompt(SampleAttack):
         input_ids: torch.Tensor,
         target_mask: torch.Tensor,
     ) -> torch.Tensor:
-
         # align prdicted logits and target_ids
         logits = logits[:, :-1]  # remove new token
         target_ids = input_ids[:, 1:]  # remove BOS token
@@ -98,7 +97,6 @@ class SoftPrompt(SampleAttack):
         target_texts: list[str],
         init_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
-
         # TODO: IMPORTANT: add early stopping. If logits.argmax() == target_ids, then stop optimizing for this sample
         # whats cool is that it doesnt require us to call expensive generate()
         # to filter the cache object for early stopping see:
@@ -128,11 +126,9 @@ class SoftPrompt(SampleAttack):
 
         with tqdm(range(self.steps), disable=not self.verbose, leave=False, desc="Attack") as pbar:
             for step in pbar:
-
                 optim.zero_grad()
 
                 with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-
                     past_keys_values: Cache | LegacyCache | None = None
                     if self.kv_caching:
                         # NOTE: need to copy since forward modifies it in-place

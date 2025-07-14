@@ -6,7 +6,6 @@ from src.eval.llama_guard_evaluator import LlamaGuardEvaluator
 from src.eval.strong_reject_evaluator import StrongRejectEvaluator
 from src.eval.template_evaluator import TemplateEvaluator
 
-
 __all__ = [
     "Evaluator",
     "MultiEvaluator",

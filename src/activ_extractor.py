@@ -138,7 +138,6 @@ class ActivationExtractor:
     def _register_hooks(self) -> None:
         """Register forward hooks for the specified layers."""
         for layer_name, layer_module in self._layers:
-
             if self.capture_output:
                 handle = layer_module.register_forward_hook(self._create_output_hook(layer_name))
             else:

@@ -2,7 +2,6 @@ import logging
 import torch
 from src.adv_model import AdvModel
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -116,7 +115,6 @@ class Initializer:
         input_ids = None
 
         if not strict:
-
             # Tokenize without padding or truncation, which may
             # modify the numeber of adversarial tokens
             tokenized = tokenizer(
@@ -131,7 +129,6 @@ class Initializer:
             input_ids = tokenized["input_ids"]
 
         else:
-
             # We need to set some tokenizer settings manually
             orig_padding_side = tokenizer.padding_side
             orig_truncation_side = tokenizer.truncation_side

@@ -53,7 +53,6 @@ def load_model(
     hf_token: str | None = None,
     **kwargs,
 ) -> tuple[PreTrainedModel, PreTrainedTokenizer]:
-
     if kwargs is None:
         kwargs = {}
 

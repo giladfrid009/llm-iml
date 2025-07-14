@@ -8,7 +8,6 @@ from transformers.generation.utils import GenerateDecoderOnlyOutput
 from transformers import PreTrainedModel, PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 
-
 from src import tokenize
 from src import utils
 from src.config import GenConfig
@@ -48,7 +47,6 @@ class AdverEmbedding(nn.Module):
         adv_embeds: torch.Tensor | None = None,
         adv_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-
         if (adv_embeds is None) != (adv_mask is None):
             raise ValueError("Both adv_embeds and adv_mask should be None or not None")
 
@@ -156,9 +154,9 @@ class AdvModel(nn.Module):
             strict (bool): If True, number of adversarial tokens must match to `self.num_tokens`.
         """
         assert adv_embeds.ndim == 3, "Adversarial embeddings must be a 3D tensor (batch_size, num_tokens, embed_dim)"
-        assert (
-            adv_embeds.size(2) == self.adv_embedder.embed_dim
-        ), "Adversarial embeddings must match the embed_dim of the model"
+        assert adv_embeds.size(2) == self.adv_embedder.embed_dim, (
+            "Adversarial embeddings must match the embed_dim of the model"
+        )
 
         num_tokens = adv_embeds.size(1)
         if num_tokens != self.num_tokens and strict:
@@ -258,7 +256,6 @@ class AdvModel(nn.Module):
         inputs_embeds: torch.Tensor | None = None,
         **kwargs,
     ):
-
         if inputs_embeds is None and input_ids is None:
             raise ValueError("Either `inputs_embeds` or `input_ids` must be provided.")
 
@@ -290,7 +287,6 @@ class AdvModel(nn.Module):
         config: GenConfig | None = None,
         **kwargs,
     ) -> GenerateDecoderOnlyOutput | torch.Tensor:
-
         if inputs_embeds is None and input_ids is None:
             raise ValueError("Either `inputs_embeds` or `input_ids` must be provided.")
 

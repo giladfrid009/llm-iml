@@ -130,7 +130,6 @@ class UnivAttack:
         dl = dl.copy(shuffle=False, drop_last=False)
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-
             all_responses = []
             for batch_data in tqdm(dl, desc="Generating", leave=False):
                 prompts = batch_data["prompt"]
@@ -213,7 +212,6 @@ class UnivAttack:
         dl_eval: DF_Batcher | None = None,
         stop_criteria: StopCriteria | None = None,
     ) -> AdvModel:
-
         if dl_eval is None:
             warnings.warn("No evaluation data loader provided, using training data for evaluation.")
             dl_eval = dl_train.copy(shuffle=False, drop_last=False)
@@ -246,7 +244,6 @@ class UnivAttack:
         self.logger.log_hparams()
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
-
             # initial evaluation
             self.adv_model.set_embeddings(self.univ_embeds)
             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
@@ -284,7 +281,8 @@ class UnivAttack:
                             self.save_checkpoint()
                             self.logger.log_scalar(f"{self.judge.name}/best", self.best_metric, step=global_step)
                             self.logger.log_scalers(
-                                {f"{e.name}/current": m for e, m in zip(self.evaluators, metrics)}, step=global_step
+                                {f"{e.name}/current": m for e, m in zip(self.evaluators, metrics)},
+                                step=global_step,
                             )
                             epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 

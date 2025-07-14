@@ -77,7 +77,6 @@ class IML(UnivAttack):
         self.logger.register_hparams({f"optim/{k}": v for k, v in self.optimizer.param_groups[0].items()})
 
     def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int) -> float | None:
-
         # NOTE: IDEA: instead of using a fixed target, generate affirmative responses from the
         # per-sample attacks and use them as targets instead.
         # We should add attack parameter `dynamic_targets` which enables / disables it.
@@ -106,7 +105,6 @@ class IML(UnivAttack):
         self.optimizer.zero_grad()
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-
             # construct conversations
             input_text, target_text = data["prompt"], data["target"]
             conversations = [[{"role": "user", "content": prm}] for prm in input_text]
@@ -159,7 +157,6 @@ class IML(UnivAttack):
             token_dict = self.adv_model.tokenize(conversations, target_text)
 
             with self.activ_extractor.capture():
-
                 # compute per-sample activations
                 with torch.inference_mode():
                     self.adv_model.set_embeddings(sample_embed)

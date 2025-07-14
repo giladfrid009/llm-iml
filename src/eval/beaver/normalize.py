@@ -23,7 +23,6 @@ import torch
 from torch import nn
 from torch.types import Number
 
-
 NormalizeFunction = Literal["affine", "scale", "translate", "identity"]
 NormalizerType = Literal["RunningMeanStd", "ExponentialMovingAverage"]
 

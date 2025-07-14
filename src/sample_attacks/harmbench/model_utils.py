@@ -2,7 +2,6 @@ from transformers import PreTrainedTokenizer
 
 
 def get_template(tokenizer: PreTrainedTokenizer, **kwargs) -> str:
-
     # ======== Else default to tokenizer.apply_chat_template =======
     template = [{"role": "user", "content": "{instruction}"}]
     prompt: str = tokenizer.apply_chat_template(template, tokenize=False, add_generation_prompt=True)  # type: ignore

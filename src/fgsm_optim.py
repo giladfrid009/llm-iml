@@ -42,7 +42,6 @@ class FGSM(GradSign):
         fused=None,
         **kwargs,
     ):
-
         optimizer = torch.optim.SGD(
             params=params,
             lr=lr,

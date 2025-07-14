@@ -13,6 +13,7 @@ from src.sample_attacks.harmbench.check_refusal_utils import check_refusal_compl
 from src.sample_attacks.harmbench.gcg.gcg_utils import sample_control, get_nonascii_toks
 from src.adv_model import AdvModel
 
+
 # ============================== GCG CLASS DEFINITION ============================== #
 class GCG(IndivHarmBenchAttack):
     def __init__(

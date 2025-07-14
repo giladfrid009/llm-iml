@@ -9,7 +9,6 @@ from vllm.sampling_params import GuidedDecodingParams
 import torch
 import warnings
 
-
 SUPPORTED_MODELS = [
     "meta-llama/LlamaGuard-7b",
     "meta-llama/Meta-Llama-Guard-2-8B",
@@ -39,7 +38,6 @@ class LlamaGuardEvaluator(Evaluator):
         sampling_params: SamplingParams | None = None,
         verbose: bool = True,
     ):
-
         if model_name not in SUPPORTED_MODELS:
             raise ValueError(f"Unsupported model: {model_name}. Supported models are: {SUPPORTED_MODELS}")
 

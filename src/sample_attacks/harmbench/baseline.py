@@ -32,7 +32,6 @@ class HarmBenchAttack(TextAttack):
         conversations: list[list[dict[str, str]]],
         target_texts: list[str],
     ) -> list[list[dict[str, str]]]:
-
         if len(conversations) != len(target_texts):
             raise ValueError("The number of conversations must match the number of target texts.")
 
@@ -70,7 +69,6 @@ class IndivHarmBenchAttack(HarmBenchAttack):
     def generate_test_cases(
         self, behaviors: list[str], targets: list[str], init_embeds: torch.Tensor | None = None
     ) -> list[str]:
-
         if len(behaviors) != len(targets):
             raise ValueError("The number of behaviors must match the number of targets.")
 

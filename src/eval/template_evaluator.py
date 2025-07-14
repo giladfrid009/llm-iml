@@ -2,7 +2,6 @@ from src.eval.evaluator import Evaluator
 from typing import Any
 import torch
 
-
 REFUSAL_PHRASES = [
     "I'm sorry",
     "Sorry",

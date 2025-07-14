@@ -32,7 +32,6 @@ def load_hf_tokenizer(
     trust_remote_code: bool = False,
     hf_token: str | None = None,
 ) -> PreTrainedTokenizer:
-
     hf_login(hf_token)
 
     if tokenizer_kwargs is None:
@@ -72,7 +71,6 @@ def load_hf_model(
     adapter_kwargs: dict | None = None,
     hf_token: str | None = None,
 ) -> tuple[PreTrainedModel, PreTrainedTokenizer]:
-
     if model_kwargs is None:
         model_kwargs = {}
 

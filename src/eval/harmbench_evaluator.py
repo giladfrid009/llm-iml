@@ -69,7 +69,6 @@ class HarmBenchEvaluator(Evaluator):
         use_context: bool = False,
         verbose: bool = True,
     ):
-
         model_name = "cais/HarmBench-Llama-2-13b-cls"
         required_colums = ["prompt", "response"] if not use_context else ["prompt", "response", "context"]
 

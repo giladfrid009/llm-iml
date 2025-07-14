@@ -6,6 +6,7 @@ from src.sample_attacks.harmbench.model_utils import get_template
 from src.sample_attacks.harmbench.baseline import IndivHarmBenchAttack
 from src.adv_model import AdvModel
 
+
 # ============================== PEZ CLASS DEFINITION ============================== #
 class PEZ(IndivHarmBenchAttack):
     def __init__(

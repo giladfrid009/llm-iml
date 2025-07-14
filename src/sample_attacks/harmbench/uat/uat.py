@@ -12,7 +12,6 @@ from src.sample_attacks.harmbench.model_utils import get_template
 from src.adv_model import AdvModel
 
 
-
 # ============================== UTILS FOR UAT ============================== #
 def hotflip_attack(
     averaged_grad: torch.Tensor,
