@@ -37,7 +37,7 @@ def hotflip_attack(
         torch.nn.functional.embedding(torch.LongTensor(trigger_token_ids).cuda(), embedding_matrix)
         .detach()
         .unsqueeze(0)
-    )  # TODO: WHY IS IT UNUSED?
+    )
     averaged_grad = averaged_grad.unsqueeze(0)
 
     # einsum does not support half precision, so we rewrite as bmm.
@@ -207,8 +207,7 @@ class UAT(SequentialHarmBenchAttack):
                 if end_iter:
                     break
                 # Get average gradient w.r.t. the triggers
-                extracted_grads = []  # clear the gradient from past iterations # TODO: WHY IS IT UNUSED?
-                self.extracted_grads = []
+                self.extracted_grads = []  # clear the gradient from past iterations
                 loss.backward(retain_graph=True)
 
                 averaged_grad = torch.sum(self.extracted_grads[0], dim=0)
