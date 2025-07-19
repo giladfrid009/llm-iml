@@ -320,7 +320,6 @@ class AdvModel(nn.Module):
         Args:
             conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
                 Each message is a dictionary with keys "role" and "content".
-            max_length (int): Maximum length of the generated text.
             config (GenConfig | None): Generation configuration. If None, uses the default generation configuration.
             adv_embeds (torch.Tensor | None): Override to `self.adv_embeds` for the generation.
 

@@ -15,6 +15,7 @@ class GenConfig:
         self,
         *,
         max_length: int | None = None,
+        max_new_tokens: int | None = None,
         do_sample: bool | None = None,
         top_k: int | None = None,
         top_p: float | None = None,
@@ -23,6 +24,7 @@ class GenConfig:
         **kwargs,
     ):
         self.max_length = max_length
+        self.max_new_tokens = max_new_tokens
         self.do_sample = do_sample
         self.top_k = top_k
         self.top_p = top_p

@@ -1,4 +1,9 @@
 {
     "python.analysis.typeCheckingMode": "standard",
-    "python.analysis.autoImportCompletions": false
+    "python.analysis.autoImportCompletions": false,
+    "cSpell.words": [
+        "activ",
+        "activs",
+        "convs"
+    ]
 }

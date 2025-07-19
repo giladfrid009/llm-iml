@@ -15,6 +15,7 @@ def cosine_similarity_loss(
     sample_activ: torch.Tensor,
     univ_mask: torch.Tensor,
     sample_mask: torch.Tensor,
+    return_flat: bool = False,
 ) -> torch.Tensor:
     """
     Args:
@@ -22,9 +23,18 @@ def cosine_similarity_loss(
         sample_activ (torch.Tensor): Sample activations of shape (batch_size, seq2, hidden_dim).
         univ_mask (torch.Tensor): Mask indicating univ tokens are targets, of shape (batch_size, seq1).
         sample_mask (torch.Tensor): Mask indicating sample tokens are targets, of shape (batch_size, seq2).
+        return_flat (bool): Averaging method of the loss
+            - If True, overall loss is average over all target tokens across all samples. 
+            - If False, first average over all target tokens for each sample, then average over samples.
     """
     univ_mask = univ_mask.bool()
     sample_mask = sample_mask.bool()
+
+    # align masks and activations
+    univ_mask = univ_mask[:, 1:]  # remove BOS token
+    sample_mask = sample_mask[:, 1:]  # remove BOS token
+    univ_activ = univ_activ[:, :-1]  # remove new token
+    sample_activ = sample_activ[:, :-1]  # remove new token
 
     # extract only targets
     univ_targets = univ_activ[univ_mask].reshape(-1, univ_activ.size(-1))
@@ -32,6 +42,9 @@ def cosine_similarity_loss(
 
     # compute token-wise loss
     flat_losses = 1 - torch.cosine_similarity(univ_targets, sample_targets, dim=-1)
+
+    if return_flat:
+        return flat_losses.mean()
 
     # scatter losses back to the original shape and compute sample-mean
     sample_losses = torch.zeros_like(sample_mask, dtype=flat_losses.dtype)
@@ -102,28 +115,28 @@ class IML(UnivAttack):
         self.optimizer.zero_grad()
 
         # construct input conversations
-        input_text, target_text = data["prompt"], data["target"]
-        input_convs = [[{"role": "user", "content": prm}] for prm in input_text]
+        input_texts, target_texts = data["prompt"], data["target"]
+        input_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
             # skip already successfully fooled samples
             if self.skip_already_fooled:
                 with torch.inference_mode():
                     responses = self.adv_model.chat(input_convs, self.gen_config)
-                    eval_result = self.judge.eval_batch(input_text, responses)
+                    eval_result = self.judge.eval_batch(input_texts, responses)
                     mask_fooled = eval_result >= 1.0
 
                     if mask_fooled.all():
                         return None
 
-                    input_text = [txt for txt, m in zip(input_text, mask_fooled) if not m]
+                    input_texts = [txt for txt, m in zip(input_texts, mask_fooled) if not m]
                     input_convs = [conv for conv, m in zip(input_convs, mask_fooled) if not m]
-                    target_text = [tgt for tgt, m in zip(target_text, mask_fooled) if not m]
+                    target_texts = [tgt for tgt, m in zip(target_texts, mask_fooled) if not m]
 
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
                 init_embeds = self.univ_embeds.expand(len(input_convs), -1, -1)
-                attack_result = self.inner_attack.fit(input_convs, target_text, init_embeds=init_embeds)
+                attack_result = self.inner_attack.fit(input_convs, target_texts, init_embeds=init_embeds)
                 sample_convs = attack_result.conversations
                 sample_embeds = attack_result.adv_embeds
 
@@ -131,20 +144,20 @@ class IML(UnivAttack):
             if self.skip_failed_attacks:
                 with torch.inference_mode():
                     responses = self.adv_model.chat(sample_convs, self.gen_config, adv_embeds=sample_embeds)
-                    eval_result = self.judge.eval_batch(input_text, responses)
+                    eval_result = self.judge.eval_batch(input_texts, responses)
                     mask_succ = eval_result >= 1.0
 
                     if not mask_succ.any():
                         return None
 
-                    sample_embeds = sample_embeds[mask_succ] if sample_embeds is not None else None
                     input_convs = [conv for conv, m in zip(input_convs, mask_succ) if m]
                     sample_convs = [conv for conv, m in zip(sample_convs, mask_succ) if m]
-                    target_text = [tgt for tgt, m in zip(target_text, mask_succ) if m]
+                    target_texts = [tgt for tgt, m in zip(target_texts, mask_succ) if m]
+                    sample_embeds = sample_embeds[mask_succ] if sample_embeds is not None else None
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
-                sample_tokens = self.adv_model.tokenize(sample_convs, target_text)
+                sample_tokens = self.adv_model.tokenize(sample_convs, target_texts)
                 with torch.inference_mode():
                     self.adv_model.forward(
                         input_ids=sample_tokens["input_ids"],
@@ -155,7 +168,7 @@ class IML(UnivAttack):
                     sample_activs = self.activ_extractor.get_activations()
 
                 # compute universal activations
-                univ_tokens = self.adv_model.tokenize(input_convs, target_text)
+                univ_tokens = self.adv_model.tokenize(input_convs, target_texts)
                 self.adv_model.forward(
                     input_ids=univ_tokens["input_ids"],
                     attention_mask=univ_tokens["attention_mask"],
@@ -163,15 +176,14 @@ class IML(UnivAttack):
                 )
                 univ_activs = self.activ_extractor.get_activations()
 
-            # align target mask and activations
-            univ_mask = univ_tokens["target_mask"][:, 1:]
-            sample_mask = sample_tokens["target_mask"][:, 1:]
-            sample_activs = {k: v[:, :-1] for k, v in sample_activs.items()}
-            univ_activs = {k: v[:, :-1] for k, v in univ_activs.items()}
-
             # compute loss
             criterion = ActivationLoss(loss_fn=cosine_similarity_loss)
-            loss = criterion.forward(univ_activs, sample_activs, univ_mask=univ_mask, sample_mask=sample_mask)
+            loss = criterion.forward(
+                univ_activs,
+                sample_activs,
+                univ_mask=univ_tokens["target_mask"],
+                sample_mask=sample_tokens["target_mask"],
+            )
 
         # grad step
         self.grad_scaler.scale(loss).backward()
