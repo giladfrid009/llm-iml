@@ -208,9 +208,10 @@ class SoftPrompt(SampleAttack):
 
                     # update early stopping based on predictions
                     if self.early_stopping:
-                        finished[~finished] = self._check_early_stopping(logits, target_ids, target_mask)
+                        finished_status = self._check_early_stopping(logits, target_ids, target_mask)
+                        finished[~finished] = finished_status
                         if finished.all():
-                            # finish early
+                            # break early
                             pbar.n = pbar.total
                             pbar.close()
                             break

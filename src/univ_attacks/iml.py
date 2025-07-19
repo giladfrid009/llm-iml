@@ -24,7 +24,7 @@ def cosine_similarity_loss(
         univ_mask (torch.Tensor): Mask indicating univ tokens are targets, of shape (batch_size, seq1).
         sample_mask (torch.Tensor): Mask indicating sample tokens are targets, of shape (batch_size, seq2).
         return_flat (bool): Averaging method of the loss
-            - If True, overall loss is average over all target tokens across all samples. 
+            - If True, overall loss is average over all target tokens across all samples.
             - If False, first average over all target tokens for each sample, then average over samples.
     """
     univ_mask = univ_mask.bool()
@@ -65,7 +65,7 @@ class IML(UnivAttack):
         gen_config: GenConfig | None = None,
         skip_already_fooled: bool = False,
         skip_failed_attacks: bool = True,
-        dynamic_labels: bool = False,
+        dynamic_labels: int = -1,
         log_dir: str | None = None,
     ):
         super().__init__(
@@ -88,7 +88,7 @@ class IML(UnivAttack):
         self.optimizer = optimizer
         self.skip_already_fooled = skip_already_fooled
         self.skip_failed_attacks = skip_failed_attacks
-        self.dynamic_labels = dynamic_labels  # TODO: implement dynamic labels
+        self.dynamic_labels = dynamic_labels
 
         # TODO: (low priority) think of a better, less messy way to register hparams
         self.logger.register_hparams({"iml/inner_attack": self.inner_attack.__class__.__name__})
@@ -106,6 +106,19 @@ class IML(UnivAttack):
         if self.attack_builder_func is None:
             return self.inner_attack
         return self.attack_builder_func(self.adv_model, epoch_num)
+
+    def truncate_tokens(self, sequences: list[str], n: int) -> list[str]:
+        encoding = self.adv_model.tokenizer(
+            sequences,
+            add_special_tokens=False,
+            truncation=True,
+            max_length=n,
+        )
+
+        return self.adv_model.tokenizer.batch_decode(
+            encoding["input_ids"],
+            skip_special_tokens=True,
+        )
 
     def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int) -> float | None:
         # create new instance of inner attack for each epoch
@@ -150,10 +163,26 @@ class IML(UnivAttack):
                     if not mask_succ.any():
                         return None
 
+                    # set target texts to generated responses
+                    if self.dynamic_labels > 0:
+                        target_texts = self.truncate_tokens(responses, self.dynamic_labels)
+
                     input_convs = [conv for conv, m in zip(input_convs, mask_succ) if m]
                     sample_convs = [conv for conv, m in zip(sample_convs, mask_succ) if m]
                     target_texts = [tgt for tgt, m in zip(target_texts, mask_succ) if m]
                     sample_embeds = sample_embeds[mask_succ] if sample_embeds is not None else None
+
+            elif self.dynamic_labels > 0 and (not self.skip_failed_attacks):
+                # we first need to generate responses
+                responses = self.adv_model.chat(
+                    sample_convs,
+                    self.gen_config,
+                    adv_embeds=sample_embeds,
+                    max_new_tokens=self.dynamic_labels,
+                )
+
+                # set target texts to generated responses
+                target_texts = self.truncate_tokens(responses, self.dynamic_labels)
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
