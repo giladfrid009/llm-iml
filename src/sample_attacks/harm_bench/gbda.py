@@ -45,7 +45,9 @@ class GBDA(SequentialHarmBenchAttack):
         :param verbose: whether to print progress
         :return: a list of test case and a list of logs
         """
-
+        # ========== Behavior and Target str ==========
+        behavior += " "
+        
         # GBDA hyperparams
         num_generate = 1
         num_optim_tokens = self.num_optim_tokens

@@ -125,6 +125,9 @@ class GCG(SequentialHarmBenchAttack):
         self.search_batch_size = (
             self.starting_search_batch_size if self.starting_search_batch_size else self.search_width
         )
+        
+        # ========== Behavior and Target str ==========
+        behavior += " "
 
         ### Targeted Model and Tokenier ###
         model = self.model

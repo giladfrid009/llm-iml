@@ -141,6 +141,9 @@ class UAT(SequentialHarmBenchAttack):
         # starting search_batch_size, will auto reduce batch_size later if go OOM (resets for every new behavior)
         self.search_batch_size = self.num_candidates
 
+        # ========== Behavior and Target str ==========
+        behavior += " "
+
         ### Targeted Model and Tokenier ###
         model = self.model
         device = model.device

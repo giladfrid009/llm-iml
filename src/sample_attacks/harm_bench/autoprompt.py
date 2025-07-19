@@ -119,6 +119,9 @@ class AutoPrompt(SequentialHarmBenchAttack):
         # starting search_batch_size, will auto reduce batch_size later if go OOM (resets for every new behavior)
         self.search_batch_size = self.search_width
 
+        # ========== Behavior and Target str ==========
+        behavior += " "
+
         ### Targeted Model and Tokenizer ###
         model = self.model
         device = model.device

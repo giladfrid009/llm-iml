@@ -35,11 +35,9 @@ class HarmBenchAttack(SampleAttack):
         behaviors = [conv[-1]["content"] for conv in conversations]
         test_cases = self.generate_test_cases(behaviors, target_texts)
 
-        # TODO: verify that we indeed need to concatenate it,
-        # and whether we need to add space or not (compare against original implementation)
         adv_convs = copy.deepcopy(conversations)
         for conv, test_case in zip(adv_convs, test_cases):
-            conv[-1]["content"] += test_case
+            conv[-1]["content"] = test_case
 
         return SampleOutput(adv_convs)
 
