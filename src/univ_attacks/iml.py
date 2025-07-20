@@ -15,7 +15,7 @@ def cosine_similarity_loss(
     sample_activ: torch.Tensor,
     univ_mask: torch.Tensor,
     sample_mask: torch.Tensor,
-    return_flat: bool = False,
+    sample_mean: bool = True,
 ) -> torch.Tensor:
     """
     Args:
@@ -23,9 +23,9 @@ def cosine_similarity_loss(
         sample_activ (torch.Tensor): Sample activations of shape (batch_size, seq2, hidden_dim).
         univ_mask (torch.Tensor): Mask indicating univ tokens are targets, of shape (batch_size, seq1).
         sample_mask (torch.Tensor): Mask indicating sample tokens are targets, of shape (batch_size, seq2).
-        return_flat (bool): Averaging method of the loss
-            - If True, overall loss is average over all target tokens across all samples.
-            - If False, first average over all target tokens for each sample, then average over samples.
+        sample_mean (bool): Averaging method of the loss
+            - If True, first average over all target tokens for each sample, then average over samples.
+            - If False, overall loss is average over all target tokens across all samples.
     """
     univ_mask = univ_mask.bool()
     sample_mask = sample_mask.bool()
@@ -43,7 +43,7 @@ def cosine_similarity_loss(
     # compute token-wise loss
     flat_losses = 1 - torch.cosine_similarity(univ_targets, sample_targets, dim=-1)
 
-    if return_flat:
+    if not sample_mean:
         return flat_losses.mean()
 
     # scatter losses back to the original shape and compute sample-mean
@@ -90,12 +90,15 @@ class IML(UnivAttack):
         self.skip_failed_attacks = skip_failed_attacks
         self.dynamic_labels = dynamic_labels
 
-        # TODO: (low priority) think of a better, less messy way to register hparams
-        self.logger.register_hparams({"iml/inner_attack": self.inner_attack.__class__.__name__})
-        self.logger.register_hparams({"iml/optimizer": self.optimizer.__class__.__name__})
-        self.logger.register_hparams({"iml/skip_already_fooled": self.skip_already_fooled})
-        self.logger.register_hparams({"iml/skip_failed_attacks": self.skip_failed_attacks})
-        self.logger.register_hparams({"iml/dynamic_labels": self.dynamic_labels})
+        self.logger.register_hparams(
+            {
+                "iml/inner_attack": self.inner_attack.__class__.__name__,
+                "iml/optimizer": self.optimizer.__class__.__name__,
+                "iml/skip_already_fooled": self.skip_already_fooled,
+                "iml/skip_failed_attacks": self.skip_failed_attacks,
+                "iml/dynamic_labels": self.dynamic_labels,
+            }
+        )
 
         self.logger.register_hparams(activ_extractor.get_hparams())
         self.logger.register_hparams({f"inner_attack/{k}": v for k, v in inner_attack.__dict__.items()})
@@ -114,7 +117,6 @@ class IML(UnivAttack):
             truncation=True,
             max_length=n,
         )
-
         return self.adv_model.tokenizer.batch_decode(
             encoding["input_ids"],
             skip_special_tokens=True,
@@ -212,6 +214,7 @@ class IML(UnivAttack):
                 sample_activs,
                 univ_mask=univ_tokens["target_mask"],
                 sample_mask=sample_tokens["target_mask"],
+                sample_mean=False,
             )
 
         # grad step

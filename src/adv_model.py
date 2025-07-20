@@ -103,8 +103,9 @@ class AdvModel(nn.Module):
         return {
             "adv_model/model_name": self.model.name_or_path,
             "adv_model/tokenizer_name": self.tokenizer.name_or_path,
-            "adv_model/num_tokens": self.num_tokens,
             "adv_model/adv_token": self.adv_token,
+            "adv_model/num_tokens": self.num_tokens,
+            "adv_model/embed_dim": self.adv_embedder.embed_dim,
         }
 
     def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:

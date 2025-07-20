@@ -87,10 +87,9 @@ class UnivAttack:
     def get_hparams(self) -> dict:
         return {
             "univ_attack/num_tokens": self.num_tokens,
-            "univ_attack/embed_dim": self.embed_dim,
             "univ_attack/mixed_precision": self.mixed_precision,
             "univ_attack/eval_freq": self.eval_freq,
-            "univ_attack/gen_config": self.gen_config.get_hparams() if self.gen_config else {},
+            "univ_attack/gen_config": self.gen_config.get_hparams(),
             "univ_attack/evaluators": (e.name for e in self.evaluators),
             "univ_attack/log_dir": self.logger.root_dir if self.logger else None,
         }

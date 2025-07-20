@@ -31,7 +31,11 @@ class SoftPrompt(SampleAttack):
         self.mixed_precision = mixed_precision
         self.kv_caching = kv_caching
 
-    def _initialize_embeddings(self, num_inputs: int, init_embeds: torch.Tensor | None = None) -> torch.Tensor:
+    def _initialize_embeddings(
+        self,
+        num_inputs: int,
+        init_embeds: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         if init_embeds is not None:
             embeddings = init_embeds.clone().detach()
             embeddings.requires_grad_(True)
@@ -79,7 +83,11 @@ class SoftPrompt(SampleAttack):
 
         return new_token_dict
 
-    def _masked_select(self, token_dict: dict[str, Any], mask: torch.Tensor) -> dict[str, torch.Tensor | Any]:
+    def _masked_select(
+        self,
+        token_dict: dict[str, Any],
+        mask: torch.Tensor,
+    ) -> dict[str, torch.Tensor | Any]:
         """
         Selects elements from the token_dict based on the provided mask.
         Mask is applied to the batch dimension of all elements in the token_dict.
@@ -129,7 +137,7 @@ class SoftPrompt(SampleAttack):
         logits: torch.Tensor,
         target_ids: torch.Tensor,
         target_mask: torch.Tensor,
-        return_flat: bool = False,
+        sample_mean: bool = True,
     ) -> torch.Tensor:
         """
         CE loss for the logits and target_ids, masked by target_mask.
@@ -141,7 +149,7 @@ class SoftPrompt(SampleAttack):
         # compute token-wise loss
         flat_losses = torch.nn.functional.cross_entropy(logits, target_ids, reduction="none")
 
-        if return_flat:
+        if not sample_mean:
             return flat_losses.mean()
 
         # scatter losses back to the original shape and compute sample-mean
@@ -220,7 +228,7 @@ class SoftPrompt(SampleAttack):
                         logits=logits,
                         target_ids=target_ids,
                         target_mask=target_mask,
-                        return_flat=False,
+                        sample_mean=False,
                     )
 
                 # backward pass and optimization step

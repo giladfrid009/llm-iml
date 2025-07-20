@@ -38,13 +38,12 @@ class Logger:
         for k, v in hparams.items():
             if isinstance(v, dict):
                 self.register_hparams({f"{k}/{k2}": v2 for k2, v2 in v.items()})
-            if isinstance(v, torch.Tensor) and v.numel() == 1:
-                v = v.item()
-            elif isinstance(v, tuple):
-                v = str(v)
-
-            if v is None or isinstance(v, (int, float, str, bool)):
+            elif v is None:
+                clean_hparams[k] = None
+            elif isinstance(v, (int, float, str, bool)):
                 clean_hparams[k] = v
+            else:
+                clean_hparams[k] = str(v)  # Convert non-primitive types to string
 
         self._hparams.update(clean_hparams)
 
