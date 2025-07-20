@@ -1,12 +1,16 @@
 ## Installation
 
-To install the dependencies of this project, use the ***uv*** dependency manager. (highly recommended)
+To install the dependencies of this project, pleaese use the ***uv*** dependency manager. (highly recommended)   
+*Note:* If you dont have ***uv*** installed, see docs at the [official website](https://docs.astral.sh/uv/getting-started/installation/).
 
-Note:
-If you dont have ***uv*** installed, see docs at the [official website](https://docs.astral.sh/uv/getting-started/installation/).
+#### Dependencies:
 
-To install the dependencies, run the following command in your terminal:
+The dependencies are located in two files:
+* ```pyproject.toml``` - contains the general package names and versions
+* ```uv.lock``` - contains exact versions of all installed packages
 
-```bash
-uv sync
-```
+#### Steps:
+
+1. Clone Repo from github
+2. Navigate to the repo folder
+3. Run the following command in your terminal: ```uv sync```
