@@ -138,10 +138,6 @@ class LlamaEvaluator(Evaluator):
         """
         Closes the evaluator, releasing any resources.
         """
-        self.model.shutdown()
-
-    def __del__(self):
-        try:
-            self.close()
-        except Exception:
-            pass
+        if self.model is not None:
+            self.model.shutdown()
+            self.model = None  # type: ignore

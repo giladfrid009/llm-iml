@@ -129,3 +129,6 @@ class TemplateEvaluator(Evaluator):
             eval_results.append(res)
 
         return torch.tensor(eval_results, dtype=torch.float32)
+
+    def close(self):
+        pass

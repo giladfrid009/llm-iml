@@ -2,6 +2,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 from src.eval.evaluator import Evaluator
 from src.eval.beaver import AutoModelForScore
 from src.eval.beaver.llama import LlamaForScore
+from src import utils
 
 from typing import Any
 import torch
@@ -98,3 +99,12 @@ class BeaverEvaluator(Evaluator):
             end_scores = (end_scores >= self.binary_thresh).float()
 
         return end_scores
+
+    def close(self):
+        """
+        Closes the evaluator, releasing any resources.
+        """
+        if self.model is not None:
+            del self.model
+            self.model = None  # type: ignore
+            utils.clear_memory()

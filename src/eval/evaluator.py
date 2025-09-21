@@ -6,6 +6,14 @@ from src.data import DF_Batcher
 from tqdm.auto import tqdm
 
 
+# TODO: (low priority) return a dict of metrics instead of a single metric scalar
+# Then the multi-evaluator can also return the original metrics of each evaluator
+# instead of only the combined one. the name of the metric should be handled internally
+# unless explicitly specified otherwise
+
+
+# TODO: rename evaluator to Metric and then use it to log general metrics as well
+# such as grad norm, optim_prompt distance from legal embeddings, etc...
 class Evaluator(ABC):
     def __init__(self, name: str, verbose: bool = True):
         """
@@ -28,6 +36,20 @@ class Evaluator(ABC):
             dict: Hyperparameters of the evaluator.
         """
         raise NotImplementedError("This method should be overridden by subclasses.")
+
+    @abstractmethod
+    def close(self):
+        """
+        Cleans up any resources used by the evaluator.
+        This method should be overridden by subclasses if they allocate resources that need to be released.
+        """
+        pass
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
     @abstractmethod
     def eval_batch(self, prompts: list[str], responses: list[str]) -> torch.Tensor:
@@ -128,3 +150,10 @@ class MultiEvaluator(Evaluator):
             batch_metric = evaluator.eval_batch(prompts, responses)
             metrics.append(batch_metric.cpu())
         return self.combine_fn(*metrics)
+
+    def close(self):
+        """
+        Closes all individual evaluators, releasing any resources they may be using.
+        """
+        for evaluator in self.evaluators:
+            evaluator.close()

@@ -35,7 +35,7 @@ class UnivAttack:
         """
         if gen_config is None:
             gen_config = GenConfig()
-        
+
         self.adv_model = adv_model
         self.evaluators = evaluators
         self.eval_freq = eval_freq
@@ -99,7 +99,10 @@ class UnivAttack:
         self.logger.close()
 
     def __del__(self):
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def save_checkpoint(self, file_name: str = "best_embeds.pt"):
         log_dir = self.logger.log_dir()

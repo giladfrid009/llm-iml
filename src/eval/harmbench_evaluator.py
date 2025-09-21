@@ -90,7 +90,6 @@ class HarmBenchEvaluator(Evaluator):
             for input, response in zip(input_texts, response_texts)
         ]
 
-
     def eval_batch(self, prompts: list[str], responses: list[str]) -> torch.Tensor:
         cls_inputs = self._fmt_inputs(prompts, responses)
         cls_resp = self.model.generate(cls_inputs, sampling_params=self.sampling_params)
@@ -110,10 +109,6 @@ class HarmBenchEvaluator(Evaluator):
         """
         Closes the evaluator, releasing any resources.
         """
-        self.model.shutdown()
-
-    def __del__(self):
-        try:
-            self.close()
-        except Exception:
-            pass
+        if self.model is not None:
+            self.model.shutdown()
+            self.model = None  # type: ignore
