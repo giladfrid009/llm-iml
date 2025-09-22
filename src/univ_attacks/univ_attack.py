@@ -98,12 +98,6 @@ class UnivAttack:
         """Close all resources."""
         self.logger.close()
 
-    def __del__(self):
-        try:
-            self.close()
-        except Exception:
-            pass
-
     def save_checkpoint(self, file_name: str = "best_embeds.pt"):
         log_dir = self.logger.log_dir()
         if log_dir is not None:

@@ -1,19 +1,9 @@
 import torch
 import pathlib
 import time
-from typing import TYPE_CHECKING
-import logging
+import clearml
+from clearml import Task
 from torch.utils.tensorboard.writer import SummaryWriter
-
-# Handle gracefully import failures
-
-if TYPE_CHECKING:
-    import clearml
-
-try:
-    from clearml import Task
-except ImportError:
-    Task = None
 
 
 class Logger:
@@ -70,11 +60,6 @@ class Logger:
         self.global_step = 0
         self.tb_writer = SummaryWriter(log_dir=log_dir)
 
-        if Task is None:
-            self.cm_task = None
-            logging.warning("ClearML installation not found. ClearML logging disabled.")
-            return
-
         # Init ClearML
         task_name = str.join(" - ", sub_dir.parts) + f" - {timestamp}"
         self.cm_task = Task.init(project_name="LLM-IML", task_name=task_name)
@@ -94,9 +79,6 @@ class Logger:
             self.cm_task.flush()
             self.cm_task.close()
             self.cm_task = None
-
-    def __del__(self):
-        self.close()
 
     def step(self, n: int = 1):
         """

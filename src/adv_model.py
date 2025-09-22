@@ -8,7 +8,7 @@ from transformers.generation.utils import GenerateDecoderOnlyOutput
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from src import tokenize
-from src import utils
+from src.utils.torch import extract_device
 from src.config import GenConfig
 
 
@@ -16,7 +16,7 @@ class AdverEmbedding(nn.Module):
     def __init__(self, embedder: nn.Module):
         super().__init__()
         self.embedder = embedder
-        self.device = utils.extract_device(embedder)
+        self.device = extract_device(embedder)
 
         # internal params for caching
         self._embed_dim: int = None  # type: ignore
@@ -93,7 +93,7 @@ class AdvModel(nn.Module):
         self.adv_embedder = AdverEmbedding(self.orig_embedder)
 
         # params
-        self.device = utils.extract_device(model)
+        self.device = extract_device(model)
         self.num_tokens = num_tokens
 
         # adversarial embeddings

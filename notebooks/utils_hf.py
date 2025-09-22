@@ -1,5 +1,5 @@
 import torch
-from src.utils import clear_memory
+from src.utils.torch import clear_memory
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer, PreTrainedModel  # type: ignore
 from huggingface_hub import login, HfFolder
 

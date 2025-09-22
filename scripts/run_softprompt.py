@@ -2,7 +2,6 @@ import torch
 import sys
 import pathlib
 import pandas as pd
-from huggingface_hub import HfFolder, login
 
 # set pythonpath to the main module directory
 module_dir = pathlib.Path(__file__).parent.resolve().parent
@@ -10,7 +9,7 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 
-from src import utils
+from src.utils import env
 from src.data import DF_Batcher
 from src.eval.harmbench_evaluator import HarmBenchEvaluator
 from src.eval.template_evaluator import TemplateEvaluator
@@ -61,12 +60,8 @@ def run_attack(adv_model: AdvModel, evaluators: list[Evaluator], dl_train: DF_Ba
 def load_data() -> tuple[DF_Batcher, DF_Batcher]:
     data = pd.read_csv("/home/fre.gilad/source/llm-iml/data/HarmBench/harmful_behaviors.csv")
     data = data.rename(columns={"goal": "prompt"})
-
-    # shuffle the data
-    random_state = 42
-    utils.set_seed(random_state)
-    data = data.sample(frac=1, random_state=random_state).reset_index(drop=True)
-
+    data = data.sample(frac=1).reset_index(drop=True)
+    
     split = int(0.65 * len(data))
     ds_train = data.iloc[:split].copy()
     ds_eval = data.iloc[split:].copy()
@@ -82,12 +77,10 @@ def load_data() -> tuple[DF_Batcher, DF_Batcher]:
 
 def main():
     torch.set_float32_matmul_precision("high")
-    api_file = "/home/fre.gilad/source/llm-iml/HF_KEY.txt"
-    hf_token = utils.api_key_from_file(api_file)
 
-    HfFolder.save_token(hf_token)
-    login(token=hf_token)
-
+    env.prepare_environment()
+    env.set_seed(42)
+    
     dl_train, dl_eval = load_data()
 
     evaluators = [

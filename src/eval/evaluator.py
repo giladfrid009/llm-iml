@@ -45,12 +45,6 @@ class Evaluator(ABC):
         """
         pass
 
-    def __del__(self):
-        try:
-            self.close()
-        except Exception:
-            pass
-
     @abstractmethod
     def eval_batch(self, prompts: list[str], responses: list[str]) -> torch.Tensor:
         """

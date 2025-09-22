@@ -2,7 +2,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 from src.eval.evaluator import Evaluator
 from src.eval.beaver import AutoModelForScore
 from src.eval.beaver.llama import LlamaForScore
-from src import utils
+from src.utils.torch import clear_memory
 
 from typing import Any
 import torch
@@ -107,4 +107,4 @@ class BeaverEvaluator(Evaluator):
         if self.model is not None:
             del self.model
             self.model = None  # type: ignore
-            utils.clear_memory()
+            clear_memory()

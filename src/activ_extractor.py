@@ -151,9 +151,12 @@ class ActivationExtractor:
             handle.remove()
         self._handles.clear()
 
-    def __del__(self):
-        """Clean up hooks when object is deleted."""
+    def close(self) -> None:
+        """Clean up hooks."""
         self._remove_hooks()
+
+    def __del__(self):
+        self.close()
 
 
 def sum_aggregator(losses: Tensor) -> Tensor:
