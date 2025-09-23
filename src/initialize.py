@@ -1,8 +1,8 @@
-import logging
 import torch
 from src.adv_model import AdvModel
+from src.utils.logging import create_logger
 
-logger = logging.getLogger(__name__)
+logger = create_logger(__name__)
 
 
 class Initializer:
@@ -164,6 +164,6 @@ class Initializer:
         if verbose:
             ids_list = input_ids.flatten().tolist()
             str_list = tokenizer.convert_ids_to_tokens(ids_list, skip_special_tokens=False)
-            print(f"Initialized from text: '{text}'")
-            print(f"Embed Tokens: {str_list}")
-            print(f"Embed Length: {len(str_list)}")
+            logger.info(f"Initialized from text: '{text}'")
+            logger.info(f"Embed Tokens: {str_list}")
+            logger.info(f"Embed Length: {len(str_list)}")

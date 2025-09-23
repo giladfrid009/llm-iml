@@ -4,6 +4,9 @@ import time
 import clearml
 from clearml import Task
 from torch.utils.tensorboard.writer import SummaryWriter
+from src.utils.logging import create_logger
+
+logger = create_logger(__name__)
 
 
 class Logger:
@@ -54,7 +57,7 @@ class Logger:
         timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
         log_dir = pathlib.Path(self.root_dir) / sub_dir / timestamp
         log_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Logging enabled. Saving logs to: {log_dir}")
+        logger.info(f"Logging enabled. Saving logs to: {log_dir}")
 
         # Init TensorBoard
         self.global_step = 0

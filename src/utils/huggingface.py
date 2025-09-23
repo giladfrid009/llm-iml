@@ -43,6 +43,7 @@ def load_hf_tokenizer(
 
     tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
         tokenizer_name,
+        trust_remote_code=trust_remote_code,
         **tokenizer_kwargs,
     )
 

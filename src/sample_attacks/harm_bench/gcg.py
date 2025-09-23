@@ -6,9 +6,12 @@ import gc
 from tqdm.auto import tqdm
 import torch
 from torch.nn import CrossEntropyLoss
+from src.utils.logging import create_logger
 
 # https://huggingface.co/docs/accelerate/v0.11.0/en/memory#accelerate.find_executable_batch_size
 from accelerate.utils import find_executable_batch_size
+
+logger = create_logger(__name__)
 
 
 ########## GCG Utils ##########
@@ -97,7 +100,7 @@ class GCG(SequentialHarmBenchAttack):
         self.search_width = search_width
         self.use_prefix_cache = use_prefix_cache
         if use_prefix_cache and self.model.config.use_cache != use_prefix_cache:
-            print(f"WARNING: setting model.config.use_cache={use_prefix_cache}")
+            logger.warning(f"setting model.config.use_cache={use_prefix_cache}")
             self.model.config.use_cache = use_prefix_cache
 
         ### Eval Vars ###
@@ -237,13 +240,13 @@ class GCG(SequentialHarmBenchAttack):
                     new_sampled_top_indices.append(sampled_top_indices[j])
 
             if len(new_sampled_top_indices) == 0:
-                print("All removals; defaulting to keeping all")
+                logger.warning("All removals; defaulting to keeping all")
                 count = 0
             else:
                 sampled_top_indices = torch.stack(new_sampled_top_indices)
 
             if count >= search_width // 2:
-                print("\nLots of removals:", count)
+                logger.info(f"Lots of removals: {count}")
 
             new_search_width = search_width - count
 
@@ -294,11 +297,10 @@ class GCG(SequentialHarmBenchAttack):
                         break
 
                 if verbose:
-                    print(p_output)
+                    logger.info(p_output)
 
             if early_stopping and current_loss < early_stopping_min_loss:
-                print(f"Early stopping at step {i} with loss {current_loss}")
-                print()
+                logger.info(f"Early stopping at step {i} with loss {current_loss}")
                 break
 
             del input_embeds, sampled_top_embeds, logits, shift_logits, loss
@@ -311,7 +313,7 @@ class GCG(SequentialHarmBenchAttack):
         self, search_batch_size: int, input_embeds: torch.Tensor, target_ids: torch.Tensor
     ) -> torch.Tensor:
         if self.search_batch_size != search_batch_size:
-            print(f"INFO: Setting candidates search_batch_size to {search_batch_size})")
+            logger.info(f"Setting candidates search_batch_size to {search_batch_size}")
             self.search_batch_size = search_batch_size
             torch.cuda.empty_cache()
             gc.collect()

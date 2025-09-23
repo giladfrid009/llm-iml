@@ -18,7 +18,7 @@ from src.eval.harmbench_evaluator import HarmBenchEvaluator
 from src.eval.template_evaluator import TemplateEvaluator
 from src.eval.strong_reject_evaluator import StrongRejectEvaluator
 from gserve.configs import ServeConfig, LLMConfig
-from notebooks.utils import print_supported_models, load_model
+from src.models import print_supported_models, load_model
 
 from src.sample_attacks import SoftPrompt
 from src.univ_attacks import IML

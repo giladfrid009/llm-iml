@@ -1,6 +1,9 @@
 from transformers.generation.configuration_utils import GenerationConfig
 from typing import Any
 import time
+from src.utils.logging import create_logger
+
+logger = create_logger(__name__)
 
 
 class GenConfig:
@@ -77,7 +80,7 @@ class GenConfig:
                     raise ValueError(f"Field '{name}' not found in GenerationConfig.")
 
         if param_dict is not None:
-            for name, value in params:
+            for name, value in params.items():
                 if name in param_dict:
                     param_dict[name] = value
 
@@ -186,23 +189,23 @@ class StopCriteria:
     def should_stop(self) -> bool:
         """Check if any stopping condition is met."""
         if self.target_value is not None and self._best_value >= self.target_value:
-            print(f"Stopping: Target value reached :: ({self.target_value})")
+            logger.info(f"Stopping: Target value reached :: ({self.target_value})")
             return True
 
         if self._epoch >= self.max_epochs:
-            print(f"Stopping: Max epochs reached :: ({self.max_epochs})")
+            logger.info(f"Stopping: Max epochs reached :: ({self.max_epochs})")
             return True
 
         if self.max_evals is not None and self._total_evals >= self.max_evals:
-            print(f"Stopping: Max evals reached :: ({self.max_evals})")
+            logger.info(f"Stopping: Max evals reached :: ({self.max_evals})")
             return True
 
         if self.patience is not None and self._patience_counter >= self.patience:
-            print(f"Stopping: Patience exceeded :: ({self.patience})")
+            logger.info(f"Stopping: Patience exceeded :: ({self.patience})")
             return True
 
         if self.max_time is not None and (time.time() - self._start_time) > self.max_time:
-            print(f"Stopping: Max time reached :: ({self.max_time} sec)")
+            logger.info(f"Stopping: Max time reached :: ({self.max_time} sec)")
             return True
 
         return False

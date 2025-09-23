@@ -1,6 +1,9 @@
-from notebooks import utils_hf
+from src.utils.huggingface import load_hf_model
 from transformers import PreTrainedModel, PreTrainedTokenizer
 import torch
+from src.utils.logging import create_logger
+
+logger = create_logger(__name__)
 
 # from HF https://huggingface.co/lmsys/vicuna-7b-v1.5/discussions/7
 VICUNA_TEMPLATE = "{% if messages[0]['role'] == 'system' %}{% set loop_messages = messages[1:] %}{% set system_message = messages[0]['content'] %}{% else %}{% set loop_messages = messages %}{% set system_message = 'A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user\\'s questions.' %}{% endif %}{% for message in loop_messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if loop.index0 == 0 %}{{ system_message }}{% endif %}{% if message['role'] == 'user' %}{{ ' USER: ' + message['content'].strip() }}{% elif message['role'] == 'assistant' %}{{ ' ASSISTANT: ' + message['content'].strip() + eos_token }}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ ' ASSISTANT:' }}{% endif %}"
@@ -89,9 +92,8 @@ def load_model(
     config.setdefault("torch_dtype", torch_dtype)
     config.setdefault("hf_token", hf_token)
 
-    # print kwargs
-    print("Model Config:")
+    logger.info("Model Config:")
     for key, value in config.items():
-        print(f"{key}: {value}")
+        logger.info(f"{key}: {value}")
 
-    return utils_hf.load_hf_model(**config)
+    return load_hf_model(**config)
