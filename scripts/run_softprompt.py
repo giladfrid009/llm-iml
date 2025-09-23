@@ -41,6 +41,7 @@ def run_attack(adv_model: AdvModel, evaluators: list[Evaluator], dl_train: DF_Ba
         adv_model=adv_model,
         optimizer=optimizer,
         evaluators=evaluators,
+        judge_metric="StrongReject/Thresh@0.5",
         eval_freq=10,
         gen_config=gen_config,
         mixed_precision=False,
@@ -49,7 +50,7 @@ def run_attack(adv_model: AdvModel, evaluators: list[Evaluator], dl_train: DF_Ba
 
     stop = StopCriteria(
         max_epochs=200,
-        max_time=60 * 60,
+        max_time=60 * 60 * 10,
     )
 
     adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)
@@ -60,8 +61,8 @@ def run_attack(adv_model: AdvModel, evaluators: list[Evaluator], dl_train: DF_Ba
 def load_data() -> tuple[DF_Batcher, DF_Batcher]:
     data = pd.read_csv("/home/fre.gilad/source/llm-iml/data/HarmBench/harmful_behaviors.csv")
     data = data.rename(columns={"goal": "prompt"})
-    data = data.sample(frac=1).reset_index(drop=True)
-    
+    data = data.sample(frac=1, random_state=0).reset_index(drop=True)
+
     split = int(0.65 * len(data))
     ds_train = data.iloc[:split].copy()
     ds_eval = data.iloc[split:].copy()
@@ -80,22 +81,21 @@ def main():
 
     env.prepare_environment()
     env.set_seed(42)
-    
+
     dl_train, dl_eval = load_data()
 
     evaluators = [
-        HarmBenchEvaluator(
-            serve_config=ServeConfig(
-                gpu_ids=[1],
-                startup_timeout=10 * 60,
-                client_timeout=60,
-                verbose=True,
-            ),
-        ),
-        # StrongRejectEvaluator(
-        #     serve_config=ServeConfig(gpu_ids=[2], startup_timeout=20 * 60, client_timeout=60),
-        #     binary_thresh=0.5,
+        # HarmBenchEvaluator(
+        #     serve_config=ServeConfig(
+        #         gpu_ids=[1],
+        #         startup_timeout=10 * 60,
+        #         client_timeout=60,
+        #         verbose=True,
+        #     ),
         # ),
+        StrongRejectEvaluator(
+            serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
+        ),
         TemplateEvaluator(),
     ]
 

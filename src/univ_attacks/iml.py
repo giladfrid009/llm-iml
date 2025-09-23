@@ -60,6 +60,7 @@ class IML(UnivAttack):
         optimizer: torch.optim.Optimizer,
         activ_extractor: ActivationExtractor,
         evaluators: list[Evaluator],
+        judge_metric: str | None = None,
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
         gen_config: GenConfig | None = None,
@@ -71,6 +72,7 @@ class IML(UnivAttack):
         super().__init__(
             adv_model=adv_model,
             evaluators=evaluators,
+            judge_metric=judge_metric,
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
@@ -105,6 +107,16 @@ class IML(UnivAttack):
         self.logger.register_hparams({"optim/name": self.optimizer.__class__.__name__})
         self.logger.register_hparams({f"optim/{k}": v for k, v in self.optimizer.param_groups[0].items()})
 
+    @property
+    def judge_evaluator(self) -> Evaluator:
+        """
+        Returns the evaluator used for judging the success of the attack.
+        """
+        for ev in self.evaluators:
+            if self.judge_metric in ev.metric_names:
+                return ev
+        raise ValueError(f"Judge metric {self.judge_metric} not found in any evaluator.")
+
     def make_attack(self, epoch_num: int) -> SampleAttack:
         if self.attack_builder_func is None:
             return self.inner_attack
@@ -138,8 +150,9 @@ class IML(UnivAttack):
             if self.skip_already_fooled:
                 with torch.inference_mode():
                     responses = self.adv_model.chat(input_convs, self.gen_config)
-                    eval_result = self.judge.eval_batch(input_texts, responses)
-                    mask_fooled = eval_result >= 1.0
+                    eval_result = self.judge_evaluator.eval_batch(input_texts, responses)
+                    eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
+                    mask_fooled = eval_metric >= 1.0
 
                     if mask_fooled.all():
                         return None
@@ -159,8 +172,9 @@ class IML(UnivAttack):
             if self.skip_failed_attacks:
                 with torch.inference_mode():
                     responses = self.adv_model.chat(sample_convs, self.gen_config, adv_embeds=sample_embeds)
-                    eval_result = self.judge.eval_batch(input_texts, responses)
-                    mask_succ = eval_result >= 1.0
+                    eval_result = self.judge_evaluator.eval_batch(input_texts, responses)
+                    eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
+                    mask_succ = eval_metric >= 1.0
 
                     if not mask_succ.any():
                         return None

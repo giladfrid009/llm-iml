@@ -3,7 +3,6 @@ from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
 
 import msgspec
-from typing import Any
 from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
 import torch
@@ -60,7 +59,8 @@ class LlamaEvaluator(Evaluator):
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
 
-        super().__init__(name=model_name, verbose=verbose)
+        metric_name = model_name.split("/")[-1]
+        super().__init__(name="LlamaEval", metric_names=[metric_name], verbose=verbose)
 
         if llm_config is None:
             if model_name == "meta-llama/Llama-2-7b-chat-hf":
@@ -95,7 +95,7 @@ class LlamaEvaluator(Evaluator):
             dict: Hyperparameters of the evaluator.
         """
         name = type(self).__name__
-        hparams = {}
+        hparams = {f"{name}/metrics": str(self.metric_names)}
         hparams.update(
             {f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()}
         )
@@ -119,20 +119,21 @@ class LlamaEvaluator(Evaluator):
             for beh, gen in zip(input_texts, response_texts)
         ]
 
-    def eval_batch(self, prompts: list[str], responses: list[str]) -> torch.Tensor:
+    def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:
         cls_inputs = self._fmt_convs(prompts, responses)
         cls_resp = self.model.chat(cls_inputs, self.sampling_params)
 
-        eval_results = []
+        metrics = {k: [] for k in self.metric_names}
         for resp, inp_text in zip(cls_resp, prompts):
             resp_text = resp[0].strip().lower()
             if resp_text not in ["yes", "no"]:
                 warnings.warn(f"Unexpected response: {resp_text} for input: {inp_text}")
                 continue
 
-            eval_results.append(1.0 if "yes" in resp_text else 0.0)
+            result = 1.0 if resp_text == "yes" else 0.0
+            metrics.get(self.metric_names[0]).append(result)  # type: ignore
 
-        return torch.tensor(eval_results, dtype=torch.float32)
+        return metrics
 
     def close(self):
         """

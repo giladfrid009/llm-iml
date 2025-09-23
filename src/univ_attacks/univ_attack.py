@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 import warnings
 import pathlib
 from abc import abstractmethod
+import torch.nn.functional as F
 
 
 class UnivAttack:
@@ -17,6 +18,7 @@ class UnivAttack:
         self,
         adv_model: AdvModel,
         evaluators: list[Evaluator],
+        judge_metric: str | None = None,
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
         gen_config: GenConfig | None = None,
@@ -36,8 +38,12 @@ class UnivAttack:
         if gen_config is None:
             gen_config = GenConfig()
 
+        if judge_metric is None:
+            judge_metric = evaluators[0].metric_names[0]
+
         self.adv_model = adv_model
         self.evaluators = evaluators
+        self.judge_metric = judge_metric
         self.eval_freq = eval_freq
         self.gen_config = gen_config
         self.mixed_precision = mixed_precision
@@ -76,14 +82,6 @@ class UnivAttack:
     def device(self) -> torch.device:
         return self.adv_model.device
 
-    @property
-    def judge(self) -> Evaluator:
-        """
-        Returns the main judge evaluator.
-        This is the first evaluator in the list of evaluators.
-        """
-        return self.evaluators[0]
-
     def get_hparams(self) -> dict:
         return {
             "univ_attack/num_tokens": self.num_tokens,
@@ -91,6 +89,7 @@ class UnivAttack:
             "univ_attack/eval_freq": self.eval_freq,
             "univ_attack/gen_config": self.gen_config.get_hparams(),
             "univ_attack/evaluators": (e.name for e in self.evaluators),
+            "univ_attack/judge_metric": self.judge_metric,
             "univ_attack/log_dir": self.logger.root_dir if self.logger else None,
         }
 
@@ -149,7 +148,7 @@ class UnivAttack:
         gen_config: GenConfig | None = None,
         update_best: bool = False,
         **kwargs: Any,
-    ) -> list[float]:
+    ) -> dict[str, float]:
         """
         Evaluates the model using the provided evaluators and data loader.
 
@@ -162,7 +161,7 @@ class UnivAttack:
             **kwargs (dict): Additional keyword arguments for `AdvModel.chat`.
 
         Returns:
-            list[float]: List containing evaluation metrics from each evaluator.
+            dict[str, float]:
         """
 
         if isinstance(evaluators, Evaluator):
@@ -180,28 +179,120 @@ class UnivAttack:
 
         self.predict(adv_model=adv_model, dl=dl_eval, config=gen_config, **kwargs)
 
-        metrics = []
+        all_metrics = {}
         for evaluator in evaluators:
-            res = evaluator.evaluate(dl_eval)
-            metrics.append(res)
+            metrics = evaluator.evaluate(dl_eval)
+            all_metrics.update(metrics)
 
         if update_best:
-            # Find metric which belongs to the judge evaluator
-            # If it improves, update the best metric and embeddings
-            judge_metric = None
-            for ev, m in zip(evaluators, metrics):
-                if ev == self.judge:
-                    judge_metric = m
-                    break
-
+            judge_metric = all_metrics.get(self.judge_metric)
             if judge_metric is None:
                 raise ValueError(
-                    f"Judge evaluator {self.judge.name} not found in the list of evaluators {[e.name for e in evaluators]}."
+                    f"Judge metric {self.judge_metric} not found in the list of produced metrics {list(all_metrics.keys())}."
                 )
 
             if self.best_metric < judge_metric:
                 self.best_metric = judge_metric
                 self.best_embeds = adv_model.get_embeddings(clone=True)
+
+        return all_metrics
+
+    # TODO: probably remove
+    def compute_metrics(self) -> dict[str, float]:
+        """Compute diagnostic metrics for the current universal embeddings.
+
+        Namespaces (for clean logger grouping):
+          univ.closest_token/*  : Stats wrt each token's closest vocab entry (cosine / L2 criteria)
+          univ.vocab/*          : Aggregated stats over similarities to the entire vocab
+          univ.mean_vocab/*     : Distance / similarity to the (unweighted) mean vocab embedding
+          univ.proj/*           : Distances/similarities to the specific closest vocab tokens (by cosine & L2)
+          univ.intra/*          : Diversity among the optimized universal tokens themselves
+
+        All metrics are averaged across the optimized token dimension (N) when applicable.
+        Only cosine similarities and L2 distances are reported (all L1 related code removed by request).
+        """
+        metrics: dict[str, float] = {}
+
+        # Retrieve (1, N, D) universal embeddings; batch dimension must be 1 for a universal attack.
+        univ = self.adv_model.get_embeddings(clone=True)
+        if univ.size(0) != 1:
+            raise ValueError("Universal embeddings batch size must be 1.")
+        embeds = univ[0]  # (N, D)
+        N, D = embeds.shape
+        if N == 0:
+            return metrics  # nothing to report
+
+        # ------------------ Vocabulary preparation ------------------
+        vocab: torch.Tensor = self.adv_model.orig_embedder.weight.detach().to(embeds.device)  # (V, D)
+        V = vocab.size(0)
+        vocab_mean = vocab.mean(dim=0)  # (D,)
+
+        # Normalized versions for cosine similarity (avoid repeated division).
+        embeds_norm = F.normalize(embeds, p=2, dim=-1)  # (N, D)
+        vocab_norm = F.normalize(vocab, p=2, dim=-1)  # (V, D)
+        vocab_mean_norm = F.normalize(vocab_mean, p=2, dim=0)  # (D,)
+
+        # ------------------ Cosine similarity vs full vocab ------------------
+        # Shape: (N, V)
+        cos_sim = embeds_norm @ vocab_norm.T
+        cos_max_vals, cos_max_idx = cos_sim.max(dim=-1)  # (N,)
+
+        metrics["univ.closest_token/cos_max_mean"] = cos_max_vals.mean().item()
+        metrics["univ.vocab/cos_mean_all"] = cos_sim.mean().item()
+        k = min(5, V)
+        metrics["univ.vocab/cos_top5_mean"] = cos_sim.topk(k, dim=-1).values.mean().item()
+        for thr in (0.7, 0.8, 0.9):
+            metrics[f"univ.closest_token/frac_cos_gt_{thr}"] = (cos_max_vals > thr).float().mean().item()
+
+        # ------------------ L2 distance to vocab (vectorized) ------------------
+        # Using: ||a-b||^2 = ||a||^2 + ||b||^2 - 2 a·b (stable & fast)
+        embeds_sq = (embeds * embeds).sum(dim=-1, keepdim=True)  # (N, 1)
+        vocab_sq = (vocab * vocab).sum(dim=-1).unsqueeze(0)  # (1, V)
+        l2_sq = (embeds_sq + vocab_sq - 2 * (embeds @ vocab.T)).clamp_min(0)  # (N, V)
+        l2_min_sq, l2_min_idx = l2_sq.min(dim=-1)  # (N,)
+        l2_min = l2_min_sq.sqrt()
+        metrics["univ.closest_token/l2_min_mean"] = l2_min.mean().item()
+        metrics["univ.closest_token/l2_min_median"] = l2_min.median().item()
+
+        # ------------------ Distances / similarity to mean vocab embedding ------------------
+        diff_to_vocab_mean = embeds - vocab_mean
+        mean_l2 = diff_to_vocab_mean.norm(p=2, dim=-1)
+        mean_cos = (embeds_norm * vocab_mean_norm).sum(dim=-1)
+        metrics["univ.mean_vocab/l2_mean"] = mean_l2.mean().item()
+        metrics["univ.mean_vocab/cos_mean"] = mean_cos.mean().item()
+
+        # ------------------ Projections vs the closest tokens (two criteria) ------------------
+        vocab_closest_cos = vocab[cos_max_idx]  # (N, D)
+        vocab_closest_l2 = vocab[l2_min_idx]  # (N, D)
+        metrics["univ.proj/cosToken_cos_mean"] = F.cosine_similarity(embeds, vocab_closest_cos, dim=-1).mean().item()
+        metrics["univ.proj/l2Token_cos_mean"] = F.cosine_similarity(embeds, vocab_closest_l2, dim=-1).mean().item()
+        metrics["univ.proj/cosToken_l2_mean"] = (embeds - vocab_closest_cos).norm(p=2, dim=-1).mean().item()
+        metrics["univ.proj/l2Token_l2_mean"] = (embeds - vocab_closest_l2).norm(p=2, dim=-1).mean().item()
+
+        # ------------------ Intra-set diversity (pairwise among optimized tokens) ------------------
+        if N > 1:
+            # Cosine diversity (exclude diagonal)
+            intra_cos = embeds_norm @ embeds_norm.T  # (N, N)
+            mask = ~torch.eye(N, dtype=torch.bool, device=embeds.device)
+            metrics["univ.intra/cos_mean"] = intra_cos[mask].mean().item()
+
+            # L2 diversity
+            embeds_sq_vec = embeds_sq.squeeze(-1)  # (N,)
+            intra_l2_sq = (embeds_sq_vec.unsqueeze(1) + embeds_sq_vec.unsqueeze(0) - 2 * (embeds @ embeds.T)).clamp_min(
+                0
+            )
+            intra_l2 = intra_l2_sq.sqrt()
+            metrics["univ.intra/l2_mean"] = intra_l2[mask].mean().item()
+
+            # Spread / stability diagnostics
+            metrics["univ.intra/closest_cos_std"] = cos_max_vals.std(unbiased=False).item()
+            metrics["univ.intra/dim_var_mean"] = embeds.var(dim=0, unbiased=False).mean().item()
+        else:
+            # Single token: no diversity; set to 0 for clarity.
+            metrics["univ.intra/cos_mean"] = 0.0
+            metrics["univ.intra/l2_mean"] = 0.0
+            metrics["univ.intra/closest_cos_std"] = 0.0
+            metrics["univ.intra/dim_var_mean"] = 0.0
 
         return metrics
 
@@ -247,8 +338,8 @@ class UnivAttack:
             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
 
             self.save_checkpoint()
-            self.logger.log_scalar(f"{self.judge.name}/best", self.best_metric, step=-1)
-            self.logger.log_scalers({f"{e.name}/current": m for e, m in zip(self.evaluators, metrics)}, step=-1)
+            self.logger.log_scalar(f"{self.judge_metric} (best)", self.best_metric, step=-1)
+            self.logger.log_scalers({k: float(v) for k, v in metrics.items()}, step=-1)
             epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
 
             # main training loop
@@ -273,26 +364,21 @@ class UnivAttack:
                             global_step > 0 and global_step % round(self.eval_freq * len(dl_train)) == 0
                         ):
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
-                            stop_criteria.update(epoch_num, metrics[0])
+                            stop_criteria.update(epoch_num, metrics[self.judge_metric])
 
                             self.save_checkpoint()
-                            self.logger.log_scalar(f"{self.judge.name}/best", self.best_metric, step=global_step)
-                            self.logger.log_scalers(
-                                {f"{e.name}/current": m for e, m in zip(self.evaluators, metrics)},
-                                step=global_step,
-                            )
+                            self.logger.log_scalar(f"{self.judge_metric} (best)", self.best_metric, step=global_step)
+                            self.logger.log_scalers({k: float(v) for k, v in metrics.items()}, step=global_step)
                             epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
+
+                            # log embedding metrics
+                            metrics = self.compute_metrics()
+                            self.logger.log_scalers({k: float(v) for k, v in metrics.items()}, step=global_step)
 
                         global_step += 1
 
-        # set to best embeddings and final eval
+        # set to best embeddings
         self.adv_model.set_embeddings(self.best_embeds)
-        metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval)
-        self.logger.log_metrics({e.name: m for e, m in zip(self.evaluators, metrics)})
-        for ev, val in zip(self.evaluators, metrics):
-            print(f"Final metric {ev.name}: {val:.6f}")
-
-        self.close()
         return self.adv_model
 
     @abstractmethod

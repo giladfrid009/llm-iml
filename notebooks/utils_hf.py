@@ -1,4 +1,5 @@
 import torch
+import os
 from src.utils.torch import clear_memory
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer, PreTrainedModel  # type: ignore
 from huggingface_hub import login, HfFolder
@@ -7,7 +8,7 @@ from huggingface_hub import login, HfFolder
 def hf_login(hf_token: str | None = None) -> str | None:
     """
     Log in to Hugging Face Hub using the provided token.
-    If no token is provided, it will use the token saved in the local cache.
+    If no token is provided, it will try to retrieve the token from the local cache or environment variable.
 
     Args:
         hf_token (str | None): Hugging Face token. If None, it will try to retrieve the token from the local cache.
@@ -15,6 +16,9 @@ def hf_login(hf_token: str | None = None) -> str | None:
     Returns:
         str | None: The Hugging Face token if login is successful, otherwise None.
     """
+    if hf_token is None:
+        hf_token = os.getenv("HF_TOKEN")
+
     if hf_token is None:
         hf_token = HfFolder.get_token()
 
