@@ -158,12 +158,12 @@ class StopCriteria:
 
     def get_hparams(self) -> dict:
         return {
-            "stop/max_epochs": self.max_epochs,
-            "stop/max_evals": self.max_evals,
-            "stop/max_time": self.max_time,
-            "stop/target_value": self.target_value,
-            "stop/patience": self.patience,
-            "stop/patience_delta": self.patience_delta,
+            "max_epochs": self.max_epochs,
+            "max_evals": self.max_evals,
+            "max_time": self.max_time,
+            "target_value": self.target_value,
+            "patience": self.patience,
+            "patience_delta": self.patience_delta,
         }
 
     def reset(self) -> None:

@@ -18,7 +18,7 @@ class UnivSoftPrompt(UnivAttack):
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
         gen_config: GenConfig | None = None,
-        log_dir: str | None = None,
+        log_dir: str = "logs",
     ):
         super().__init__(
             adv_model=adv_model,
@@ -31,10 +31,9 @@ class UnivSoftPrompt(UnivAttack):
         )
 
         self.optimizer = optimizer
-        
-        self.logger.register_hparams({"univ_soft_prompt/optimizer": self.optimizer.__class__.__name__})
-        self.logger.register_hparams({"optim/name": self.optimizer.__class__.__name__})
-        self.logger.register_hparams({f"optim/{k}": v for k, v in self.optimizer.param_groups[0].items()})
+
+        self.metric_logger.log_hparams("univ_soft_prompt", optimizer=self.optimizer.__class__.__name__)
+        self.metric_logger.log_hparams("optim", self.optimizer.param_groups[0], name=self.optimizer.__class__.__name__)
 
     def criterion(
         self,

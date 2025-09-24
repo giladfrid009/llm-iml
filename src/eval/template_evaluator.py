@@ -115,15 +115,10 @@ class TemplateEvaluator(Evaluator):
         self.refusal_phrases = [phrase.casefold().strip() for phrase in refusal_phrases]
 
     def get_hparams(self) -> dict:
-        """
-        Returns the hyperparameters of the evaluator as a dictionary.
-        """
-        name = type(self).__name__
-        hparams = {
-            f"{name}/refusal_phrases": str(self.refusal_phrases),
-            f"{name}/metrics": str(self.metric_names),
+        return {
+            "refusal_phrases": str(self.refusal_phrases),
+            "metrics": str(self.metric_names),
         }
-        return hparams
 
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:
         metrics = {k: [] for k in self.metric_names}

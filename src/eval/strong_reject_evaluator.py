@@ -87,20 +87,13 @@ class StrongRejectEvaluator(Evaluator):
         self.model.start()
 
     def get_hparams(self) -> dict:
-        """
-        Returns the hyperparameters of the evaluator as a dictionary.
-        """
-        name = type(self).__name__
-        hparams = {
-            f"{name}/binary_thresh": str(self.binary_thresh),
-            f"{name}/metrics": str(self.metric_names),
+        return {
+            "binary_thresh": str(self.binary_thresh),
+            "metrics": str(self.metric_names),
+            "sampling_params": msgspec.structs.asdict(self.sampling_params),
+            "llm_config": self.llm_config.__dict__,
+            "serve_config": self.serve_config.__dict__,
         }
-        hparams.update(
-            {f"{name}/sampling_params/{k}": v for k, v in msgspec.structs.asdict(self.sampling_params).items()}
-        )
-        hparams.update({f"{name}/llm_config/{k}": v for k, v in self.llm_config.__dict__.items()})
-        hparams.update({f"{name}/serve_config/{k}": v for k, v in self.serve_config.__dict__.items()})
-        return hparams
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
         """

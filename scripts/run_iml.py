@@ -89,7 +89,8 @@ def create_model(model_name: str) -> AdvModel:
     logger.info(f"Model architecture: {model}")
 
     adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
-    Initializer.normal(adv_model, std=0.1)
+    # Initializer.normal(adv_model, std=0.1)
+    Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False)
     # Initializer.from_mean_std(adv_model)
     return adv_model
 
@@ -145,8 +146,8 @@ def run_attack(adv_model: AdvModel, evaluators: list[Evaluator], dl_train: DF_Ba
 
         logger.info("Final Eval...")
         metrics = univ_attack.evaluate(adv_model, evaluators, dl_eval, gen_config=gen_config)
-        univ_attack.logger.log_metrics(metrics)
-        univ_attack.logger.cm_task.upload_artifact(name="eval_result", artifact_object=dl_eval.df)
+        univ_attack.metric_logger.log_metrics(metrics)
+        univ_attack.metric_logger.cm_task.upload_artifact(name="eval_result", artifact_object=dl_eval.df)
 
     except KeyboardInterrupt:
         logger.info("Interrupted by user, stopping...")

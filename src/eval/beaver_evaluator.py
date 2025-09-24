@@ -71,18 +71,10 @@ class BeaverEvaluator(Evaluator):
         return [BEAVER_PROMPT.format(behavior=beh, generation=gen) for beh, gen in zip(input_texts, response_texts)]
 
     def get_hparams(self) -> dict:
-        """
-        Returns the hyperparameters of the evaluator as a dictionary.
-
-        Returns:
-            dict: Hyperparameters of the evaluator.
-        """
-        name = type(self).__name__
-        hparams = {
-            f"{name}/metrics": str(self.metric_names),
-            f"{name}/binary_thresh": str(self.binary_thresh),
+        return {
+            "metrics": str(self.metric_names),
+            "binary_thresh": str(self.binary_thresh),
         }
-        return hparams
 
     @torch.inference_mode()
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:

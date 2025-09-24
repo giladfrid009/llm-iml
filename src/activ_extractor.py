@@ -1,8 +1,10 @@
 import torch
 from torch import nn, Tensor
 from contextlib import contextmanager
-import warnings
 from typing import Callable
+from src.utils.logging import create_logger
+
+logger = create_logger(__name__)
 
 
 class ActivationExtractor:
@@ -53,16 +55,16 @@ class ActivationExtractor:
     def get_hparams(self) -> dict:
         """Returns hyperparameters for the activation extractor."""
         return {
-            "activ_extractor/exact_match": self.exact_match,
-            "activ_extractor/capture_output": self.capture_output,
-            "activ_extractor/layer_specs": str(self.layer_specs),
-            "activ_extractor/layer_names": str(self.layer_names),
+            "exact_match": self.exact_match,
+            "capture_output": self.capture_output,
+            "layer_specs": str(self.layer_specs),
+            "layer_names": str(self.layer_names),
         }
 
     def get_activations(self) -> dict[str, Tensor]:
         """Returns the current captured layer activations."""
         if len(self._activations) == 0:
-            warnings.warn("No activations captured yet. Did you forget to call `capture()`?")
+            logger.warning("No activations captured yet. Did you forget to call `capture()`?")
         return {k: v.clone() for k, v in self._activations.items()}
 
     @contextmanager
@@ -91,7 +93,7 @@ class ActivationExtractor:
 
         missing = set(names) - {(n if exact_match else n.split(".")[-1]) for n in layers}
         if missing and exact_match:
-            warnings.warn(f"Layers not found: {missing}")
+            logger.warning(f"Layers not found: {missing}")
 
         return layers
 

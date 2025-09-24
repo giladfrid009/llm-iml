@@ -67,7 +67,7 @@ class IML(UnivAttack):
         skip_already_fooled: bool = False,
         skip_failed_attacks: bool = True,
         dynamic_labels: int = -1,
-        log_dir: str | None = None,
+        log_dir: str = "logs",
     ):
         super().__init__(
             adv_model=adv_model,
@@ -92,20 +92,18 @@ class IML(UnivAttack):
         self.skip_failed_attacks = skip_failed_attacks
         self.dynamic_labels = dynamic_labels
 
-        self.logger.register_hparams(
-            {
-                "iml/inner_attack": self.inner_attack.__class__.__name__,
-                "iml/optimizer": self.optimizer.__class__.__name__,
-                "iml/skip_already_fooled": self.skip_already_fooled,
-                "iml/skip_failed_attacks": self.skip_failed_attacks,
-                "iml/dynamic_labels": self.dynamic_labels,
-            }
+        self.metric_logger.log_hparams(
+            "iml",
+            inner_attack=self.inner_attack.__class__.__name__,
+            optimizer=self.optimizer.__class__.__name__,
+            skip_already_fooled=self.skip_already_fooled,
+            skip_failed_attacks=self.skip_failed_attacks,
+            dynamic_labels=self.dynamic_labels,
         )
-
-        self.logger.register_hparams(activ_extractor.get_hparams())
-        self.logger.register_hparams({f"inner_attack/{k}": v for k, v in inner_attack.__dict__.items()})
-        self.logger.register_hparams({"optim/name": self.optimizer.__class__.__name__})
-        self.logger.register_hparams({f"optim/{k}": v for k, v in self.optimizer.param_groups[0].items()})
+        
+        self.metric_logger.log_hparams("activ_extractor", activ_extractor.get_hparams())
+        self.metric_logger.log_hparams("inner_attack", inner_attack.__dict__)
+        self.metric_logger.log_hparams("optim", self.optimizer.param_groups[0], name=self.optimizer.__class__.__name__)
 
     @property
     def judge_evaluator(self) -> Evaluator:

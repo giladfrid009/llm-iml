@@ -1,16 +1,19 @@
 from src.adv_model import AdvModel
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
-from src.logger import MetricLogger
+from src.metric_logger import MetricLogger
 from src.config import GenConfig, StopCriteria
+from src.utils.logging import create_logger
 
+import time
 from typing import Any
-import torch
 from tqdm.auto import tqdm
-import warnings
 import pathlib
 from abc import abstractmethod
+import torch
 import torch.nn.functional as F
+
+logger = create_logger(__name__)
 
 
 class UnivAttack:
@@ -22,7 +25,7 @@ class UnivAttack:
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
         gen_config: GenConfig | None = None,
-        log_dir: str | None = None,
+        log_dir: str = "logs",
     ):
         """
         Args:
@@ -33,7 +36,7 @@ class UnivAttack:
                 - if float, evaluates every `round(eval_freq * len(dl_train))` batches.
             mixed_precision (bool): Whether to use mixed precision training.
             gen_config (GenConfig  | None): Default generation configuration.
-            log_dir (str | None): Directory to save logs. If None, no logging is performed.
+            log_dir (str): Directory to save logs.
         """
         if gen_config is None:
             gen_config = GenConfig()
@@ -59,12 +62,33 @@ class UnivAttack:
         self.best_embeds = self.univ_embeds.clone().detach()
 
         # logging
-        self.logger = MetricLogger(log_dir)
-        self.logger.register_hparams(self.get_hparams())
-        self.logger.register_hparams(adv_model.get_hparams())
+        self.metric_logger = MetricLogger(
+            time.strftime("%Y-%m-%d_%H-%M-%S"),
+            project="LLM-IML",
+            root_dir=log_dir,
+        )
+
+        self.metric_logger.add_tags(
+            model=self.adv_model.model.name_or_path,
+            num_tokens=self.num_tokens,
+            attack=self.__class__.__name__,
+        )
+
+        self.metric_logger.log_hparams(
+            "univ_attack",
+            num_tokens=self.num_tokens,
+            mixed_precision=self.mixed_precision,
+            eval_freq=self.eval_freq,
+            gen_config=self.gen_config.get_hparams(),
+            evaluators=[e.name for e in self.evaluators],
+            judge_metric=self.judge_metric,
+            log_dir=self.metric_logger.root_dir if self.metric_logger else None,
+        )
+
+        self.metric_logger.log_hparams("adv_model", adv_model.get_hparams())
+        self.metric_logger.log_hparams("grad_scaler", self.grad_scaler.state_dict())
         for ev in self.evaluators:
-            self.logger.register_hparams(ev.get_hparams())
-        self.logger.register_hparams({f"grad_scaler/{k}": v for k, v in self.grad_scaler.state_dict().items()})
+            self.metric_logger.log_hparams(f"evaluators/{ev.name}", ev.get_hparams())
 
     @property
     def univ_embeds(self) -> torch.Tensor:
@@ -82,25 +106,11 @@ class UnivAttack:
     def device(self) -> torch.device:
         return self.adv_model.device
 
-    def get_hparams(self) -> dict:
-        return {
-            "univ_attack/num_tokens": self.num_tokens,
-            "univ_attack/mixed_precision": self.mixed_precision,
-            "univ_attack/eval_freq": self.eval_freq,
-            "univ_attack/gen_config": self.gen_config.get_hparams(),
-            "univ_attack/evaluators": (e.name for e in self.evaluators),
-            "univ_attack/judge_metric": self.judge_metric,
-            "univ_attack/log_dir": self.logger.root_dir if self.logger else None,
-        }
-
     def close(self):
-        """Close all resources."""
-        self.logger.close()
+        self.metric_logger.close()
 
     def save_checkpoint(self, file_name: str = "best_embeds.pt"):
-        log_dir = self.logger.log_dir()
-        if log_dir is not None:
-            torch.save(self.best_embeds, pathlib.Path(log_dir) / file_name)
+        torch.save(self.best_embeds, pathlib.Path(self.metric_logger.log_dir) / file_name)
 
     @torch.inference_mode()
     def predict(
@@ -171,7 +181,7 @@ class UnivAttack:
         # easiest and probably cleanest solution is to copy each row in dl_eval multiple times
 
         if dl_eval.drop_last or dl_eval.shuffle:
-            warnings.warn(
+            logger.warning(
                 "Evaluation data loader should not be shuffled or dropped last. "
                 "Creating a shallow copy with `shuffle=False` and `drop_last=False`."
             )
@@ -303,7 +313,7 @@ class UnivAttack:
         stop_criteria: StopCriteria | None = None,
     ) -> AdvModel:
         if dl_eval is None:
-            warnings.warn("No evaluation data loader provided, using training data for evaluation.")
+            logger.warning("No evaluation data loader provided, using training data for evaluation.")
             dl_eval = dl_train.copy(shuffle=False, drop_last=False)
 
         # must have these columns at least
@@ -313,34 +323,24 @@ class UnivAttack:
             stop_criteria = StopCriteria()
 
         # local stats
-        global_step = 0
+        step = 0
         loss_value = None
         stop_criteria.reset()
         should_stop = stop_criteria.should_stop()
 
-        # init logging
-        self.logger.register_hparams(stop_criteria.get_hparams())
-
-        self.logger.initialize(
-            self.adv_model.model.name_or_path,
-            f"num_tokens_{self.num_tokens}",
-            self.__class__.__name__,
-        )
-        self.logger.add_tags(
-            model=self.adv_model.model.name_or_path,
-            num_tokens=self.num_tokens,
-            attack=self.__class__.__name__,
-        )
-        self.logger.log_hparams()
+        # log relevant stats
+        self.metric_logger.log_hparams("stop", stop_criteria.get_hparams())
+        self.metric_logger.log_hparams("data/train", dl_train.get_hparams())
+        self.metric_logger.log_hparams("data/eval", dl_eval.get_hparams())
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
             # initial evaluation
             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
 
             self.save_checkpoint()
-            self.logger.log_scalar(f"{self.judge_metric} (best)", self.best_metric, step=-1)
-            self.logger.log_scalers({k: float(v) for k, v in metrics.items()}, step=-1)
-            epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
+            self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step=-1)
+            self.metric_logger.report_scalars(metrics, step=-1)
+            epoch_pbar.set_postfix(metrics)
 
             # main training loop
             for epoch_num in epoch_pbar:
@@ -355,27 +355,25 @@ class UnivAttack:
                         # training step
                         loss_value = self.optim_step(batch_data, epoch_num, batch_num)
                         stop_criteria.update(epoch_num, None)
-                        self.logger.log_scalar("loss", loss_value, step=global_step)
+                        if loss_value is not None:
+                            self.metric_logger.report_scalar("loss", loss_value, step)
                         batch_pbar.set_postfix({"loss": loss_value})
                         should_stop = stop_criteria.should_stop()
 
                         # evaluation step
-                        if should_stop or (
-                            global_step > 0 and global_step % round(self.eval_freq * len(dl_train)) == 0
-                        ):
+                        if should_stop or (step > 0 and step % round(self.eval_freq * len(dl_train)) == 0):
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[self.judge_metric])
 
                             self.save_checkpoint()
-                            self.logger.log_scalar(f"{self.judge_metric} (best)", self.best_metric, step=global_step)
-                            self.logger.log_scalers({k: float(v) for k, v in metrics.items()}, step=global_step)
-                            epoch_pbar.set_postfix({e.name: m for e, m in zip(self.evaluators, metrics)})
+                            self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step)
+                            self.metric_logger.report_scalars(metrics, step)
+                            epoch_pbar.set_postfix(metrics)
 
-                            # log embedding metrics
-                            metrics = self.compute_metrics()
-                            self.logger.log_scalers({k: float(v) for k, v in metrics.items()}, step=global_step)
+                            pert_metrics = self.compute_metrics()
+                            self.metric_logger.report_scalars(pert_metrics, step)
 
-                        global_step += 1
+                        step += 1
 
         # set to best embeddings
         self.adv_model.set_embeddings(self.best_embeds)

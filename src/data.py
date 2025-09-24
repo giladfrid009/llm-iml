@@ -33,6 +33,18 @@ class DF_Batcher:
         self._n_samples = len(self._indices)
         self._n_batches = self._compute_num_batches()
 
+    def get_hparams(self) -> dict:
+        """
+        Returns the hyperparameters of the DF_Batcher as a dictionary.
+        """
+        return {
+            "num_samples": self._n_samples,
+            "num_batches": self._n_batches,
+            "batch_size": self.batch_size,
+            "shuffle": self.shuffle,
+            "drop_last": self.drop_last,
+        }
+
     def validate(self, columns: List[str]) -> None:
         """
         Public method: check that each column in `columns` exists in `self.df.columns`.

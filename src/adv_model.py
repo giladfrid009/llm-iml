@@ -101,11 +101,11 @@ class AdvModel(nn.Module):
 
     def get_hparams(self) -> dict:
         return {
-            "adv_model/model_name": self.model.name_or_path,
-            "adv_model/tokenizer_name": self.tokenizer.name_or_path,
-            "adv_model/adv_token": self.adv_token,
-            "adv_model/num_tokens": self.num_tokens,
-            "adv_model/embed_dim": self.adv_embedder.embed_dim,
+            "model_name": self.model.name_or_path,
+            "tokenizer_name": self.tokenizer.name_or_path,
+            "adv_token": self.adv_token,
+            "num_tokens": self.num_tokens,
+            "embed_dim": self.adv_embedder.embed_dim,
         }
 
     def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
