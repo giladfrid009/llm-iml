@@ -97,8 +97,8 @@ class ActivationExtractor:
 
     def _get_layers(self) -> list[tuple[str, nn.Module]]:
         """Returns a list of (layer_name, layer_module) tuples for the specified layers."""
-        name_specs = [l for l in self.layer_specs if isinstance(l, str)]
-        type_specs = [l for l in self.layer_specs if isinstance(l, type) and issubclass(l, nn.Module)]
+        name_specs = [n for n in self.layer_specs if isinstance(n, str)]
+        type_specs = [t for t in self.layer_specs if isinstance(t, type) and issubclass(t, nn.Module)]
 
         layers_names = set()
         if len(name_specs) > 0:

@@ -1,5 +1,4 @@
 from src.eval.evaluator import Evaluator
-import torch
 
 REFUSAL_PHRASES = [
     "I'm sorry",

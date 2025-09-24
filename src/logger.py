@@ -9,7 +9,7 @@ from src.utils.logging import create_logger
 logger = create_logger(__name__)
 
 
-class Logger:
+class MetricLogger:
     def __init__(self, root_dir: str | None = None):
         """
         Base class for logging metrics and visualizations during training.
@@ -65,7 +65,11 @@ class Logger:
 
         # Init ClearML
         task_name = str.join(" - ", sub_dir.parts) + f" - {timestamp}"
-        self.cm_task = Task.init(project_name="LLM-IML", task_name=task_name)
+        self.cm_task = Task.init(
+            project_name="LLM-IML",
+            task_name=task_name,
+            deferred_init=True,
+        )
 
     def log_dir(self) -> str | None:
         if self.tb_writer is not None:

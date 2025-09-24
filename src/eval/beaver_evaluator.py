@@ -110,10 +110,4 @@ class BeaverEvaluator(Evaluator):
         return metrics
 
     def close(self):
-        """
-        Closes the evaluator, releasing any resources.
-        """
-        if self.model is not None:
-            del self.model
-            self.model = None  # type: ignore
-            clear_memory()
+        pass

@@ -136,9 +136,4 @@ class LlamaEvaluator(Evaluator):
         return metrics
 
     def close(self):
-        """
-        Closes the evaluator, releasing any resources.
-        """
-        if self.model is not None:
-            self.model.shutdown()
-            self.model = None  # type: ignore
+        self.model.shutdown()

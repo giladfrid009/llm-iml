@@ -126,6 +126,9 @@ class StrongRejectEvaluator(Evaluator):
         Returns:
             float: Computed score based on the response log probabilities.
         """
+        if resp.logprobs is None:
+            raise ValueError("Logprobs are required to compute score.")
+
         probs = torch.zeros(5, dtype=torch.float32)
         for data in resp.logprobs[0].values():
             score = int(data.decoded_token)
@@ -152,9 +155,4 @@ class StrongRejectEvaluator(Evaluator):
         return metrics
 
     def close(self):
-        """
-        Closes the evaluator, releasing any resources.
-        """
-        if self.model is not None:
-            self.model.shutdown()
-            self.model = None  # type: ignore
+        self.model.shutdown()

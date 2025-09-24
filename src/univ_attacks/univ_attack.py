@@ -1,7 +1,7 @@
 from src.adv_model import AdvModel
 from src.data import DF_Batcher
 from src.eval.evaluator import Evaluator
-from src.logger import Logger
+from src.logger import MetricLogger
 from src.config import GenConfig, StopCriteria
 
 from typing import Any
@@ -59,7 +59,7 @@ class UnivAttack:
         self.best_embeds = self.univ_embeds.clone().detach()
 
         # logging
-        self.logger = Logger(log_dir)
+        self.logger = MetricLogger(log_dir)
         self.logger.register_hparams(self.get_hparams())
         self.logger.register_hparams(adv_model.get_hparams())
         for ev in self.evaluators:

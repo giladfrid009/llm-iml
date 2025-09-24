@@ -84,8 +84,6 @@ def load_evaluators() -> list[Evaluator]:
 
 
 def create_model(model_name: str) -> AdvModel:
-    print_supported_models()
-
     logger.info(f"Loading model: {model_name}")
     model, tokenizer = load_model(model_name)
     logger.info(f"Model architecture: {model}")
