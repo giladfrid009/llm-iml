@@ -25,7 +25,7 @@ class MetricLogger:
 
     def close(self):
         if self.cm_task is not None:
-            self.cm_task.flush()
+            self.cm_task.flush(wait_for_uploads=True)
             self.cm_task.close()
             self.cm_task = None  # type: ignore
 

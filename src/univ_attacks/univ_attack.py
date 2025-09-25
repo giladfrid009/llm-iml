@@ -309,15 +309,12 @@ class UnivAttack:
     def fit(
         self,
         dl_train: DF_Batcher,
-        dl_eval: DF_Batcher | None = None,
+        dl_eval: DF_Batcher,
         stop_criteria: StopCriteria | None = None,
     ) -> AdvModel:
-        if dl_eval is None:
-            logger.warning("No evaluation data loader provided, using training data for evaluation.")
-            dl_eval = dl_train.copy(shuffle=False, drop_last=False)
-
         # must have these columns at least
         dl_train.validate(["prompt", "target"])
+        dl_eval.validate(["prompt"])
 
         if stop_criteria is None:
             stop_criteria = StopCriteria()

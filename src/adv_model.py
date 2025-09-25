@@ -284,8 +284,9 @@ class AdvModel(nn.Module):
         # generation config
         if config is None:
             config = GenConfig()
-        full_config = copy.deepcopy(self.model.generation_config)
-        config.patch_params(generation_config=full_config)
+        generation_config = copy.deepcopy(self.model.generation_config)
+        if generation_config is not None:
+            config.patch_other(generation_config)
 
         if adv_embeds is None:
             adv_embeds = self.adv_embeds
@@ -299,7 +300,7 @@ class AdvModel(nn.Module):
             inputs=None,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            generation_config=full_config,
+            generation_config=generation_config,
             bos_token_id=self.tokenizer.bos_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
             pad_token_id=self.tokenizer.pad_token_id,

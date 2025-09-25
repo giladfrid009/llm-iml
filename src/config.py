@@ -1,3 +1,4 @@
+from __future__ import annotations
 from transformers.generation.configuration_utils import GenerationConfig
 from typing import Any
 import time
@@ -57,32 +58,15 @@ class GenConfig:
                 params[name] = value
         return params
 
-    def patch_params(
-        self,
-        generation_config: GenerationConfig | None = None,
-        param_dict: dict[str, Any] | None = None,
-    ):
+    def patch_other(self, other: GenerationConfig | GenConfig):
         """
-        Update any parameter in the provided arguments with non-None values from this config.
+        Update any parameter in the provided config with non-None values from this config.
 
         Args:
-            generation_config (GenerationConfig | None): The GenerationConfig object to update.
-            param_dict (dict[str, Any] | None): A dictionary of parameters to update.
+            other (GenerationConfig | GenConfig): The other config to update.
         """
-
         params = self.get_hparams()
-
-        if generation_config is not None:
-            for name, value in params.items():
-                if hasattr(generation_config, name):
-                    setattr(generation_config, name, value)
-                else:
-                    raise ValueError(f"Field '{name}' not found in GenerationConfig.")
-
-        if param_dict is not None:
-            for name, value in params.items():
-                if name in param_dict:
-                    param_dict[name] = value
+        other.update(**params)
 
     def update(self, **kwargs) -> dict[str, Any]:
         """
