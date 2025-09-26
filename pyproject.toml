@@ -31,7 +31,6 @@ dependencies = [
     "sentence-transformers>=5.0.0",
     "typeguard>=4.4.4",
     "dotenv>=0.9.9",
-    "loguru>=0.7.3",
     "pyarrow>=21.0.0",
 ]
 

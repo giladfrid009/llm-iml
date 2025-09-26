@@ -1,7 +1,6 @@
 from torch import optim
 import sys
 import pathlib
-import pandas as pd
 
 
 # set pythonpath to the main module directory
@@ -10,7 +9,6 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 from scripts.experiment import Experiment
-from src.data import DF_Batcher
 from src.eval.harmbench_evaluator import HarmBenchEvaluator
 from src.eval.template_evaluator import TemplateEvaluator
 from src.eval.strong_reject_evaluator import StrongRejectEvaluator
@@ -27,22 +25,6 @@ from src.activ_extractor import ActivationExtractor
 
 
 class IML_Experiment(Experiment):
-    def load_data(self, train_ratio: float) -> tuple[DF_Batcher, DF_Batcher]:
-        data = pd.read_csv("/home/fre.gilad/source/llm-iml/data/HarmBench/harmful_behaviors.csv")
-        data = data.rename(columns={"goal": "prompt"})
-
-        # shuffle the data
-        data = data.sample(frac=1, random_state=42).reset_index(drop=True)
-
-        split = int(train_ratio * len(data))
-        ds_train = data.iloc[:split].copy()
-        ds_eval = data.iloc[split:].copy()
-
-        dl_train = DF_Batcher(ds_train, batch_size=10, shuffle=True)
-        dl_eval = DF_Batcher(ds_eval, batch_size=25, shuffle=False)
-
-        return dl_train, dl_eval
-
     def init_evaluators(self) -> list[Evaluator]:
         return [
             # HarmBenchEvaluator(

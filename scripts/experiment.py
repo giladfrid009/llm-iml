@@ -4,6 +4,8 @@ import random
 import argparse
 import logging
 import sys
+import pandas as pd
+import os
 
 from src.utils import env
 from src.utils.logging import create_logger, setup_logging
@@ -13,6 +15,15 @@ from src.univ_attacks import UnivAttack
 from src.adv_model import AdvModel
 from src.config import StopCriteria
 from src.eval import Evaluator
+
+
+SUPPORTED_DATASETS = [
+    "adv_bench",
+    "harm_bench",
+    "jailbreak_bench",
+    "malicious_instruct",
+]
+
 
 logger = create_logger(__name__)
 
@@ -37,8 +48,17 @@ class Experiment(ABC):
         parser.add_argument(
             "--model",
             type=str,
+            choices=SUPPORTED_MODELS,
             default="meta-llama/Llama-2-7b-chat-hf",
             help="The model name or path to use.",
+        )
+
+        parser.add_argument(
+            "--dataset",
+            type=str,
+            choices=SUPPORTED_DATASETS,
+            default="harm_bench",
+            help="The dataset to use.",
         )
 
         parser.add_argument(
@@ -65,10 +85,6 @@ class Experiment(ABC):
         self._parsed_args = parser.parse_args()
         args = self.args()
 
-        # verify valid model name
-        if args.model not in SUPPORTED_MODELS:
-            raise ValueError(f"Unsupported model '{args.model}'. Supported models: {SUPPORTED_MODELS}")
-
         # print the parsed arguments
         print()
         print("Parsed arguments:")
@@ -81,15 +97,29 @@ class Experiment(ABC):
     def prepare_environment(self, seed: int | None):
         if seed is None:
             seed = random.randint(0, 10000)
+        logger.info(f"Random seed: {seed}")
 
         torch.set_float32_matmul_precision("high")
         env.prepare_environment()
         env.set_seed(seed)
-        logger.info(f"Random seed: {seed}")
 
-    @abstractmethod
-    def load_data(self, train_ratio: float) -> tuple[DF_Batcher, DF_Batcher]:
-        pass
+    def load_data(self, dataset_name: str, train_ratio: float) -> tuple[DF_Batcher, DF_Batcher]:
+        data_path = f"data/{dataset_name}/harmful_behaviors.csv"
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f"Data file not found: {data_path}")
+
+        data = pd.read_csv(data_path)
+        data = data.rename(columns={"goal": "prompt"})
+        data = data.sample(frac=1, random_state=0).reset_index(drop=True)  # shuffle
+
+        split = int(train_ratio * len(data))
+        dl_train = DF_Batcher(data.iloc[:split].copy(), batch_size=10, shuffle=True)
+        dl_eval = DF_Batcher(data.iloc[split:].copy(), batch_size=25, shuffle=False)
+
+        logger.info(f"Train size: {dl_train.n_samples}")
+        logger.info(f"Eval size: {dl_eval.n_samples}")
+
+        return dl_train, dl_eval
 
     @abstractmethod
     def init_evaluators(self) -> list[Evaluator]:
@@ -106,17 +136,15 @@ class Experiment(ABC):
     def run(self):
         args = self.args()
 
-        logger.info("Loading data...")
-        dl_train, dl_eval = self.load_data(train_ratio=args.train_ratio)
-        logger.info(f"Train size: {dl_train.n_samples}")
-        logger.info(f"Eval size: {dl_eval.n_samples}")
+        logger.info(f"Loading dataset: {args.dataset}")
+        dl_train, dl_eval = self.load_data(args.dataset, train_ratio=args.train_ratio)
 
         logger.info("Loading evaluators...")
         evaluators = self.init_evaluators()
         logger.info(f"Evaluators loaded: {[ev.name for ev in evaluators]}")
 
         logger.info(f"Loading model: {args.model}")
-        adv_model = self.init_model(model_name=args.model)
+        adv_model = self.init_model(args.model)
         logger.info(f"Model architecture: {adv_model.model}")
 
         logger.info("Initializing attack...")
@@ -150,8 +178,8 @@ class Experiment(ABC):
     def main(self):
         try:
             self._parse_args()
-            self.prepare_environment(seed=self.args().seed)
             setup_logging(level=logging.WARNING if self.args().silent else logging.INFO)
+            self.prepare_environment(seed=self.args().seed)
             self.run()
         except KeyboardInterrupt:
             logger.info("Training interrupted by user.")
