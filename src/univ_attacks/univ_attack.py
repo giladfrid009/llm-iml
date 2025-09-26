@@ -181,11 +181,7 @@ class UnivAttack:
         # easiest and probably cleanest solution is to copy each row in dl_eval multiple times
 
         if dl_eval.drop_last or dl_eval.shuffle:
-            logger.warning(
-                "Evaluation data loader should not be shuffled or dropped last. "
-                "Creating a shallow copy with `shuffle=False` and `drop_last=False`."
-            )
-            dl_eval = dl_eval.copy(shuffle=False, drop_last=False)
+            raise ValueError("dl_eval must have shuffle=False and drop_last=False")
 
         self.predict(adv_model=adv_model, dl=dl_eval, config=gen_config, **kwargs)
 
@@ -198,7 +194,7 @@ class UnivAttack:
             judge_metric = all_metrics.get(self.judge_metric)
             if judge_metric is None:
                 raise ValueError(
-                    f"Judge metric {self.judge_metric} not found in the list of produced metrics {list(all_metrics.keys())}."
+                    f"Judge metric `{self.judge_metric}` not found in the list of produced metrics {list(all_metrics.keys())}."
                 )
 
             if self.best_metric < judge_metric:

@@ -30,7 +30,7 @@ class SoftPrompt_Experiment(Experiment):
         data = data.rename(columns={"goal": "prompt"})
 
         # shuffle the data
-        data = data.sample(frac=1, random_state=0).reset_index(drop=True)
+        data = data.sample(frac=1, random_state=42).reset_index(drop=True)
 
         split = int(train_ratio * len(data))
         ds_train = data.iloc[:split].copy()

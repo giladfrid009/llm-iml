@@ -10,8 +10,6 @@ from src.utils.logging import create_logger, setup_logging
 from src.data import DF_Batcher
 from src.models import SUPPORTED_MODELS
 from src.univ_attacks import UnivAttack
-
-
 from src.adv_model import AdvModel
 from src.config import StopCriteria
 from src.eval import Evaluator
@@ -119,11 +117,21 @@ class Experiment(ABC):
 
         logger.info(f"Loading model: {args.model}")
         adv_model = self.init_model(model_name=args.model)
+        logger.info(f"Model architecture: {adv_model.model}")
 
         logger.info("Initializing attack...")
         univ_attack = self.init_attack(adv_model, evaluators)
 
-        stop = StopCriteria(max_epochs=1, max_time=60 * 60 * 10)
+        logger.info("Logging experiment data...")
+        if main_file := getattr(sys.modules.get("__main__"), "__file__", None):
+            univ_attack.metric_logger.log_code(main_file)
+        if expr_file := getattr(sys.modules.get(__name__), "__file__", None):
+            univ_attack.metric_logger.log_code(expr_file)
+
+        univ_attack.metric_logger.cm_task.register_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
+        univ_attack.metric_logger.cm_task.register_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
+
+        stop = StopCriteria(max_epochs=2000, max_time=60 * 60 * 3)
 
         try:
             logger.info("Running attack...")

@@ -32,7 +32,7 @@ class IML_Experiment(Experiment):
         data = data.rename(columns={"goal": "prompt"})
 
         # shuffle the data
-        data = data.sample(frac=1, random_state=0).reset_index(drop=True)
+        data = data.sample(frac=1, random_state=42).reset_index(drop=True)
 
         split = int(train_ratio * len(data))
         ds_train = data.iloc[:split].copy()
@@ -58,6 +58,7 @@ class IML_Experiment(Experiment):
         model, tokenizer = load_model(model_name)
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
         Initializer.normal(adv_model, std=0.1)
+        # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False)
         return adv_model
 
     def init_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:

@@ -56,6 +56,23 @@ class MetricLogger:
 
         self.cm_task.update_parameters(hparams)
 
+    def log_code(self, file_path: str):
+        if not pathlib.Path(file_path).is_file():
+            logger.warning(f"File '{file_path}' does not exist. Cannot log code.")
+            return
+
+        file_name = pathlib.Path(file_path).name
+        file_content = pathlib.Path(file_path).read_text()
+        upload_result = self.cm_task.upload_artifact(
+            name=file_name,
+            artifact_object=file_path,
+            preview=file_content,
+            metadata={"type": "code", "full_path": file_path},
+        )
+
+        if not upload_result:
+            logger.warning(f"Failed to log code file '{file_path}'.")
+
     def add_tags(self, **tags):
         if len(tags) == 0:
             logger.warning("No tags provided.")
