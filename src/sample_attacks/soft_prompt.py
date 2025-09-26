@@ -1,6 +1,7 @@
 from src.adv_model import AdvModel
 from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 
+import inspect
 from typeguard import check_type
 from typing import Callable, Iterable, Any
 from tqdm.auto import tqdm
@@ -30,6 +31,19 @@ class SoftPrompt(SampleAttack):
         self.early_stopping = early_stopping
         self.mixed_precision = mixed_precision
         self.kv_caching = kv_caching
+
+    def get_hparams(self) -> dict:
+        dummy_optim = self.optim_factory([torch.zeros(1)])
+        return {
+            "name": self.__class__.__name__,
+            "steps": self.steps,
+            "early_stopping": self.early_stopping,
+            "mixed_precision": self.mixed_precision,
+            "kv_caching": self.kv_caching,
+            "optim": dummy_optim.state_dict()["param_groups"][0],
+            "optim/name": dummy_optim.__class__.__name__,
+            "optim_factory": inspect.getsource(self.optim_factory)
+        }
 
     def _initialize_embeddings(
         self,

@@ -106,6 +106,21 @@ class AutoPrompt(SequentialHarmBenchAttack):
         template = get_template(self.tokenizer)
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
+        
+    def get_hparams(self) -> dict:
+        return {
+            "name": self.__class__.__name__,
+            "num_steps": self.num_steps,
+            "adv_string_init": self.adv_string_init,
+            "allow_non_ascii": self.allow_non_ascii,
+            "search_width": self.search_width,
+            "use_prefix_cache": self.use_prefix_cache,
+            "eval_steps": self.eval_steps,
+            "eval_with_check_refusal": self.eval_with_check_refusal,
+            "check_refusal_min_loss": self.check_refusal_min_loss,
+            "early_stopping": self.early_stopping,
+            "early_stopping_min_loss": self.early_stopping_min_loss,
+        }
 
     def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """

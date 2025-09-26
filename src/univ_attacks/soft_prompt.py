@@ -33,7 +33,7 @@ class UnivSoftPrompt(UnivAttack):
         self.optimizer = optimizer
 
         self.metric_logger.log_hparams("univ_soft_prompt", optimizer=self.optimizer.__class__.__name__)
-        self.metric_logger.log_hparams("optim", self.optimizer.param_groups[0], name=self.optimizer.__class__.__name__)
+        self.metric_logger.log_hparams("optim", optimizer.state_dict()["param_groups"][0], name=self.optimizer.__class__.__name__)
 
     def criterion(
         self,

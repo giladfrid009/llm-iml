@@ -22,6 +22,12 @@ class HumanJailbreaks(HarmBenchAttack):
         super().__init__(adv_mode, verbose)
         self.seed = seed
 
+    def get_hparams(self) -> dict:
+        return {
+            "name": self.__class__.__name__,
+            "seed": self.seed,
+        }
+
     def generate_test_cases(self, behaviors: list[str], targets: list[str]) -> list[str]:
         jailbreaks = random.choices(MANUAL_JAILBREAKS, k=len(behaviors))
         test_cases = [jb.format(beh) for jb, beh in zip(jailbreaks, behaviors)]

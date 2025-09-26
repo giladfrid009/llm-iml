@@ -97,10 +97,6 @@ REFUSAL_PHRASES_V2 = [
 
 
 class TemplateEvaluator(Evaluator):
-    """
-    Evaluator using the `meta-llama/Llama-2-7b-chat-hf` model.
-    """
-
     def __init__(
         self,
         refusal_phrases: list[str] | None = None,

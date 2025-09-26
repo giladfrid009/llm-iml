@@ -46,3 +46,10 @@ class SampleAttack(ABC):
             SampleOutput: An object containing adversarial conversations, and optionally adversarial embeddings.
         """
         raise NotImplementedError("Subclasses must implement this method.")
+    
+    @abstractmethod
+    def get_hparams(self) -> dict:
+        """
+        Returns a dictionary of hyperparameters for the attack.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")

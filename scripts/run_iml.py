@@ -46,12 +46,7 @@ class IML_Experiment(Experiment):
     def init_evaluators(self) -> list[Evaluator]:
         return [
             # HarmBenchEvaluator(
-            #     serve_config=ServeConfig(
-            #         gpu_ids=[1],
-            #         startup_timeout=10 * 60,
-            #         client_timeout=60,
-            #         verbose=False,
-            #     ),
+            #     serve_config=ServeConfig(gpu_ids=[1], startup_timeout=10 * 60, client_timeout=60),
             # ),
             StrongRejectEvaluator(
                 serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),

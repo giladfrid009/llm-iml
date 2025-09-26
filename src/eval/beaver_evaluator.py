@@ -2,7 +2,6 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 from src.eval.evaluator import Evaluator
 from src.eval.beaver import AutoModelForScore
 from src.eval.beaver.llama import LlamaForScore
-from src.utils.torch import clear_memory
 
 from typing import Any
 import torch
@@ -17,14 +16,14 @@ class BeaverEvaluator(Evaluator):
 
     def __init__(
         self,
-        device_map: Any = "balanced_low_0",
+        device_map: str | Any = "balanced_low_0",
         binary_thresh: list[float] | None = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
         torch_compile: bool = False,
         verbose: bool = True,
     ):
         """
         Args:
-            device_map (Any): Device map for the model, e.g., "balanced_low_0", "auto", or a specific device like "cuda:0".
+            device_map (str | Any): Device map for the model, e.g., "balanced_low_0", "auto", or a specific device like "cuda:0".
             binary_thresh (list[float] | None): List of thresholds for binarization. If None, returns only raw scores.
             torch_compile (bool): Whether to compile the model using `torch.compile`. Defaults to False.
             verbose (bool): Whether to suppress output messages during evaluation..
@@ -46,8 +45,6 @@ class BeaverEvaluator(Evaluator):
         ).eval()
 
         if torch_compile:
-            # TODO: (low priority) inductor is for training + inference
-            # maybe there's a better inference only backend which works
             self.model.forward = torch.compile(
                 self.model.forward,
                 dynamic=True,

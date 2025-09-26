@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-
+from typing import Callable, Any
 from src.data import DF_Batcher
 from tqdm.auto import tqdm
+import inspect
 
 
 class Evaluator(ABC):
@@ -77,3 +78,63 @@ class Evaluator(ABC):
 
         averages = {metric_name: sum(values) / len(values) for metric_name, values in metrics.items()}
         return averages
+
+
+class MultiEvaluator(Evaluator):
+    def __init__(
+        self,
+        evaluators: list[Evaluator],
+        combine_fn: Callable[[dict[str, float]], float],
+        verbose: bool = False,
+    ):
+        """
+        Combines multiple evaluators into a single evaluator, which combines
+        their results using a specified combine function.
+
+        Args:
+            evaluators (list[Evaluator]): List of evaluators to combine.
+            combine_fn (Callable[dict[str, float], float]): Function to combine the metrics from the individual evaluators.
+                Receives a dictionary mapping metric names to their values and returns a single float value.
+            verbose (bool): Whether to suppress verbose outputs and tqdm progress during evaluation.
+        """
+        name = " + ".join([evaluator.name for evaluator in evaluators])
+
+        for ev in evaluators:
+            ev.verbose = verbose
+
+        metric_names = [name]
+        for ev in evaluators:
+            metric_names.extend(ev.metric_names)
+
+        super().__init__(name=name, metric_names=metric_names, verbose=verbose)
+
+        self.evaluators = evaluators
+        self.combine_fn = combine_fn
+
+    def get_hparams(self) -> dict:
+        hparams: dict[str, Any] = {
+            "inner_evaluators": str([ev.name for ev in self.evaluators]),
+            "combine_fn": inspect.getsource(self.combine_fn),
+            "metrics": str(self.metric_names),
+        }
+        hparams.update({ev.name: ev.get_hparams() for ev in self.evaluators})
+        return hparams
+
+    def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:
+        metrics: dict[str, list[float]] = {}
+        for ev in self.evaluators:
+            batch_metric = ev.eval_batch(prompts, responses)
+            metrics.update(batch_metric)
+
+        results = []
+        for i in range(len(prompts)):
+            metric_dict = {k: v[i] for k, v in metrics.items()}
+            value = self.combine_fn(metric_dict)
+            results.append(value)
+
+        metrics[self.name] = results
+        return metrics
+
+    def close(self):
+        for ev in self.evaluators:
+            ev.close()

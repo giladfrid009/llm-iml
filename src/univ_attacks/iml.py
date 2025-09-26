@@ -5,6 +5,7 @@ from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack
 
+import inspect
 from typing import Any, Callable
 import torch
 
@@ -95,15 +96,19 @@ class IML(UnivAttack):
         self.metric_logger.log_hparams(
             "iml",
             inner_attack=self.inner_attack.__class__.__name__,
+            attack_builder=inspect.getsource(self.attack_builder_func) if self.attack_builder_func else None,
             optimizer=self.optimizer.__class__.__name__,
             skip_already_fooled=self.skip_already_fooled,
             skip_failed_attacks=self.skip_failed_attacks,
             dynamic_labels=self.dynamic_labels,
         )
-        
+
+        if self.attack_builder_func is not None:
+            self.metric_logger.log_hparams("iml", attack_builder=inspect.getsource(self.attack_builder_func))
+
         self.metric_logger.log_hparams("activ_extractor", activ_extractor.get_hparams())
-        self.metric_logger.log_hparams("inner_attack", inner_attack.__dict__)
-        self.metric_logger.log_hparams("optim", self.optimizer.param_groups[0], name=self.optimizer.__class__.__name__)
+        self.metric_logger.log_hparams("inner_attack", self.inner_attack.get_hparams())
+        self.metric_logger.log_hparams("optim", optimizer.state_dict()["param_groups"][0], name=self.optimizer.__class__.__name__)
 
     @property
     def judge_evaluator(self) -> Evaluator:

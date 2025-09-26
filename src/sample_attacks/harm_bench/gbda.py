@@ -36,6 +36,15 @@ class GBDA(SequentialHarmBenchAttack):
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
 
+    def get_hparams(self) -> dict:
+        return {
+            "name": self.__class__.__name__,
+            "num_optim_tokens": self.num_optim_tokens,
+            "num_steps": self.num_steps,
+            "lr": self.lr,
+            "noise_scale": self.noise_scale,
+        }
+
     def generate_test_cases_single_behavior(self, behavior: str, target: str) -> str:
         """
         Generates test cases for a single behavior
