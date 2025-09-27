@@ -51,7 +51,7 @@ class Initializer:
         Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
         The mean and std are computed per embedding dimension across all original embeddings.
         """
-        orig_weight: torch.Tensor = adv_model.orig_embedder.weight  # type: ignore
+        orig_weight = adv_model.orig_embedder.weight
         mean = torch.mean(orig_weight, dim=0)
         std = torch.std(orig_weight, dim=0)
 
@@ -112,12 +112,12 @@ class Initializer:
         """
         tokenizer = adv_model.tokenizer
         embedder = adv_model.orig_embedder
-        input_ids: torch.Tensor = None 
+        input_ids: torch.Tensor
 
         if not strict:
             # Tokenize without padding or truncation, which may
             # modify the number of adversarial tokens
-            tokenized = tokenizer(
+            encodings = tokenizer(
                 text,
                 add_special_tokens=False,
                 padding=False,
@@ -126,7 +126,7 @@ class Initializer:
                 return_attention_mask=False,
             ).to(adv_model.device)
 
-            input_ids = tokenized["input_ids"]
+            input_ids = encodings.input_ids
 
         else:
             # We need to set some tokenizer settings manually
@@ -136,7 +136,7 @@ class Initializer:
             tokenizer.padding_side = "right"
 
             # Tokenize with strict padding and truncation
-            strict_tokenized = tokenizer(
+            strict_encodings = tokenizer(
                 text=text,
                 add_special_tokens=False,
                 padding="max_length",
@@ -151,11 +151,11 @@ class Initializer:
             tokenizer.padding_side = orig_padding_side
             tokenizer.truncation_side = orig_truncation_side
 
-            input_ids = strict_tokenized["input_ids"]
-            attention_mask = strict_tokenized["attention_mask"]
+            input_ids = strict_encodings.input_ids
+            attention_mask = strict_encodings.attention_mask
 
             # replace padding tokens with the specified pad_word
-            pad_token_id = tokenizer.convert_tokens_to_ids(pad_word)
+            pad_token_id: int = tokenizer.convert_tokens_to_ids(pad_word)  # type: ignore
             input_ids[attention_mask == 0] = pad_token_id
 
         embeddings = embedder(input_ids)

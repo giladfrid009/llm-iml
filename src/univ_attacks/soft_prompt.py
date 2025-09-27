@@ -58,19 +58,19 @@ class UnivSoftPrompt(UnivAttack):
         # construct input conversations
         input_text, target_text = data["prompt"], data["target"]
         conversations = [[{"role": "user", "content": prm}] for prm in input_text]
-        token_dict = self.adv_model.tokenize(conversations, target_text)
+        encodings = self.adv_model.tokenize(conversations, target_text)
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
             result = self.adv_model.forward(
-                input_ids=token_dict["input_ids"],
-                attention_mask=token_dict["attention_mask"],
-                adv_mask=token_dict["adv_mask"],
+                input_ids=encodings.input_ids,
+                attention_mask=encodings.attention_mask,
+                adv_mask=encodings.adv_mask,
             )
 
             loss = self.criterion(
                 logits=result.logits,
-                input_ids=token_dict["input_ids"],
-                target_mask=token_dict["target_mask"],
+                input_ids=encodings.input_ids,
+                target_mask=encodings.target_mask,
             )
 
         # grad step

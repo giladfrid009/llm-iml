@@ -13,7 +13,7 @@ class GradSign(torch.optim.Optimizer):
         self.optimizer = optimizer
         self.state = optimizer.state
 
-    def step(self, closure=None):
+    def step(self, closure=None) -> float | None:  # type: ignore
         # Normalizes all gradients to be sign vectors
         # Before applying the internal optimizer step
 

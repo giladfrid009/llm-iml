@@ -1,4 +1,4 @@
-from src.eval.evaluator import Evaluator
+from src.eval.evaluator import Evaluator, MultiEvaluator
 from src.eval.beaver_evaluator import BeaverEvaluator
 from src.eval.harmbench_evaluator import HarmBenchEvaluator
 from src.eval.llama_evaluator import LlamaEvaluator
@@ -8,6 +8,7 @@ from src.eval.template_evaluator import TemplateEvaluator
 
 __all__ = [
     "Evaluator",
+    "MultiEvaluator",
     "BeaverEvaluator",
     "HarmBenchEvaluator",
     "LlamaEvaluator",

@@ -108,7 +108,9 @@ class IML(UnivAttack):
 
         self.metric_logger.log_hparams("activ_extractor", activ_extractor.get_hparams())
         self.metric_logger.log_hparams("inner_attack", self.inner_attack.get_hparams())
-        self.metric_logger.log_hparams("optim", optimizer.state_dict()["param_groups"][0], name=self.optimizer.__class__.__name__)
+        self.metric_logger.log_hparams(
+            "optim", optimizer.state_dict()["param_groups"][0], name=self.optimizer.__class__.__name__
+        )
 
     @property
     def judge_evaluator(self) -> Evaluator:
@@ -133,7 +135,7 @@ class IML(UnivAttack):
             max_length=n,
         )
         return self.adv_model.tokenizer.batch_decode(
-            encoding["input_ids"],
+            encoding.input_ids,
             skip_special_tokens=True,
         )
 
@@ -155,14 +157,14 @@ class IML(UnivAttack):
                     responses = self.adv_model.chat(input_convs, self.gen_config)
                     eval_result = self.judge_evaluator.eval_batch(input_texts, responses)
                     eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
-                    mask_fooled = eval_metric >= 1.0
+                    fooled_mask = eval_metric >= 1.0
 
-                    if mask_fooled.all():
+                    if fooled_mask.all():
                         return None
 
-                    input_texts = [txt for txt, m in zip(input_texts, mask_fooled) if not m]
-                    input_convs = [conv for conv, m in zip(input_convs, mask_fooled) if not m]
-                    target_texts = [tgt for tgt, m in zip(target_texts, mask_fooled) if not m]
+                    input_texts = [txt for txt, m in zip(input_texts, fooled_mask) if not m]
+                    input_convs = [conv for conv, m in zip(input_convs, fooled_mask) if not m]
+                    target_texts = [tgt for tgt, m in zip(target_texts, fooled_mask) if not m]
 
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
@@ -177,19 +179,19 @@ class IML(UnivAttack):
                     responses = self.adv_model.chat(sample_convs, self.gen_config, adv_embeds=sample_embeds)
                     eval_result = self.judge_evaluator.eval_batch(input_texts, responses)
                     eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
-                    mask_succ = eval_metric >= 1.0
+                    success_mask = eval_metric >= 1.0
 
-                    if not mask_succ.any():
+                    if not success_mask.any():
                         return None
 
                     # set target texts to generated responses
                     if self.dynamic_labels > 0:
                         target_texts = self.truncate_tokens(responses, self.dynamic_labels)
 
-                    input_convs = [conv for conv, m in zip(input_convs, mask_succ) if m]
-                    sample_convs = [conv for conv, m in zip(sample_convs, mask_succ) if m]
-                    target_texts = [tgt for tgt, m in zip(target_texts, mask_succ) if m]
-                    sample_embeds = sample_embeds[mask_succ] if sample_embeds is not None else None
+                    input_convs = [conv for conv, m in zip(input_convs, success_mask) if m]
+                    sample_convs = [conv for conv, m in zip(sample_convs, success_mask) if m]
+                    target_texts = [tgt for tgt, m in zip(target_texts, success_mask) if m]
+                    sample_embeds = sample_embeds[success_mask] if sample_embeds is not None else None
 
             elif self.dynamic_labels > 0 and (not self.skip_failed_attacks):
                 # we first need to generate responses
@@ -205,22 +207,22 @@ class IML(UnivAttack):
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
-                sample_tokens = self.adv_model.tokenize(sample_convs, target_texts)
+                sample_encodings = self.adv_model.tokenize(sample_convs, target_texts)
                 with torch.inference_mode():
                     self.adv_model.forward(
-                        input_ids=sample_tokens["input_ids"],
-                        attention_mask=sample_tokens["attention_mask"],
-                        adv_mask=sample_tokens["adv_mask"],
+                        input_ids=sample_encodings.input_ids,
+                        attention_mask=sample_encodings.attention_mask,
+                        adv_mask=sample_encodings.adv_mask,
                         adv_embeds=sample_embeds,
                     )
                     sample_activs = self.activ_extractor.get_activations()
 
                 # compute universal activations
-                univ_tokens = self.adv_model.tokenize(input_convs, target_texts)
+                univ_encodings = self.adv_model.tokenize(input_convs, target_texts)
                 self.adv_model.forward(
-                    input_ids=univ_tokens["input_ids"],
-                    attention_mask=univ_tokens["attention_mask"],
-                    adv_mask=univ_tokens["adv_mask"],
+                    input_ids=univ_encodings.input_ids,
+                    attention_mask=univ_encodings.attention_mask,
+                    adv_mask=univ_encodings.adv_mask,
                 )
                 univ_activs = self.activ_extractor.get_activations()
 
@@ -229,8 +231,8 @@ class IML(UnivAttack):
             loss = criterion.forward(
                 univ_activs,
                 sample_activs,
-                univ_mask=univ_tokens["target_mask"],
-                sample_mask=sample_tokens["target_mask"],
+                univ_mask=univ_encodings.target_mask,
+                sample_mask=sample_encodings.target_mask,
                 sample_mean=False,
             )
 

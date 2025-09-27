@@ -38,23 +38,38 @@ class IML_Experiment(Experiment):
 
     def init_model(self, model_name: str) -> AdvModel:
         model, tokenizer = load_model(model_name)
+        
+        # TODO: try less tokens
+        # TODO: try different initializations
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
-        Initializer.normal(adv_model, std=0.1)
-        # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False)
+        Initializer.normal(adv_model, std=0.1) # USUALLY PERFORMS BETTER
+        # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False) # USUALLY PERFORMS WORSE
         return adv_model
 
     def init_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
-        def attack_builder(adv_model: AdvModel, epoch: int):
-            return SoftPrompt(
-                adv_model,
-                optim_factory=lambda params: optim.AdamW(params, lr=1e-3),
-                steps=15,
-                mixed_precision=False,
-                early_stopping=True,
-            )
+        # TODO: try Adam - doesnt do much difference, maybe worse
+        # TODO: we can create an attack_builder func and try with inner_attack scheduling,
+        # i.e. scheduling the number of steps
+        # TODO: try with early_stopping=False
+        inner_attack = SoftPrompt(
+            adv_model,
+            optim_factory=lambda params: optim.Adam(params, lr=1e-3),
+            steps=15,
+            mixed_precision=False,
+            early_stopping=True,
+        )
 
-        optimizer = optim.Adam(adv_model.parameters(), lr=1e-2, weight_decay=0)
+        # TODO: try different optimizers maybe FGSM and AdamW
+        # (AdamW probably significantly worse by previous experiments)
+        optimizer = optim.Adam(
+            adv_model.parameters(),
+            lr=1e-2,
+            weight_decay=0,
+        )
 
+        # TODO: lm_head is the last layer so we basically optimize over the logits
+        # try also internal layer: i.e lm_head, capture_output=False - PERFORMS WORSE
+        # TODO: try combination of output layer + internal layer
         activ_extractor = ActivationExtractor(
             adv_model.model,
             "lm_head",
@@ -67,9 +82,13 @@ class IML_Experiment(Experiment):
             remove_invalid_values=True,
         )
 
+        # TODO: try without dynamic labels and different amount
+        # TODO: try with skip_already_fooled=True - doesnt do much difference, maybe worse
+        # TODO: try with skip_failed_attacks=False (for ablations)
+        # TODO: try with mixed_precision=True for IML and inner_attack, it changes the results - NOT NEEDED SINCE MODEL TYPE IS BF16, WHICH HAS SAME RANGE AS FP32
         return IML(
             adv_model=adv_model,
-            inner_attack=attack_builder,
+            inner_attack=inner_attack,
             optimizer=optimizer,
             activ_extractor=activ_extractor,
             evaluators=evaluators,

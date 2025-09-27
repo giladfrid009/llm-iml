@@ -3,11 +3,13 @@ from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 
 import inspect
 from typeguard import check_type
-from typing import Callable, Iterable, Any
+from typing import Callable, Iterable
 from tqdm.auto import tqdm
 import torch
 import copy
 
+
+from transformers.tokenization_utils_base import BatchEncoding
 from transformers.cache_utils import DynamicCache
 
 LegacyCache = tuple[tuple[torch.Tensor], tuple[torch.Tensor]]
@@ -42,7 +44,7 @@ class SoftPrompt(SampleAttack):
             "kv_caching": self.kv_caching,
             "optim": dummy_optim.state_dict()["param_groups"][0],
             "optim/name": dummy_optim.__class__.__name__,
-            "optim_factory": inspect.getsource(self.optim_factory)
+            "optim_factory": inspect.getsource(self.optim_factory),
         }
 
     def _initialize_embeddings(
@@ -63,67 +65,67 @@ class SoftPrompt(SampleAttack):
         )
 
     @torch.no_grad()
-    def _compute_cache(self, token_dict: dict[str, torch.Tensor]) -> dict:
+    def _compute_cache(self, encodings: BatchEncoding) -> BatchEncoding:
         """
         Compute the kv-cache for the constant part of the input.
 
         Args:
-            token_dict (dict[str, torch.Tensor]): Dictionary containing input tokens and masks,
+            encodings (BatchEncoding): encodings containing input tokens and masks,
                 as returned from `self.adv_model.tokenize()`.
 
         Returns:
-            dict: Dictionary containing the kv-cache for the constant part of the input,
+            BatchEncoding: encodings containing the kv-cache for the constant part of the input,
                 as well as the remaining input tokens and masks. The remaining input tokens
                 and masks are only the variable (non-cached) part of the input.
         """
 
-        kv_idx = token_dict["const_idx"].min().item()
+        kv_idx = encodings.const_idx.min().item()
 
         kv_result = self.adv_model.forward(
-            token_dict["input_ids"][:, :kv_idx],
-            token_dict["attention_mask"][:, :kv_idx],
+            encodings.input_ids[:, :kv_idx],
+            encodings.attention_mask[:, :kv_idx],
             use_cache=True,
         )
 
-        new_token_dict = {
-            "input_ids": token_dict["input_ids"][:, kv_idx:],
-            "attention_mask": token_dict["attention_mask"],  # we need the full attention mask
-            "adv_mask": token_dict["adv_mask"][:, kv_idx:],
+        new_data = {
+            "input_ids": encodings.input_ids[:, kv_idx:],
+            "attention_mask": encodings.attention_mask,  # we need the full attention mask
+            "adv_mask": encodings.adv_mask[:, kv_idx:],
             "kv_cache": kv_result.past_key_values,
         }
 
-        if "target_mask" in token_dict:
-            new_token_dict["target_mask"] = token_dict["target_mask"][:, kv_idx:]
+        if "target_mask" in encodings:
+            new_data["target_mask"] = encodings.target_mask[:, kv_idx:]
 
-        return new_token_dict
+        return BatchEncoding(new_data)
 
     def _masked_select(
         self,
-        token_dict: dict[str, Any],
+        encodings: BatchEncoding,
         mask: torch.Tensor,
-    ) -> dict[str, torch.Tensor | Any]:
+    ) -> BatchEncoding:
         """
-        Selects elements from the token_dict based on the provided mask.
-        Mask is applied to the batch dimension of all elements in the token_dict.
+        Selects elements from the encodings based on the provided mask.
+        Mask is applied to the batch dimension of all tensor elements in the encodings.
         """
-        new_dict = {}
-        for key, value in token_dict.items():
+        new_data = {}
+        for key, value in encodings.data.items():
             if isinstance(value, torch.Tensor):
-                new_dict[key] = value[mask]
+                new_data[key] = value[mask]
 
             elif isinstance(value, DynamicCache):
                 indices = mask.nonzero(as_tuple=True)[0]
                 cache = value.batch_select_indices(indices)
-                new_dict[key] = cache
+                new_data[key] = cache
 
             elif check_type(value, LegacyCache):
                 cache = (tuple(tensor[mask] for tensor in value[0]), tuple(tensor[mask] for tensor in value[1]))
-                new_dict[key] = cache
+                new_data[key] = cache
 
             else:
-                raise TypeError(f"Unsupported type {type(value)} for key {key} in token_dict")
+                raise TypeError(f"Unsupported type {type(value)} for key {key} in encodings")
 
-        return new_dict
+        return BatchEncoding(new_data)
 
     def _check_early_stopping(
         self,
@@ -189,12 +191,12 @@ class SoftPrompt(SampleAttack):
         optim = self.optim_factory([adv_embeds])
 
         # tokenize
-        token_dict = self.adv_model.tokenize(conversations, target_texts)
+        encodings = self.adv_model.tokenize(conversations, target_texts)
 
         # compute kv-cache if enabled
         if self.kv_caching:
             with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-                token_dict = self._compute_cache(token_dict)
+                encodings = self._compute_cache(encodings)
 
         # early stopping state
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
@@ -205,28 +207,28 @@ class SoftPrompt(SampleAttack):
                 optim.zero_grad()
 
                 # NOTE: need to copy kv-cache since forward modifies it in-place
-                iter_data = token_dict.copy()
-                iter_data["kv_cache"] = copy.deepcopy(iter_data.get("kv_cache", None))
+                step_encodings = encodings.copy()
+                step_encodings["kv_cache"] = copy.deepcopy(step_encodings.get("kv_cache", None))
 
                 # select only unfinished samples if early stopping is enabled
                 if self.early_stopping:
-                    iter_data = self._masked_select(iter_data, ~finished)
+                    step_encodings = self._masked_select(step_encodings, ~finished)
                     optim_embeds = adv_embeds[~finished]
 
                 with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                     # forward pass
                     result = self.adv_model.forward(
-                        input_ids=iter_data["input_ids"],
-                        attention_mask=iter_data["attention_mask"],
-                        adv_mask=iter_data["adv_mask"],
-                        past_key_values=iter_data["kv_cache"],
+                        input_ids=step_encodings.input_ids,
+                        attention_mask=step_encodings.attention_mask,
+                        adv_mask=step_encodings.adv_mask,
+                        past_key_values=step_encodings.kv_cache,
                         adv_embeds=optim_embeds,
                     )
 
                     # align predicted logits and target_ids
                     logits: torch.Tensor = result.logits[:, :-1]  # remove new token
-                    target_ids = iter_data["input_ids"][:, 1:]  # remove BOS token
-                    target_mask = iter_data["target_mask"][:, 1:]  # remove BOS token
+                    target_ids = step_encodings.input_ids[:, 1:]  # remove BOS token
+                    target_mask = step_encodings.target_mask[:, 1:]  # remove BOS token
 
                     # update early stopping based on predictions
                     if self.early_stopping:

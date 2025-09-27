@@ -1,5 +1,5 @@
 from src.utils.huggingface import load_hf_model
-from transformers import PreTrainedModel, PreTrainedTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizer  # pyright: ignore[reportPrivateImportUsage]
 import torch
 from src.utils.logging import create_logger
 

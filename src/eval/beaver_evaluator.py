@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, PreTrainedTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer  # pyright: ignore[reportPrivateImportUsage]
 from src.eval.evaluator import Evaluator
 from src.eval.beaver import AutoModelForScore
 from src.eval.beaver.llama import LlamaForScore
@@ -78,7 +78,7 @@ class BeaverEvaluator(Evaluator):
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:
         cls_inputs = self._fmt_inputs(prompts, responses)
 
-        tokenized = self.tokenizer(
+        encodings = self.tokenizer(
             cls_inputs,
             return_tensors="pt",
             padding=True,
@@ -86,8 +86,8 @@ class BeaverEvaluator(Evaluator):
         ).to(self.model.device)
 
         scores, end_scores = self.model.forward(
-            input_ids=tokenized["input_ids"],
-            attention_mask=tokenized["attention_mask"],
+            input_ids=encodings.input_ids,
+            attention_mask=encodings.attention_mask,
             return_dict=False,
         )
 
