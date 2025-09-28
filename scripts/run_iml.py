@@ -1,7 +1,7 @@
 from torch import optim
 import sys
 import pathlib
-
+import time
 
 # set pythonpath to the main module directory
 module_dir = pathlib.Path(__file__).parent.resolve().parent
@@ -9,12 +9,18 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 from scripts.experiment import Experiment
-from src.eval.harmbench_evaluator import HarmBenchEvaluator
-from src.eval.template_evaluator import TemplateEvaluator
-from src.eval.strong_reject_evaluator import StrongRejectEvaluator
+
+from src.eval import (
+    BeaverEvaluator,
+    HarmBenchEvaluator,
+    LlamaEvaluator,
+    LlamaGuardEvaluator,
+    StrongRejectEvaluator,
+    TemplateEvaluator,
+)
+
 from gserve.configs import ServeConfig, LLMConfig
 from src.models import load_model
-
 from src.sample_attacks import SoftPrompt
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
@@ -22,27 +28,33 @@ from src.initialize import Initializer
 from src.config import GenConfig, StopCriteria
 from src.eval import Evaluator
 from src.activ_extractor import ActivationExtractor
+from src.metric_logger import MetricLogger
 
 
 class IML_Experiment(Experiment):
     def init_evaluators(self) -> list[Evaluator]:
         return [
-            # HarmBenchEvaluator(
-            #     serve_config=ServeConfig(gpu_ids=[1], startup_timeout=10 * 60, client_timeout=60),
+            # BeaverEvaluator(device_map=1),
+            # HarmBenchEvaluator(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
+            # LlamaEvaluator(
+            #     serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
+            #     model_name="meta-llama/Llama-2-7b-chat-hf",
             # ),
-            StrongRejectEvaluator(
-                serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
-            ),
+            # LlamaGuardEvaluator(
+            #     serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
+            #     model_name="meta-llama/Llama-Guard-3-8B",
+            # ),
+            StrongRejectEvaluator(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
             TemplateEvaluator(),
         ]
 
     def init_model(self, model_name: str) -> AdvModel:
         model, tokenizer = load_model(model_name)
-        
+
         # TODO: try less tokens
         # TODO: try different initializations
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
-        Initializer.normal(adv_model, std=0.1) # USUALLY PERFORMS BETTER
+        Initializer.normal(adv_model, std=0.1)  # High STD = Worse
         # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False) # USUALLY PERFORMS WORSE
         return adv_model
 
@@ -53,8 +65,8 @@ class IML_Experiment(Experiment):
         # TODO: try with early_stopping=False
         inner_attack = SoftPrompt(
             adv_model,
-            optim_factory=lambda params: optim.Adam(params, lr=1e-3),
-            steps=15,
+            optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
+            steps=25,
             mixed_precision=False,
             early_stopping=True,
         )
@@ -68,18 +80,26 @@ class IML_Experiment(Experiment):
         )
 
         # TODO: lm_head is the last layer so we basically optimize over the logits
-        # try also internal layer: i.e lm_head, capture_output=False - PERFORMS WORSE
+        # try also internal layer: i.e lm_head, capture_output=False: 
+        # - on regular Llama2 performs worse
+        # - on GraySwanAI/Llama-3-8B-Instruct-RR performs 2x better
         # TODO: try combination of output layer + internal layer
         activ_extractor = ActivationExtractor(
             adv_model.model,
             "lm_head",
-            capture_output=True,
+            capture_output=False,
         )
 
         gen_config = GenConfig(
             max_new_tokens=512,
-            do_sample=False,
+            do_sample=True,
             remove_invalid_values=True,
+        )
+        
+        metric_logger = MetricLogger(
+            self.args().run_name,
+            project="LLM-IML",
+            root_dir="logs",
         )
 
         # TODO: try without dynamic labels and different amount
@@ -98,8 +118,8 @@ class IML_Experiment(Experiment):
             mixed_precision=False,
             skip_already_fooled=False,
             skip_failed_attacks=True,
-            dynamic_labels=20,
-            log_dir="logs",
+            dynamic_labels=40,
+            metric_logger=metric_logger,
         )
 
 

@@ -11,10 +11,19 @@ class MetricLogger:
         if len(names) == 0:
             raise ValueError("At least one name component must be provided.")
 
+        self.run_name = str.join(" - ", names)
+        self.project = project
         self.root_dir = root_dir
         self.log_dir = self._create_directory(root_dir, *names)
-        run_name = str.join(" - ", names)
-        self.cm_task: Task = Task.init(project_name=project, task_name=run_name)
+        self.cm_task: Task = Task.init(project_name=project, task_name=self.run_name)
+
+    def get_hparams(self) -> dict[str, Any]:
+        return {
+            "root_dir": self.root_dir,
+            "log_dir": self.log_dir,
+            "project": self.project,
+            "run_name": self.run_name,
+        }
 
     def _create_directory(self, *subdir_parts: str) -> str:
         log_path = pathlib.Path(*subdir_parts)
@@ -84,7 +93,7 @@ class MetricLogger:
 
     def log_metrics(self, metrics: dict[str, int | float]):
         """
-        Logs a dictionary of global run metrics.
+        Logs a dictionary of final, global run metrics.
         For example, used to log final evaluation metrics.
 
         Args:

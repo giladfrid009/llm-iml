@@ -3,9 +3,10 @@ from typing import Any, Generator, List, Dict
 import pandas as pd
 
 
-class DF_Batcher:
+# TODO: move to polars
+class TableLoader:
     """
-    Iterate over a pandas DataFrame in column-wise batches.
+    Iterate over a DataFrame in row-wise batches.
 
     Standard columns which are expected to be present in the DataFrame:
     - 'prompt' (str): Input prompt for the model.
@@ -35,7 +36,7 @@ class DF_Batcher:
 
     def get_hparams(self) -> dict:
         """
-        Returns the hyperparameters of the DF_Batcher as a dictionary.
+        Returns the hyperparameters of the TableLoader as a dictionary.
         """
         return {
             "num_samples": self._n_samples,
@@ -97,9 +98,9 @@ class DF_Batcher:
             data = {col: self.df.loc[batch_idxs, col].tolist() for col in columns}
             yield data
 
-    def copy(self, **kwargs) -> "DF_Batcher":
+    def copy(self, **kwargs) -> "TableLoader":
         """
-        Create and return a shallow-copy of this DF_Batcher. The new instance
+        Create and return a shallow-copy of this TableLoader. The new instance
         wraps the same DataFrame (no deep copy of df), but has its own attributes
         (columns, batch_size, shuffle, drop_last).
 
@@ -117,9 +118,9 @@ class DF_Batcher:
             if key in attrs:
                 attrs[key] = value
             else:
-                raise ValueError(f"Invalid attribute '{key}' for DF_Batcher")
+                raise ValueError(f"Invalid attribute '{key}' for TableLoader")
 
-        return DF_Batcher(**attrs)
+        return TableLoader(**attrs)
 
     def set_column(self, col_name: str, values: List[Any]) -> None:
         """

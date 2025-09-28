@@ -4,6 +4,7 @@ from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack
+from src.metric_logger import MetricLogger
 
 import inspect
 from typing import Any, Callable
@@ -68,7 +69,7 @@ class IML(UnivAttack):
         skip_already_fooled: bool = False,
         skip_failed_attacks: bool = True,
         dynamic_labels: int = -1,
-        log_dir: str = "logs",
+        metric_logger: MetricLogger | None = None,
     ):
         super().__init__(
             adv_model=adv_model,
@@ -77,7 +78,7 @@ class IML(UnivAttack):
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
-            log_dir=log_dir,
+            metric_logger=metric_logger,
         )
 
         if callable(inner_attack):

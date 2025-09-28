@@ -3,6 +3,7 @@ from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack
 from src.fgsm_optim import FGSM
+from src.metric_logger import MetricLogger
 
 from typing import Any
 import torch
@@ -18,7 +19,7 @@ class UnivSoftPrompt(UnivAttack):
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
         gen_config: GenConfig | None = None,
-        log_dir: str = "logs",
+        metric_logger: MetricLogger | None = None,
     ):
         super().__init__(
             adv_model=adv_model,
@@ -27,7 +28,7 @@ class UnivSoftPrompt(UnivAttack):
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
-            log_dir=log_dir,
+            metric_logger=metric_logger,
         )
 
         self.optimizer = optimizer

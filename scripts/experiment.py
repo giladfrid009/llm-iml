@@ -6,10 +6,11 @@ import logging
 import sys
 import pandas as pd
 import os
+import time
 
 from src.utils import env
 from src.utils.logging import create_logger, setup_logging
-from src.data import DF_Batcher
+from src.data import TableLoader
 from src.models import SUPPORTED_MODELS
 from src.univ_attacks import UnivAttack
 from src.adv_model import AdvModel
@@ -41,6 +42,7 @@ class Experiment(ABC):
         """Override to add custom command line arguments."""
         pass
 
+    # TODO: add run_name optional argument
     def _parse_args(self) -> argparse.Namespace:
         """Parse command line arguments."""
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -51,6 +53,13 @@ class Experiment(ABC):
             choices=SUPPORTED_MODELS,
             default="meta-llama/Llama-2-7b-chat-hf",
             help="The model name or path to use.",
+        )
+
+        parser.add_argument(
+            "--run_name",
+            type=str,
+            default=time.strftime("%Y-%m-%d_%H-%M-%S"),
+            help="The name of the run, used for logging.",
         )
 
         parser.add_argument(
@@ -103,7 +112,7 @@ class Experiment(ABC):
         env.prepare_environment()
         env.set_seed(seed)
 
-    def load_data(self, dataset_name: str, train_ratio: float) -> tuple[DF_Batcher, DF_Batcher]:
+    def load_data(self, dataset_name: str, train_ratio: float) -> tuple[TableLoader, TableLoader]:
         data_path = f"data/{dataset_name}/harmful_behaviors.csv"
         if not os.path.exists(data_path):
             raise FileNotFoundError(f"Data file not found: {data_path}")
@@ -113,8 +122,8 @@ class Experiment(ABC):
         data = data.sample(frac=1, random_state=0).reset_index(drop=True)  # shuffle
 
         split = int(train_ratio * len(data))
-        dl_train = DF_Batcher(data.iloc[:split].copy(), batch_size=10, shuffle=True)
-        dl_eval = DF_Batcher(data.iloc[split:].copy(), batch_size=25, shuffle=False)
+        dl_train = TableLoader(data.iloc[:split].copy(), batch_size=10, shuffle=True)
+        dl_eval = TableLoader(data.iloc[split:].copy(), batch_size=25, shuffle=False)
 
         logger.info(f"Train size: {dl_train.n_samples}")
         logger.info(f"Eval size: {dl_eval.n_samples}")

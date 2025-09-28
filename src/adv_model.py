@@ -101,7 +101,7 @@ class AdvModel(nn.Module):
         # adversarial embeddings
         self.adv_embeds: torch.Tensor | None = None
 
-    def get_hparams(self) -> dict:
+    def get_hparams(self) -> dict:       
         return {
             "model_name": self.model.name_or_path,
             "tokenizer_name": self.tokenizer.name_or_path,

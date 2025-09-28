@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Any
-from src.data import DF_Batcher
+from src.data import TableLoader
 from tqdm.auto import tqdm
 import inspect
 
@@ -53,13 +53,13 @@ class Evaluator(ABC):
         """
         raise NotImplementedError("This method should be overridden by subclasses.")
 
-    def evaluate(self, dl_eval: DF_Batcher) -> dict[str, float]:
+    def evaluate(self, dl_eval: TableLoader) -> dict[str, float]:
         """
         Evaluates the model on the provided data loader using the generated outputs.
         This methods sets a column `eval-{self.name}` in the data loader with the evaluation metric.
 
         Args:
-            dl_eval (DF_Batcher): Data loader for evaluation.
+            dl_eval (TableLoader): Data loader for evaluation.
 
         Returns:
             dict[str, float]: Average evaluation metrics over the entire dataset.

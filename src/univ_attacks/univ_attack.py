@@ -1,5 +1,5 @@
 from src.adv_model import AdvModel
-from src.data import DF_Batcher
+from src.data import TableLoader
 from src.eval.evaluator import Evaluator
 from src.metric_logger import MetricLogger
 from src.config import GenConfig, StopCriteria
@@ -25,7 +25,7 @@ class UnivAttack:
         eval_freq: int | float = 1,
         mixed_precision: bool = True,
         gen_config: GenConfig | None = None,
-        log_dir: str = "logs",
+        metric_logger: MetricLogger | None = None,
     ):
         """
         Args:
@@ -36,7 +36,7 @@ class UnivAttack:
                 - if float, evaluates every `round(eval_freq * len(dl_train))` batches.
             mixed_precision (bool): Whether to use mixed precision training.
             gen_config (GenConfig  | None): Default generation configuration.
-            log_dir (str): Directory to save logs.
+            metric_logger (MetricLogger | None): Metric logger for logging experiment data and metrics.
         """
         if gen_config is None:
             gen_config = GenConfig()
@@ -62,11 +62,14 @@ class UnivAttack:
         self.best_embeds = self.univ_embeds.clone().detach()
 
         # logging
-        self.metric_logger = MetricLogger(
-            time.strftime("%Y-%m-%d_%H-%M-%S"),
-            project="LLM-IML",
-            root_dir=log_dir,
-        )
+        if metric_logger is None:
+            metric_logger = MetricLogger(
+                time.strftime("%Y-%m-%d_%H-%M-%S"),
+                project="LLM-IML",
+                root_dir="logs",
+            )
+
+        self.metric_logger = metric_logger
 
         self.metric_logger.add_tags(
             model=self.adv_model.model.name_or_path,
@@ -76,16 +79,25 @@ class UnivAttack:
 
         self.metric_logger.log_hparams(
             "univ_attack",
+            model_name=adv_model.model.name_or_path,
             num_tokens=self.num_tokens,
             mixed_precision=self.mixed_precision,
             eval_freq=self.eval_freq,
-            gen_config=self.gen_config.get_hparams(),
             evaluators=[e.name for e in self.evaluators],
             judge_metric=self.judge_metric,
-            log_dir=self.metric_logger.root_dir if self.metric_logger else None,
+            log_dir=self.metric_logger.root_dir,
         )
 
+        self.metric_logger.log_hparams(
+            "hf_model",
+            model_config=adv_model.model.config.to_dict(),
+            generation_config=adv_model.model.generation_config.to_dict(),  # type: ignore
+            name=adv_model.model.name_or_path,
+        )
+
+        self.metric_logger.log_hparams("logger", self.metric_logger.get_hparams())
         self.metric_logger.log_hparams("adv_model", adv_model.get_hparams())
+        self.metric_logger.log_hparams("gen_config", self.gen_config.get_hparams())
         self.metric_logger.log_hparams("grad_scaler", self.grad_scaler.state_dict())
         for ev in self.evaluators:
             self.metric_logger.log_hparams(f"evaluators/{ev.name}", ev.get_hparams())
@@ -116,7 +128,7 @@ class UnivAttack:
     def predict(
         self,
         adv_model: AdvModel,
-        dl: DF_Batcher,
+        dl: TableLoader,
         config: GenConfig | None = None,
         **kwargs: Any,
     ) -> list[str]:
@@ -126,7 +138,7 @@ class UnivAttack:
 
         Args:
             adv_model (AdvModel): The adversarial model to use for text generation.
-            dl (DF_Batcher): Data loader with prompts for generation.
+            dl (TableLoader): Data loader with prompts for generation.
             config (GenConfig | None): Generation configuration to use for the model.
             **kwargs (dict): Additional keyword arguments for `AdvModel.chat`.
 
@@ -154,7 +166,7 @@ class UnivAttack:
         self,
         adv_model: AdvModel,
         evaluators: list[Evaluator] | Evaluator,
-        dl_eval: DF_Batcher,
+        dl_eval: TableLoader,
         gen_config: GenConfig | None = None,
         update_best: bool = False,
         **kwargs: Any,
@@ -165,7 +177,7 @@ class UnivAttack:
         Args:
             adv_model (AdvModel): The adversarial model to evaluate.
             evaluators (list[Evaluator]): List of evaluators to use for evaluation.
-            dl_eval (DF_Batcher): Data loader for evaluation.
+            dl_eval (TableLoader): Data loader for evaluation.
             gen_config (GenConfig | None): Generation configuration to use for the model.
             update_best (bool): If True, updates the best metric and embeddings if the current evaluation is better.
             **kwargs (dict): Additional keyword arguments for `AdvModel.chat`.
@@ -304,8 +316,8 @@ class UnivAttack:
 
     def fit(
         self,
-        dl_train: DF_Batcher,
-        dl_eval: DF_Batcher,
+        dl_train: TableLoader,
+        dl_eval: TableLoader,
         stop_criteria: StopCriteria | None = None,
     ) -> AdvModel:
         # must have these columns at least
