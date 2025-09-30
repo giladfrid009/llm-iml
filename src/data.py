@@ -1,5 +1,5 @@
 import random
-from typing import Any, Generator, List, Dict
+from typing import Any, Generator
 import pandas as pd
 
 
@@ -46,7 +46,7 @@ class TableLoader:
             "drop_last": self.drop_last,
         }
 
-    def validate(self, columns: List[str]) -> None:
+    def validate(self, columns: list[str]) -> None:
         """
         Public method: check that each column in `columns` exists in `self.df.columns`.
 
@@ -77,7 +77,7 @@ class TableLoader:
         """
         return self._n_batches
 
-    def __iter__(self) -> Generator[Dict[str, List[Any]], None, None]:
+    def __iter__(self) -> Generator[dict[str, list[Any]], None, None]:
         columns = self.df.columns.tolist()
 
         # Make a copy of the indices and shuffle if requested
@@ -122,13 +122,13 @@ class TableLoader:
 
         return TableLoader(**attrs)
 
-    def set_column(self, col_name: str, values: List[Any]) -> None:
+    def set_column(self, col_name: str, values: list[Any]) -> None:
         """
         Add or override a column in the DataFrame with the specified name and values.
 
         Args:
             col_name (str): Name of the new column.
-            values (List[Any]): Values to be added in the new column.
+            values (list[Any]): Values to be added in the new column.
         """
 
         if self.shuffle or self.drop_last:

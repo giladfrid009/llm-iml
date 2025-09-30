@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Any
+import numpy as np
 from src.data import TableLoader
 from tqdm.auto import tqdm
 import inspect
@@ -67,7 +68,7 @@ class Evaluator(ABC):
 
         dl_eval.validate(["prompt", "response"])
 
-        metrics = {k: [] for k in self.metric_names}
+        metrics: dict[str, list[float]] = {k: [] for k in self.metric_names}
         for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=not self.verbose, leave=False):
             batch_metric = self.eval_batch(batch_data["prompt"], batch_data["response"])
             for metric_name, metric_values in batch_metric.items():
@@ -76,8 +77,12 @@ class Evaluator(ABC):
         for metric_name, metric_values in metrics.items():
             dl_eval.set_column(metric_name, metric_values)
 
-        averages = {metric_name: sum(values) / len(values) for metric_name, values in metrics.items()}
-        return averages
+        # Compute averages, ignoring non-finite values
+        numpy_metrics = dl_eval.df[self.metric_names].to_numpy(dtype=float)
+        numpy_metrics = np.where(np.isfinite(numpy_metrics), numpy_metrics, np.nan)
+        averages = np.nanmean(numpy_metrics, axis=0).flatten().tolist()
+
+        return {k: v for k, v in zip(self.metric_names, averages)}
 
 
 class MultiEvaluator(Evaluator):
