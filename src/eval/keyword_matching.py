@@ -20,12 +20,14 @@ class KeywordMatching(Evaluator):
         refusals_dict: dict[str, list[str]] = DEFAULT_REFUSALS,
         verbose: bool = False,
     ):
+        
+        refusals_processed = {}
         for key in refusals_dict.keys():
             processed = [p.casefold().strip() for p in refusals_dict[key]]
-            refusals_dict[f"Matching/{key}"] = processed
+            refusals_processed[f"Matching/{key}"] = processed
 
-        metric_names = list(refusals_dict.keys())
-        self.refusals_dict = refusals_dict
+        metric_names = list(refusals_processed.keys())
+        self.refusals_dict = refusals_processed
 
         super().__init__(name="Matching", metric_names=metric_names, verbose=verbose)
 

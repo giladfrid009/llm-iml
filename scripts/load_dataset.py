@@ -46,7 +46,7 @@ def load_single_dataset(name: str) -> Dataset:
         return datasets.load_dataset("walledai/AdvBench", split="train")  # type: ignore
 
     if name == DatasetName.ADVBENCH_SMALL:
-        ds_dict: DatasetDict = datasets.load_dataset("data/advbench-small")  # type: ignore
+        ds_dict: DatasetDict = datasets.load_dataset("data/advbench_small")  # type: ignore
         return ds_dict["train"]
 
     if name == DatasetName.JAILBREAK_BENCH:

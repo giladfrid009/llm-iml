@@ -125,6 +125,10 @@ class Experiment(ABC):
         dl_train = TableLoader(ds_train, batch_size=10, shuffle=True)
         dl_eval = TableLoader(ds_val, batch_size=25, shuffle=False)
         dl_test = TableLoader(ds_test, batch_size=25, shuffle=False)
+        logger.info(
+            f"Loaded datasets with sample counts: "
+            f"train={len(dl_train.df)}, val={len(dl_eval.df)}, test={len(dl_test.df)}"
+        )
 
         logger.info("Loading evaluators...")
         evaluators = self.create_evaluators()

@@ -34,17 +34,11 @@ from src.metric_logger import MetricLogger
 class IML_Experiment(Experiment):
     def create_evaluators(self) -> list[Evaluator]:
         return [
-            # BeaverEvaluator(device_map=1),
-            # HarmBenchEvaluator(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
-            # LlamaEvaluator(
-            #     serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
-            #     model_name="meta-llama/Llama-2-7b-chat-hf",
-            # ),
-            # LlamaGuardEvaluator(
-            #     serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
-            #     model_name="meta-llama/Llama-Guard-3-8B",
-            # ),
-            StrongReject(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
+            LlamaGuard(
+                serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
+                model_name="meta-llama/Meta-Llama-Guard-2-8B",
+            ),
+            # StrongReject(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
             KeywordMatching(),
         ]
 
@@ -110,8 +104,9 @@ class IML_Experiment(Experiment):
             optimizer=optimizer,
             activ_extractor=activ_extractor,
             evaluators=evaluators,
-            judge_metric="StrongReject/Thresh@0.5",
-            eval_freq=1,
+            # judge_metric="StrongReject/Thresh@0.5",
+            judge_metric="Meta-Llama-Guard-2-8B",
+            eval_freq=0.5,
             gen_config=gen_config,
             mixed_precision=False,
             skip_already_fooled=False,
