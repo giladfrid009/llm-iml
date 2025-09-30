@@ -3,6 +3,7 @@ from src.utils.logging import create_logger
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
 
+import math
 import msgspec
 from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
@@ -109,17 +110,21 @@ class LlamaEvaluator(Evaluator):
             for beh, gen in zip(input_texts, response_texts)
         ]
 
+    def _parse_response(self, response: str) -> float:
+        response = response.strip().lower()
+        if response not in ["yes", "no"]:
+            logger.warning(f"Unexpected response: {response}")
+            return math.nan
+        
+        return 1.0 if response == "yes" else 0.0
+
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:
         cls_inputs = self._fmt_convs(prompts, responses)
         cls_resp = self.model.chat(cls_inputs, self.sampling_params)
 
         metrics = {k: [] for k in self.metric_names}
-        for resp, inp_text in zip(cls_resp, prompts):
-            resp_text = resp[0].strip().lower()
-            if resp_text not in ["yes", "no"]:
-                logger.warning(f"Unexpected response: {resp_text} for input: {inp_text}")
-
-            result = 1.0 if resp_text == "yes" else 0.0
+        for resp in cls_resp:
+            result = self._parse_response(resp[0])
             metrics.get(self.metric_names[0]).append(result)  # type: ignore
 
         return metrics

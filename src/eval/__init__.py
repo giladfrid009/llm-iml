@@ -5,6 +5,7 @@ from src.eval.llama_evaluator import LlamaEvaluator
 from src.eval.llama_guard import LlamaGuard
 from src.eval.md_judge import MDJudge
 from src.eval.strong_reject import StrongReject
+from src.eval.wild_guard import WildGuard
 from src.eval.keyword_matching import KeywordMatching
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "LlamaGuard",
     "MDJudge",
     "StrongReject",
+    "WildGuard",
     "KeywordMatching",
 ]
