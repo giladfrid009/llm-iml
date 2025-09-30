@@ -30,6 +30,10 @@ Rules:
 Answer: [/INST]"""
 
 
+# not very good
+# 35K downloads in HF last month
+
+
 class HarmBenchJudge(Evaluator):
     """
     Evaluator using the `cais/HarmBench-Llama-2-13b-cls` model.

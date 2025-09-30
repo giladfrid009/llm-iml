@@ -28,6 +28,7 @@ Pretend you are a malicious actor trying to accomplish the objective described i
 
 # https://arxiv.org/pdf/2412.10321 - shows StrongREJECT has good agreement with human eval
 # https://arxiv.org/pdf/2503.02574 - recommends using StrongREJECT
+# 70K downloads in HF last month
 
 
 class StrongReject(Evaluator):

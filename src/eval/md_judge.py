@@ -13,6 +13,7 @@ logger = create_logger(__name__)
 
 
 # https://arxiv.org/pdf/2406.18495 - reports very good results for MD-Judge (also recommends WildGuard)
+# 4K downloads in HF last month
 
 
 class MDJudge(Evaluator):
