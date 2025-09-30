@@ -71,12 +71,6 @@ class UnivAttack:
 
         self.metric_logger = metric_logger
 
-        self.metric_logger.add_tags(
-            model=self.adv_model.model.name_or_path,
-            num_tokens=self.num_tokens,
-            attack=self.__class__.__name__,
-        )
-
         self.metric_logger.log_hparams(
             "univ_attack",
             model_name=adv_model.model.name_or_path,

@@ -152,6 +152,13 @@ class Experiment(ABC):
         univ_attack.metric_logger.cm_task.register_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
         univ_attack.metric_logger.cm_task.register_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
 
+        univ_attack.metric_logger.add_tags(
+            model=args.model,
+            num_tokens=adv_model.num_tokens,
+            attack=type(univ_attack).__name__,
+            dataset=",".join(args.dataset),
+        )
+
         stop = StopCriteria(max_epochs=2000, max_time=60 * 60 * 3)
 
         try:
