@@ -45,7 +45,7 @@ class Experiment(ABC):
             type=str,
             choices=SUPPORTED_MODELS,
             required=True,
-            help="The model name or path to use.",
+            help="The model name to attack.",
         )
 
         parser.add_argument(
@@ -75,7 +75,7 @@ class Experiment(ABC):
             "--seed",
             type=int,
             default=random.randint(0, 1000000),
-            help="Random seed for reproducibility (default: random).",
+            help="Random seed for reproducibility.",
         )
 
         parser.add_argument(

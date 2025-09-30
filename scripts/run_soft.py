@@ -6,18 +6,26 @@ module_dir = pathlib.Path(__file__).parent.resolve().parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
-from scripts.experiment import Experiment
-from eval.harmbench_judge import HarmBenchJudge
-from eval.keyword_matching import KeywordMatching
-from eval.strong_reject import StrongReject
 from gserve.configs import ServeConfig, LLMConfig
+from scripts.experiment import Experiment
+
+from src.eval import (
+    Evaluator,
+    BeaverCost,
+    HarmBenchJudge,
+    LlamaEvaluator,
+    LlamaGuard,
+    MDJudge,
+    StrongReject,
+    KeywordMatching,
+    WildGuard,
+)
 
 from src.univ_attacks import UnivAttack, UnivSoftPrompt
 from src.fgsm_optim import FGSM
 from src.adv_model import AdvModel
 from src.initialize import Initializer
 from src.config import GenConfig, StopCriteria
-from src.eval import Evaluator
 from src.metric_logger import MetricLogger
 
 

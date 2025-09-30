@@ -31,7 +31,7 @@ def load_single_dataset(name: str) -> Dataset:
 
     if name == DatasetName.HARMBENCH:
         ds_dict: DatasetDict = datasets.load_dataset("data/harm_bench")  # type: ignore
-        return ds_dict["train"].filter(lambda x: x["functional_category"] in ["standard", "context"])
+        return ds_dict["train"].filter(lambda x: x["functional_category"] in ["standard", "contextual"])
 
     if name == DatasetName.HARMBENCH_STANDARD:
         ds_dict: DatasetDict = datasets.load_dataset("data/harm_bench")  # type: ignore
@@ -39,7 +39,7 @@ def load_single_dataset(name: str) -> Dataset:
 
     if name == DatasetName.HARMBENCH_CONTEXT:
         ds_dict: DatasetDict = datasets.load_dataset("data/harm_bench")  # type: ignore
-        return ds_dict["train"].filter(lambda x: x["functional_category"] == "context")
+        return ds_dict["train"].filter(lambda x: x["functional_category"] == "contextual")
 
     if name == DatasetName.ADVBENCH:
         return datasets.load_dataset("walledai/AdvBench", split="train")  # type: ignore
@@ -97,12 +97,13 @@ def load_datasets(
         ds_full = ds_list[0]
 
     else:
-        ds_full = pd.concat(ds_list, axis=0, join="inner", ignore_index=True)
+        ds_full = pd.concat(ds_list, axis=0, join="outer", ignore_index=True)
         ds_full.reset_index(drop=True, inplace=True)
-        logger.info(f"Joined datasets: {names}. Remaining columns: {ds_full.columns.tolist()}")
+        logger.info(f"Joined datasets: {list(names)}")
 
         orig_size = len(ds_full)
         ds_full.drop_duplicates(subset=["prompt"], keep="first", inplace=True, ignore_index=True)
+        ds_full.dropna(subset=["prompt"], inplace=True, ignore_index=True)
         ds_full.reset_index(drop=True, inplace=True)
         logger.info(f"Dropped {orig_size - len(ds_full)} duplicate rows. Dataset size is now {len(ds_full)}.")
 
