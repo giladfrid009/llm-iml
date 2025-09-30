@@ -35,7 +35,6 @@ class Experiment(ABC):
         """Override to add custom command line arguments."""
         pass
 
-    # TODO: add run_name optional argument
     def _parse_args(self) -> argparse.Namespace:
         """Parse command line arguments."""
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
