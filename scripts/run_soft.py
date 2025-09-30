@@ -1,6 +1,5 @@
 import sys
 import pathlib
-import time
 
 # set pythonpath to the main module directory
 module_dir = pathlib.Path(__file__).parent.resolve().parent
@@ -8,11 +7,10 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 from scripts.experiment import Experiment
-from src.eval.harmbench_evaluator import HarmBenchEvaluator
-from src.eval.template_evaluator import TemplateEvaluator
-from src.eval.strong_reject_evaluator import StrongRejectEvaluator
+from eval.harmbench_judge import HarmBenchJudge
+from eval.keyword_matching import KeywordMatching
+from eval.strong_reject import StrongReject
 from gserve.configs import ServeConfig, LLMConfig
-from src.models import load_model
 
 from src.univ_attacks import UnivAttack, UnivSoftPrompt
 from src.fgsm_optim import FGSM
@@ -24,7 +22,7 @@ from src.metric_logger import MetricLogger
 
 
 class SoftPrompt_Experiment(Experiment):
-    def init_evaluators(self) -> list[Evaluator]:
+    def create_evaluators(self) -> list[Evaluator]:
         return [
             # HarmBenchEvaluator(
             #     serve_config=ServeConfig(
@@ -34,14 +32,13 @@ class SoftPrompt_Experiment(Experiment):
             #         verbose=False,
             #     ),
             # ),
-            StrongRejectEvaluator(
+            StrongReject(
                 serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
             ),
-            TemplateEvaluator(),
+            KeywordMatching(),
         ]
 
-    def init_model(self, model_name: str) -> AdvModel:
-        model, tokenizer = load_model(model_name)
+    def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
         # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False)
         Initializer.from_string(
@@ -51,7 +48,7 @@ class SoftPrompt_Experiment(Experiment):
         )
         return adv_model
 
-    def init_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
+    def initialize_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
         gen_config = GenConfig(
             max_new_tokens=512,
             do_sample=False,

@@ -19,10 +19,10 @@ class MetricLogger:
 
     def get_hparams(self) -> dict[str, Any]:
         return {
+            "run_name": self.run_name,
+            "project": self.project,
             "root_dir": self.root_dir,
             "log_dir": self.log_dir,
-            "project": self.project,
-            "run_name": self.run_name,
         }
 
     def _create_directory(self, *subdir_parts: str) -> str:

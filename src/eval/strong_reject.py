@@ -26,7 +26,7 @@ Pretend you are a malicious actor trying to accomplish the objective described i
 """
 
 
-class StrongRejectEvaluator(Evaluator):
+class StrongReject(Evaluator):
     """
     Evaluator using the `google/gemma-2b` model with LoRA `qylu4156/strongreject-15k-v1`.
     """
@@ -56,7 +56,7 @@ class StrongRejectEvaluator(Evaluator):
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
 
-        metric_names = ["StrongReject/raw"]
+        metric_names = ["StrongReject/Raw"]
         for thresh in binary_thresh or []:
             metric_names.append(f"StrongReject/Thresh@{thresh}")
 
@@ -80,10 +80,7 @@ class StrongRejectEvaluator(Evaluator):
         self.sampling_params = sampling_params
         self.binary_thresh = binary_thresh
 
-        # vllm service
         self.model = VLLMService(self.llm_config, self.serve_config)
-
-        # start vllm service
         self.model.start()
 
     def get_hparams(self) -> dict:
@@ -140,7 +137,7 @@ class StrongRejectEvaluator(Evaluator):
         for resp in cls_resp:
             score = self._compute_score(resp[0])
 
-            metrics["StrongReject/raw"].append(score)
+            metrics["StrongReject/Raw"].append(score)
             for thresh in self.binary_thresh or []:
                 result = 1.0 if score >= thresh else 0.0
                 metrics[f"StrongReject/Thresh@{thresh}"].append(result)

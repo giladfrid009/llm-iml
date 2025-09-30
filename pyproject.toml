@@ -32,6 +32,7 @@ dependencies = [
     "typeguard>=4.4.4",
     "dotenv>=0.9.9",
     "pyarrow>=21.0.0",
+    "datasets>=4.1.1",
 ]
 
 [tool.uv.sources]

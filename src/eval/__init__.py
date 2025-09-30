@@ -1,18 +1,20 @@
 from src.eval.evaluator import Evaluator, MultiEvaluator
-from src.eval.beaver_evaluator import BeaverEvaluator
-from src.eval.harmbench_evaluator import HarmBenchEvaluator
+from src.eval.beaver_cost import BeaverCost
+from src.eval.harmbench_judge import HarmBenchJudge
 from src.eval.llama_evaluator import LlamaEvaluator
-from src.eval.llama_guard_evaluator import LlamaGuardEvaluator
-from src.eval.strong_reject_evaluator import StrongRejectEvaluator
-from src.eval.template_evaluator import TemplateEvaluator
+from src.eval.llama_guard import LlamaGuard
+from src.eval.md_judge import MDJudge
+from src.eval.strong_reject import StrongReject
+from src.eval.keyword_matching import KeywordMatching
 
 __all__ = [
     "Evaluator",
     "MultiEvaluator",
-    "BeaverEvaluator",
-    "HarmBenchEvaluator",
+    "BeaverCost",
+    "HarmBenchJudge",
     "LlamaEvaluator",
-    "LlamaGuardEvaluator",
-    "StrongRejectEvaluator",
-    "TemplateEvaluator",
+    "LlamaGuard",
+    "MDJudge",
+    "StrongReject",
+    "KeywordMatching",
 ]

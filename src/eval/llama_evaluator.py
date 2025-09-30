@@ -82,10 +82,7 @@ class LlamaEvaluator(Evaluator):
         self.serve_config = serve_config
         self.sampling_params = sampling_params
 
-        # vllm service
         self.model = VLLMService(self.llm_config, self.serve_config)
-
-        # start vllm service
         self.model.start()
 
     def get_hparams(self) -> dict:
@@ -121,7 +118,6 @@ class LlamaEvaluator(Evaluator):
             resp_text = resp[0].strip().lower()
             if resp_text not in ["yes", "no"]:
                 logger.warning(f"Unexpected response: {resp_text} for input: {inp_text}")
-                continue
 
             result = 1.0 if resp_text == "yes" else 0.0
             metrics.get(self.metric_names[0]).append(result)  # type: ignore

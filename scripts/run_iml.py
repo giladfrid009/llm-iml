@@ -1,7 +1,6 @@
 from torch import optim
 import sys
 import pathlib
-import time
 
 # set pythonpath to the main module directory
 module_dir = pathlib.Path(__file__).parent.resolve().parent
@@ -11,16 +10,15 @@ if str(module_dir) not in sys.path:
 from scripts.experiment import Experiment
 
 from src.eval import (
-    BeaverEvaluator,
-    HarmBenchEvaluator,
+    BeaverCost,
+    HarmBenchJudge,
     LlamaEvaluator,
-    LlamaGuardEvaluator,
-    StrongRejectEvaluator,
-    TemplateEvaluator,
+    LlamaGuard,
+    StrongReject,
+    KeywordMatching,
 )
 
 from gserve.configs import ServeConfig, LLMConfig
-from src.models import load_model
 from src.sample_attacks import SoftPrompt
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
@@ -32,7 +30,7 @@ from src.metric_logger import MetricLogger
 
 
 class IML_Experiment(Experiment):
-    def init_evaluators(self) -> list[Evaluator]:
+    def create_evaluators(self) -> list[Evaluator]:
         return [
             # BeaverEvaluator(device_map=1),
             # HarmBenchEvaluator(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
@@ -44,13 +42,11 @@ class IML_Experiment(Experiment):
             #     serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
             #     model_name="meta-llama/Llama-Guard-3-8B",
             # ),
-            StrongRejectEvaluator(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
-            TemplateEvaluator(),
+            StrongReject(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
+            KeywordMatching(),
         ]
 
-    def init_model(self, model_name: str) -> AdvModel:
-        model, tokenizer = load_model(model_name)
-
+    def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         # TODO: try less tokens
         # TODO: try different initializations
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
@@ -58,7 +54,7 @@ class IML_Experiment(Experiment):
         # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False) # USUALLY PERFORMS WORSE
         return adv_model
 
-    def init_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
+    def initialize_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
         # TODO: try Adam - doesnt do much difference, maybe worse
         # TODO: we can create an attack_builder func and try with inner_attack scheduling,
         # i.e. scheduling the number of steps
@@ -80,7 +76,7 @@ class IML_Experiment(Experiment):
         )
 
         # TODO: lm_head is the last layer so we basically optimize over the logits
-        # try also internal layer: i.e lm_head, capture_output=False: 
+        # try also internal layer: i.e lm_head, capture_output=False:
         # - on regular Llama2 performs worse
         # - on GraySwanAI/Llama-3-8B-Instruct-RR performs 2x better
         # TODO: try combination of output layer + internal layer
@@ -95,7 +91,7 @@ class IML_Experiment(Experiment):
             do_sample=True,
             remove_invalid_values=True,
         )
-        
+
         metric_logger = MetricLogger(
             self.args().run_name,
             project="LLM-IML",

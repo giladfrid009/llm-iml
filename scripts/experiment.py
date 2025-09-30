@@ -4,26 +4,19 @@ import random
 import argparse
 import logging
 import sys
-import pandas as pd
-import os
 import time
+from transformers import PreTrainedModel, PreTrainedTokenizer  # pyright: ignore[reportPrivateImportUsage]
 
 from src.utils import env
 from src.utils.logging import create_logger, setup_logging
 from src.data import TableLoader
-from src.models import SUPPORTED_MODELS
 from src.univ_attacks import UnivAttack
 from src.adv_model import AdvModel
 from src.config import StopCriteria
 from src.eval import Evaluator
 
-
-SUPPORTED_DATASETS = [
-    "adv_bench",
-    "harm_bench",
-    "jailbreak_bench",
-    "malicious_instruct",
-]
+from scripts.load_model import SUPPORTED_MODELS, load_model
+from scripts.load_dataset import SUPPORTED_DATASETS, load_datasets
 
 
 logger = create_logger(__name__)
@@ -51,8 +44,17 @@ class Experiment(ABC):
             "--model",
             type=str,
             choices=SUPPORTED_MODELS,
-            default="meta-llama/Llama-2-7b-chat-hf",
+            required=True,
             help="The model name or path to use.",
+        )
+
+        parser.add_argument(
+            "--dataset",
+            type=str,
+            nargs="+",
+            choices=SUPPORTED_DATASETS,
+            required=True,
+            help="The dataset(s) to use. If multiple datasets are provided, they will be concatenated.",
         )
 
         parser.add_argument(
@@ -63,18 +65,10 @@ class Experiment(ABC):
         )
 
         parser.add_argument(
-            "--dataset",
+            "--val_ratio",
             type=str,
-            choices=SUPPORTED_DATASETS,
-            default="harm_bench",
-            help="The dataset to use.",
-        )
-
-        parser.add_argument(
-            "--train_ratio",
-            type=str,
-            default=0.65,
-            help="The ratio of training data to use.",
+            default=0.35,
+            help="The ratio of the validation set.",
         )
 
         parser.add_argument(
@@ -112,52 +106,38 @@ class Experiment(ABC):
         env.prepare_environment()
         env.set_seed(seed)
 
-    def load_data(self, dataset_name: str, train_ratio: float) -> tuple[TableLoader, TableLoader]:
-        data_path = f"data/{dataset_name}/harmful_behaviors.csv"
-        if not os.path.exists(data_path):
-            raise FileNotFoundError(f"Data file not found: {data_path}")
-
-        data = pd.read_csv(data_path)
-        data = data.rename(columns={"goal": "prompt"})
-        data = data.sample(frac=1, random_state=0).reset_index(drop=True)  # shuffle
-
-        split = int(train_ratio * len(data))
-        dl_train = TableLoader(data.iloc[:split].copy(), batch_size=10, shuffle=True)
-        dl_eval = TableLoader(data.iloc[split:].copy(), batch_size=25, shuffle=False)
-
-        logger.info(f"Train size: {dl_train.n_samples}")
-        logger.info(f"Eval size: {dl_eval.n_samples}")
-
-        return dl_train, dl_eval
-
     @abstractmethod
-    def init_evaluators(self) -> list[Evaluator]:
+    def create_evaluators(self) -> list[Evaluator]:
         pass
 
     @abstractmethod
-    def init_model(self, model_name: str) -> AdvModel:
+    def create_adversarial_model(self, model: PreTrainedModel, tokenizer: PreTrainedTokenizer) -> AdvModel:
         pass
 
     @abstractmethod
-    def init_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
+    def initialize_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
         pass
 
     def run(self):
         args = self.args()
 
-        logger.info(f"Loading dataset: {args.dataset}")
-        dl_train, dl_eval = self.load_data(args.dataset, train_ratio=args.train_ratio)
+        logger.info(f"Loading dataset(s): {args.dataset}")
+        ds_train, ds_val, ds_test = load_datasets(*args.dataset, val_ratio=args.val_ratio)
+        dl_train = TableLoader(ds_train, batch_size=10, shuffle=True)
+        dl_eval = TableLoader(ds_val, batch_size=25, shuffle=False)
+        dl_test = TableLoader(ds_test, batch_size=25, shuffle=False)
 
         logger.info("Loading evaluators...")
-        evaluators = self.init_evaluators()
+        evaluators = self.create_evaluators()
         logger.info(f"Evaluators loaded: {[ev.name for ev in evaluators]}")
 
         logger.info(f"Loading model: {args.model}")
-        adv_model = self.init_model(args.model)
+        model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
+        adv_model = self.create_adversarial_model(model, tokenizer)
         logger.info(f"Model architecture: {adv_model.model}")
 
         logger.info("Initializing attack...")
-        univ_attack = self.init_attack(adv_model, evaluators)
+        univ_attack = self.initialize_attack(adv_model, evaluators)
 
         logger.info("Logging experiment data...")
         if main_file := getattr(sys.modules.get("__main__"), "__file__", None):
@@ -167,6 +147,7 @@ class Experiment(ABC):
 
         univ_attack.metric_logger.cm_task.register_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
         univ_attack.metric_logger.cm_task.register_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
+        univ_attack.metric_logger.cm_task.register_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
 
         stop = StopCriteria(max_epochs=2000, max_time=60 * 60 * 3)
 
@@ -174,10 +155,10 @@ class Experiment(ABC):
             logger.info("Running attack...")
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)
 
-            logger.info("Running final eval...")
-            metrics = univ_attack.evaluate(adv_model, evaluators, dl_eval)
+            logger.info("Running test evaluation...")
+            metrics = univ_attack.evaluate(adv_model, evaluators, dl_test)
             univ_attack.metric_logger.log_metrics(metrics)
-            univ_attack.metric_logger.cm_task.upload_artifact(name="eval_result", artifact_object=dl_eval.df)
+            univ_attack.metric_logger.cm_task.upload_artifact(name="test_result", artifact_object=dl_eval.df)
 
         finally:
             univ_attack.close()

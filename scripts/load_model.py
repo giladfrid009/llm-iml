@@ -17,8 +17,6 @@ MPT_TEMPLATE = "{% if messages[0]['role'] == 'system' %}{% set loop_messages = m
 SUPPORTED_MODELS = [
     "Qwen/Qwen3-0.6B",
     "Qwen/Qwen2.5-0.5B-Instruct",
-    "GraySwanAI/Llama-3-8B-Instruct-RR",
-    "GraySwanAI/Mistral-7B-Instruct-RR",
     "Orenguteng/Llama-3-8B-Lexi-Uncensored",
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "meta-llama/Llama-3.2-1B-Instruct",
@@ -34,12 +32,14 @@ SUPPORTED_MODELS = [
     "upstage/SOLAR-10.7B-Instruct-v1.0",
     "openchat/openchat-3.5-0106",
     "HuggingFaceH4/zephyr-7b-beta",
-    "cais/zephyr_7b_r2d2",
     "google/gemma-2b-it",
     "google/gemma-2-2b-it",
     "google/gemma-3-1b-it",
-    "ContinuousAT/Llama-2-7B-CAT",
     "apple/OpenELM-1_1B-Instruct",
+    "GraySwanAI/Llama-3-8B-Instruct-RR",
+    "GraySwanAI/Mistral-7B-Instruct-RR",
+    "cais/zephyr_7b_r2d2",
+    "ContinuousAT/Llama-2-7B-CAT",
 ]
 
 
@@ -51,7 +51,7 @@ def print_supported_models():
 
 def load_model(
     model_name: str,
-    torch_dtype: torch.dtype = torch.bfloat16,
+    torch_dtype: torch.dtype | str = "auto",
     device_map: str = "cuda:0",
     hf_token: str | None = None,
     **kwargs,
