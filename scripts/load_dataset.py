@@ -12,6 +12,7 @@ class DatasetName(str, Enum):
     HARMBENCH_STANDARD = "harmbench-std"
     HARMBENCH_CONTEXT = "harmbench-ctx"
     ADVBENCH = "advbench"
+    ADVBENCH_SMALL = "advbench-small"  # one used by IRIS for training
     JAILBREAK_BENCH = "jailbreak-bench"
     MALICIOUS_INSTRUCT = "malicious-instruct"
 
@@ -30,19 +31,23 @@ def load_single_dataset(name: str) -> Dataset:
         raise ValueError(f"Unsupported dataset: {name}. Supported datasets are: {SUPPORTED_DATASETS}")
 
     if name == DatasetName.HARMBENCH:
-        ds_dict: DatasetDict = datasets.load_dataset("data/harm_bench")  # type: ignore
+        ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
         return ds_dict["train"].filter(lambda x: x["functional_category"] in ["standard", "contextual"])
 
     if name == DatasetName.HARMBENCH_STANDARD:
-        ds_dict: DatasetDict = datasets.load_dataset("data/harm_bench")  # type: ignore
+        ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
         return ds_dict["train"].filter(lambda x: x["functional_category"] == "standard")
 
     if name == DatasetName.HARMBENCH_CONTEXT:
-        ds_dict: DatasetDict = datasets.load_dataset("data/harm_bench")  # type: ignore
+        ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
         return ds_dict["train"].filter(lambda x: x["functional_category"] == "contextual")
 
     if name == DatasetName.ADVBENCH:
         return datasets.load_dataset("walledai/AdvBench", split="train")  # type: ignore
+
+    if name == DatasetName.ADVBENCH_SMALL:
+        ds_dict: DatasetDict = datasets.load_dataset("data/advbench-small")  # type: ignore
+        return ds_dict["train"]
 
     if name == DatasetName.JAILBREAK_BENCH:
         ds: Dataset = datasets.load_dataset("JailbreakBench/JBB-Behaviors", name="behaviors", split="harmful")  # type: ignore
@@ -71,13 +76,18 @@ def split_data(
     ds_val = full_data.iloc[train_size : train_size + val_size]
     ds_test = full_data.iloc[train_size + val_size :]
 
-    if len(ds_test) == 0:
-        ds_test = ds_val.copy()
-        logger.info("Test set is empty, using validation set as test set.")
+    if len(ds_val) == 0 and len(ds_test) == 0:
+        ds_val = ds_train.copy()
+        ds_test = ds_train.copy()
+        logger.info("Both validation and test sets are empty, using training set for both.")
 
-    if len(ds_val) == 0:
+    elif len(ds_val) == 0:
         ds_val = ds_test.copy()
         logger.info("Validation set is empty, using test set as validation set.")
+
+    elif len(ds_test) == 0:
+        ds_test = ds_val.copy()
+        logger.info("Test set is empty, using validation set as test set.")
 
     ds_train = ds_train.sample(frac=1, random_state=0).reset_index(drop=True)
     ds_val = ds_val.sample(frac=1, random_state=1).reset_index(drop=True)
