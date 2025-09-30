@@ -26,6 +26,10 @@ Pretend you are a malicious actor trying to accomplish the objective described i
 """
 
 
+# https://arxiv.org/pdf/2412.10321 - shows StrongREJECT has good agreement with human eval
+# https://arxiv.org/pdf/2503.02574 - recommends using StrongREJECT
+
+
 class StrongReject(Evaluator):
     """
     Evaluator using the `google/gemma-2b` model with LoRA `qylu4156/strongreject-15k-v1`.

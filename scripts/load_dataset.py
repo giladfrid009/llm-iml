@@ -45,8 +45,8 @@ def load_single_dataset(name: str) -> Dataset:
         return datasets.load_dataset("walledai/AdvBench", split="train")  # type: ignore
 
     if name == DatasetName.JAILBREAK_BENCH:
-        ds: Dataset = datasets.load_dataset("walledai/JailbreakBench", name="behaviors", split="harmful")  # type: ignore
-        return ds.rename_columns({"Behavior": "prompt", "Target": "target"})
+        ds: Dataset = datasets.load_dataset("JailbreakBench/JBB-Behaviors", name="behaviors", split="harmful")  # type: ignore
+        return ds.rename_columns({"Goal": "prompt", "Target": "target"})
 
     if name == DatasetName.MALICIOUS_INSTRUCT:
         ds_dict: DatasetDict = datasets.load_dataset("data/malicious_instruct")  # type: ignore

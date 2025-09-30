@@ -11,6 +11,9 @@ DEFAULT_REFUSALS = {
 }
 
 
+# https://arxiv.org/pdf/2406.09321 - compares performance of various refusal sets
+
+
 class KeywordMatching(Evaluator):
     def __init__(
         self,

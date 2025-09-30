@@ -12,6 +12,9 @@ from vllm.sampling_params import GuidedDecodingParams
 logger = create_logger(__name__)
 
 
+# https://arxiv.org/pdf/2406.18495 - reports very good results for MD-Judge (also recommends WildGuard)
+
+
 class MDJudge(Evaluator):
     """
     Evaluator using the `OpenSafetyLab/MD-Judge-v0_2-internlm2_7b` model.

@@ -19,6 +19,9 @@ SUPPORTED_MODELS = [
 ]
 
 
+# https://arxiv.org/pdf/2410.12855 - shows that Llama-Guard-3-8B very good on JBB-Behaviors and JAILJUDGE datasets
+
+
 class LlamaGuard(Evaluator):
     """
     Evaluator using the a LlamaGuard model.
