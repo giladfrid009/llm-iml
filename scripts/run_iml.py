@@ -79,7 +79,10 @@ class IML_Experiment(Experiment):
         activ_extractor = ActivationExtractor(
             adv_model.model,
             "lm_head",
-            capture_output=False,
+            "model.layers.17",
+            "model.layers.12",
+            "model.layers.25",
+            capture_output=True,
         )
 
         gen_config = GenConfig(
@@ -105,7 +108,7 @@ class IML_Experiment(Experiment):
             activ_extractor=activ_extractor,
             evaluators=evaluators,
             # judge_metric="StrongReject/Thresh@0.5",
-            judge_metric="Meta-Llama-Guard-2-8B",
+            judge_metric="LlamaGuard/Meta-Llama-Guard-2-8B",
             eval_freq=0.5,
             gen_config=gen_config,
             mixed_precision=False,

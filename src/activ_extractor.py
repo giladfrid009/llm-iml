@@ -3,6 +3,7 @@ from torch import nn, Tensor
 from contextlib import contextmanager
 from typing import Callable
 from src.utils.logging import create_logger
+from typing import Any
 
 logger = create_logger(__name__)
 
@@ -121,7 +122,14 @@ class ActivationExtractor:
     def _create_output_hook(self, layer_name: str):
         """Create a forward hook to capture layer output."""
 
-        def hook_fn(module: nn.Module, inputs: tuple[Tensor, ...], output: Tensor):
+        def hook_fn(module: nn.Module, args: tuple[Tensor, ...], output: tuple[Tensor, ...] | Tensor):
+            if isinstance(output, tuple):
+                logger.debug(f"[Layer {layer_name}]: Output is a tuple; using the first element.")
+                output = output[0]
+
+            if not isinstance(output, torch.Tensor):
+                raise ValueError(f"[Layer {layer_name}]: Expected output to be a Tensor, got {type(output)}")
+
             self._activations[layer_name] = output
 
         return hook_fn
@@ -129,11 +137,26 @@ class ActivationExtractor:
     def _create_input_hook(self, layer_name: str):
         """Create a forward hook to capture layer input."""
 
-        def hook_fn(module: nn.Module, inputs: tuple[Tensor, ...]):
-            tensors = [item for item in inputs if isinstance(item, torch.Tensor)]
-            if not len(tensors) == 1:
-                raise ValueError(f"Expected 1 input tensor, got {len(tensors)}")
-            self._activations[layer_name] = tensors[0]
+        def hook_fn(module: nn.Module, args: tuple[Tensor, ...], kwargs: dict[str, Any]):
+            tensors_args = [item for item in args if isinstance(item, torch.Tensor)]
+            tensors_kwargs = [item for item in kwargs.values() if isinstance(item, torch.Tensor)]
+
+            if len(tensors_args) == 1:
+                self._activations[layer_name] = tensors_args[0]
+
+            elif len(tensors_args) > 1:
+                logger.debug(f"[Layer {layer_name}]: Multiple tensor args; using the first tensor.")
+                self._activations[layer_name] = tensors_args[0]
+
+            elif len(tensors_kwargs) == 1:
+                logger.debug(f"[Layer {layer_name}]: Single tensor in kwargs; using that tensor.")
+                self._activations[layer_name] = tensors_kwargs[0]
+
+            elif len(tensors_kwargs) > 1:
+                raise ValueError(f"[Layer {layer_name}]: Multiple tensor kwargs; cannot determine which to use.")
+
+            else:
+                raise ValueError(f"[Layer {layer_name}]: Input has no tensor arguments.")
 
         return hook_fn
 
@@ -141,9 +164,9 @@ class ActivationExtractor:
         """Register forward hooks for the specified layers."""
         for layer_name, layer_module in self._layers:
             if self.capture_output:
-                handle = layer_module.register_forward_hook(self._create_output_hook(layer_name))
+                handle = layer_module.register_forward_hook(self._create_output_hook(layer_name), with_kwargs=False)
             else:
-                handle = layer_module.register_forward_pre_hook(self._create_input_hook(layer_name))
+                handle = layer_module.register_forward_pre_hook(self._create_input_hook(layer_name), with_kwargs=True)
 
             self._handles.append(handle)
 

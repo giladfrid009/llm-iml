@@ -8,6 +8,7 @@
         "AUTODAN",
         "convs",
         "fgsm",
-        "HARMBENCH"
+        "HARMBENCH",
+        "scav"
     ]
 }

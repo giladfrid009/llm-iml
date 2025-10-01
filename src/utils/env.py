@@ -6,7 +6,6 @@ import numpy
 import random
 from src.utils.logging import create_logger
 
-
 logger = create_logger(__name__)
 
 

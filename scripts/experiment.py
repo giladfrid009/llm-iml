@@ -78,9 +78,11 @@ class Experiment(ABC):
         )
 
         parser.add_argument(
-            "--silent",
-            action="store_true",
-            help="Disable verbose outputs.",
+            "--log_level",
+            type=str,
+            choices=[lvl.lower() for lvl in logging.getLevelNamesMapping().keys()],
+            default="info",
+            help="Logging level.",
         )
 
         self.add_arguments(parser)
@@ -178,7 +180,7 @@ class Experiment(ABC):
     def main(self):
         try:
             self._parse_args()
-            setup_logging(level=logging.WARNING if self.args().silent else logging.INFO)
+            setup_logging(level=self.args().log_level)
             self.prepare_environment(seed=self.args().seed)
             self.run()
         except KeyboardInterrupt:

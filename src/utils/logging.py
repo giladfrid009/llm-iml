@@ -49,14 +49,17 @@ def _configure_logger(logger: logging.Logger, level: int, fmt: logging.Formatter
         logger.propagate = False
 
 
-def setup_logging(level: int, *, is_global: bool = False) -> None:
+def setup_logging(level: int | str, *, is_global: bool = False) -> None:
     """
     Set the default logging level and reconfigure loggers.
 
     Args:
-      level: the new default logging level (e.g., logging.DEBUG).
-      is_global: if True, also configure the root logger.
+      level (int | str): the new default logging level (e.g., logging.DEBUG).
+      is_global (bool): if True, also configure the root logger.
     """
+    if isinstance(level, str):
+        level = parse_log_level(level, default=CURRENT_LEVEL)
+
     global CURRENT_LEVEL
     CURRENT_LEVEL = level
     os.environ[LOG_LEVEL_ENV] = logging.getLevelName(level)
@@ -72,26 +75,29 @@ def setup_logging(level: int, *, is_global: bool = False) -> None:
         _configure_logger(lg, level, fmt)
 
 
-def create_logger(name: str, level: int | None = None) -> logging.Logger:
+def create_logger(name: str, level: int | str | None = None) -> logging.Logger:
     """
     Create or retrieve a logger and track it for future reconfiguration.
 
     Args:
-      name: the logger name (commonly __name__ or any identifier).
-      level: optional override; uses CURRENT_LEVEL if None.
+      name (str): the logger name (commonly __name__ or any identifier).
+      level (int | str | None): optional override; uses CURRENT_LEVEL if None.
 
     Returns:
-      A configured Logger instance.
+        logging.Logger: the configured logger instance.
     """
-    lvl = level if level is not None else CURRENT_LEVEL
+    if isinstance(level, str):
+        level = parse_log_level(level, default=CURRENT_LEVEL)
+
+    level = level if level is not None else CURRENT_LEVEL
     fmt = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT)
 
     if name in ACTIVE_LOGGERS:
         logger = ACTIVE_LOGGERS[name]
-        _configure_logger(logger, lvl, fmt)
+        _configure_logger(logger, level, fmt)
         return logger
 
     logger = logging.getLogger(name)
-    _configure_logger(logger, lvl, fmt)
+    _configure_logger(logger, level, fmt)
     ACTIVE_LOGGERS[name] = logger
     return logger
