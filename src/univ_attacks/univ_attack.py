@@ -209,105 +209,6 @@ class UnivAttack:
 
         return all_metrics
 
-    # TODO: probably remove
-    def compute_metrics(self) -> dict[str, float]:
-        """Compute diagnostic metrics for the current universal embeddings.
-
-        Namespaces (for clean logger grouping):
-          univ.closest_token/*  : Stats wrt each token's closest vocab entry (cosine / L2 criteria)
-          univ.vocab/*          : Aggregated stats over similarities to the entire vocab
-          univ.mean_vocab/*     : Distance / similarity to the (unweighted) mean vocab embedding
-          univ.proj/*           : Distances/similarities to the specific closest vocab tokens (by cosine & L2)
-          univ.intra/*          : Diversity among the optimized universal tokens themselves
-
-        All metrics are averaged across the optimized token dimension (N) when applicable.
-        Only cosine similarities and L2 distances are reported (all L1 related code removed by request).
-        """
-        metrics: dict[str, float] = {}
-
-        # Retrieve (1, N, D) universal embeddings; batch dimension must be 1 for a universal attack.
-        univ = self.adv_model.get_embeddings(clone=True)
-        if univ.size(0) != 1:
-            raise ValueError("Universal embeddings batch size must be 1.")
-        embeds = univ[0]  # (N, D)
-        N, D = embeds.shape
-        if N == 0:
-            return metrics  # nothing to report
-
-        # ------------------ Vocabulary preparation ------------------
-        vocab: torch.Tensor = self.adv_model.orig_embedder.weight.detach().to(embeds.device)  # (V, D)
-        V = vocab.size(0)
-        vocab_mean = vocab.mean(dim=0)  # (D,)
-
-        # Normalized versions for cosine similarity (avoid repeated division).
-        embeds_norm = F.normalize(embeds, p=2, dim=-1)  # (N, D)
-        vocab_norm = F.normalize(vocab, p=2, dim=-1)  # (V, D)
-        vocab_mean_norm = F.normalize(vocab_mean, p=2, dim=0)  # (D,)
-
-        # ------------------ Cosine similarity vs full vocab ------------------
-        # Shape: (N, V)
-        cos_sim = embeds_norm @ vocab_norm.T
-        cos_max_vals, cos_max_idx = cos_sim.max(dim=-1)  # (N,)
-
-        metrics["univ.closest_token/cos_max_mean"] = cos_max_vals.mean().item()
-        metrics["univ.vocab/cos_mean_all"] = cos_sim.mean().item()
-        k = min(5, V)
-        metrics["univ.vocab/cos_top5_mean"] = cos_sim.topk(k, dim=-1).values.mean().item()
-        for thr in (0.7, 0.8, 0.9):
-            metrics[f"univ.closest_token/frac_cos_gt_{thr}"] = (cos_max_vals > thr).float().mean().item()
-
-        # ------------------ L2 distance to vocab (vectorized) ------------------
-        # Using: ||a-b||^2 = ||a||^2 + ||b||^2 - 2 a·b (stable & fast)
-        embeds_sq = (embeds * embeds).sum(dim=-1, keepdim=True)  # (N, 1)
-        vocab_sq = (vocab * vocab).sum(dim=-1).unsqueeze(0)  # (1, V)
-        l2_sq = (embeds_sq + vocab_sq - 2 * (embeds @ vocab.T)).clamp_min(0)  # (N, V)
-        l2_min_sq, l2_min_idx = l2_sq.min(dim=-1)  # (N,)
-        l2_min = l2_min_sq.sqrt()
-        metrics["univ.closest_token/l2_min_mean"] = l2_min.mean().item()
-        metrics["univ.closest_token/l2_min_median"] = l2_min.median().item()
-
-        # ------------------ Distances / similarity to mean vocab embedding ------------------
-        diff_to_vocab_mean = embeds - vocab_mean
-        mean_l2 = diff_to_vocab_mean.norm(p=2, dim=-1)
-        mean_cos = (embeds_norm * vocab_mean_norm).sum(dim=-1)
-        metrics["univ.mean_vocab/l2_mean"] = mean_l2.mean().item()
-        metrics["univ.mean_vocab/cos_mean"] = mean_cos.mean().item()
-
-        # ------------------ Projections vs the closest tokens (two criteria) ------------------
-        vocab_closest_cos = vocab[cos_max_idx]  # (N, D)
-        vocab_closest_l2 = vocab[l2_min_idx]  # (N, D)
-        metrics["univ.proj/cosToken_cos_mean"] = F.cosine_similarity(embeds, vocab_closest_cos, dim=-1).mean().item()
-        metrics["univ.proj/l2Token_cos_mean"] = F.cosine_similarity(embeds, vocab_closest_l2, dim=-1).mean().item()
-        metrics["univ.proj/cosToken_l2_mean"] = (embeds - vocab_closest_cos).norm(p=2, dim=-1).mean().item()
-        metrics["univ.proj/l2Token_l2_mean"] = (embeds - vocab_closest_l2).norm(p=2, dim=-1).mean().item()
-
-        # ------------------ Intra-set diversity (pairwise among optimized tokens) ------------------
-        if N > 1:
-            # Cosine diversity (exclude diagonal)
-            intra_cos = embeds_norm @ embeds_norm.T  # (N, N)
-            mask = ~torch.eye(N, dtype=torch.bool, device=embeds.device)
-            metrics["univ.intra/cos_mean"] = intra_cos[mask].mean().item()
-
-            # L2 diversity
-            embeds_sq_vec = embeds_sq.squeeze(-1)  # (N,)
-            intra_l2_sq = (embeds_sq_vec.unsqueeze(1) + embeds_sq_vec.unsqueeze(0) - 2 * (embeds @ embeds.T)).clamp_min(
-                0
-            )
-            intra_l2 = intra_l2_sq.sqrt()
-            metrics["univ.intra/l2_mean"] = intra_l2[mask].mean().item()
-
-            # Spread / stability diagnostics
-            metrics["univ.intra/closest_cos_std"] = cos_max_vals.std(unbiased=False).item()
-            metrics["univ.intra/dim_var_mean"] = embeds.var(dim=0, unbiased=False).mean().item()
-        else:
-            # Single token: no diversity; set to 0 for clarity.
-            metrics["univ.intra/cos_mean"] = 0.0
-            metrics["univ.intra/l2_mean"] = 0.0
-            metrics["univ.intra/closest_cos_std"] = 0.0
-            metrics["univ.intra/dim_var_mean"] = 0.0
-
-        return metrics
-
     def fit(
         self,
         dl_train: TableLoader,
@@ -368,9 +269,6 @@ class UnivAttack:
                             self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step)
                             self.metric_logger.report_scalars(metrics, step)
                             epoch_pbar.set_postfix(metrics)
-
-                            pert_metrics = self.compute_metrics()
-                            self.metric_logger.report_scalars(pert_metrics, step)
 
                         step += 1
 

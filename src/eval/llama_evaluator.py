@@ -61,7 +61,7 @@ class LlamaEvaluator(Evaluator):
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
 
-        metric_name = model_name.split("/")[-1]
+        metric_name = f"LlamaEval/{model_name.split('/')[-1]}"
         super().__init__(name="LlamaEval", metric_names=[metric_name], verbose=verbose)
 
         if llm_config is None:
@@ -115,7 +115,7 @@ class LlamaEvaluator(Evaluator):
         if response not in ["yes", "no"]:
             logger.warning(f"Unexpected response: {response}")
             return math.nan
-        
+
         return 1.0 if response == "yes" else 0.0
 
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:

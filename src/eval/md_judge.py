@@ -41,7 +41,7 @@ class MDJudge(Evaluator):
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
 
-        super().__init__(name="MD-Judge", metric_names=["MD-Judge", "MD-Judge/Score"], verbose=verbose)
+        super().__init__(name="MD-Judge", metric_names=["MD-Judge/Harmful", "MD-Judge/Score"], verbose=verbose)
 
         if llm_config is None:
             llm_config = LLMConfig(model_name=model_name, dtype="bfloat16", trust_remote_code=True)
