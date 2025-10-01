@@ -90,7 +90,7 @@ class MultiEvaluator(Evaluator):
         self,
         evaluators: list[Evaluator],
         combine_fn: Callable[[dict[str, float]], float],
-        verbose: bool = False,
+        verbose: bool = True,
     ):
         """
         Combines multiple evaluators into a single evaluator, which combines

@@ -120,6 +120,10 @@ class LlamaEvaluator(Evaluator):
 
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:
         cls_inputs = self._fmt_convs(prompts, responses)
+
+        # TODO: broken. should it be chat or generate?
+        # Either way, its broken for meta-llama/Llama-3.1-8B-Instruct
+        # should we use generate and the base models instead?
         cls_resp = self.model.chat(cls_inputs, self.sampling_params)
 
         metrics = {k: [] for k in self.metric_names}

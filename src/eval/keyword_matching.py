@@ -28,7 +28,7 @@ class KeywordMatching(Evaluator):
     def __init__(
         self,
         refusals_dict: dict[str, list[str]] = ALL_REFUSALS,
-        verbose: bool = True,
+        verbose: bool = False,
     ):
         refusals_dict = {f"Matching/{k}": normalize(v) for k, v in refusals_dict.items()}
         metric_names = list(refusals_dict.keys())

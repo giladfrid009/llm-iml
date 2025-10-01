@@ -2,6 +2,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizer  # pyright: ignore[r
 from src.eval.evaluator import Evaluator
 from src.eval.beaver import AutoModelForScore
 from src.eval.beaver.llama import LlamaForScore
+from src.utils.torch import clear_memory
 
 from typing import Any
 import torch
@@ -104,4 +105,7 @@ class BeaverCost(Evaluator):
         return metrics
 
     def close(self):
-        pass
+        if self.model is not None:
+            del self.model
+            self.model = None  # type: ignore
+            clear_memory()

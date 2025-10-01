@@ -6,7 +6,6 @@ from gserve.configs import LLMConfig, ServeConfig
 import math
 import msgspec
 from vllm import SamplingParams
-from vllm.sampling_params import GuidedDecodingParams
 
 logger = create_logger(__name__)
 
@@ -58,11 +57,7 @@ class LlamaGuard(Evaluator):
             llm_config = LLMConfig(model_name=model_name, dtype="bfloat16", max_model_len=max_model_len)
 
         if sampling_params is None:
-            sampling_params = SamplingParams(
-                temperature=0.0,
-                max_tokens=5,
-                guided_decoding=GuidedDecodingParams(choice=["unsafe", "safe"]),
-            )
+            sampling_params = SamplingParams(temperature=0.0, max_tokens=5)
 
         self.llm_config = llm_config
         self.serve_config = serve_config
