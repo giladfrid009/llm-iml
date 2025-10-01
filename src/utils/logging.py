@@ -57,10 +57,11 @@ def setup_logging(level: int | str, *, is_global: bool = False) -> None:
       level (int | str): the new default logging level (e.g., logging.DEBUG).
       is_global (bool): if True, also configure the root logger.
     """
+    global CURRENT_LEVEL
+
     if isinstance(level, str):
         level = parse_log_level(level, default=CURRENT_LEVEL)
 
-    global CURRENT_LEVEL
     CURRENT_LEVEL = level
     os.environ[LOG_LEVEL_ENV] = logging.getLevelName(level)
 

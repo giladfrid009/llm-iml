@@ -62,14 +62,18 @@ def load_single_dataset(name: str) -> Dataset:
 
 def split_data(
     full_data: pd.DataFrame,
-    val_ratio: float,
-    test_ratio: float,
+    val_size: float | int,
+    test_size: float | int,
     split_seed: int = 42,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    size = len(full_data)
-    val_size = int(size * val_ratio)
-    test_size = int(size * test_ratio)
-    train_size = size - val_size - test_size
+    if val_size < 0 or test_size < 0:
+        raise ValueError("Validation and test sizes must be non-negative.")
+
+    # compute sizes
+    total_size = len(full_data)
+    val_size = int(val_size) if val_size > 1 else int(total_size * val_size)
+    test_size = int(test_size) if test_size > 1 else int(total_size * test_size)
+    train_size = total_size - val_size - test_size
 
     full_data = full_data.sample(frac=1, random_state=split_seed).reset_index(drop=True)
     ds_train = full_data.iloc[:train_size]
@@ -98,8 +102,8 @@ def split_data(
 
 def load_datasets(
     *names: str,
-    val_ratio: float = 0.5,
-    test_ratio: float = 0,
+    val_size: float | int = 0.5,
+    test_size: float | int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     ds_list: list[pd.DataFrame] = [load_single_dataset(name).to_pandas(batched=False) for name in names]  # type: ignore
 
@@ -117,4 +121,4 @@ def load_datasets(
         ds_full.reset_index(drop=True, inplace=True)
         logger.info(f"Dropped {orig_size - len(ds_full)} duplicate rows. Dataset size is now {len(ds_full)}.")
 
-    return split_data(ds_full, val_ratio, test_ratio, split_seed=42)
+    return split_data(ds_full, val_size, test_size, split_seed=42)

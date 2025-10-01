@@ -4,6 +4,7 @@ from src.eval.evaluator import Evaluator
 from src.metric_logger import MetricLogger
 from src.config import GenConfig, StopCriteria
 from src.utils.logging import create_logger
+from src.utils.torch import clear_memory
 
 import time
 from typing import Any
@@ -236,6 +237,7 @@ class UnivAttack:
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
             # initial evaluation
             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
+            clear_memory()
 
             self.save_checkpoint()
             self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step=-1)
@@ -264,6 +266,7 @@ class UnivAttack:
                         if should_stop or (step > 0 and step % round(self.eval_freq * len(dl_train)) == 0):
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[self.judge_metric])
+                            clear_memory()
 
                             self.save_checkpoint()
                             self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step)

@@ -102,7 +102,8 @@ class MultiEvaluator(Evaluator):
                 Receives a dictionary mapping metric names to their values and returns a single float value.
             verbose (bool): Whether to suppress verbose outputs and tqdm progress during evaluation.
         """
-        name = " + ".join([evaluator.name for evaluator in evaluators])
+
+        name = f"MultiEval({','.join([ev.name for ev in evaluators])})"
 
         for ev in evaluators:
             ev.verbose = verbose

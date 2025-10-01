@@ -36,7 +36,7 @@ class IML_Experiment(Experiment):
         return [
             LlamaGuard(
                 serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
-                model_name="meta-llama/Meta-Llama-Guard-2-8B",
+                model_name="meta-llama/Llama-Guard-3-8B",
             ),
             # StrongReject(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
             KeywordMatching(),
@@ -89,6 +89,7 @@ class IML_Experiment(Experiment):
             max_new_tokens=512,
             do_sample=True,
             remove_invalid_values=True,
+            temperature=0.6,
         )
 
         metric_logger = MetricLogger(
@@ -108,7 +109,7 @@ class IML_Experiment(Experiment):
             activ_extractor=activ_extractor,
             evaluators=evaluators,
             # judge_metric="StrongReject/Thresh@0.5",
-            judge_metric="LlamaGuard/Meta-Llama-Guard-2-8B",
+            judge_metric="LlamaGuard/Llama-Guard-3-8B",
             eval_freq=0.5,
             gen_config=gen_config,
             mixed_precision=False,

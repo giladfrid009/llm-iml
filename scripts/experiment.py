@@ -64,10 +64,10 @@ class Experiment(ABC):
         )
 
         parser.add_argument(
-            "--val_ratio",
-            type=str,
+            "--val_size",
+            type=float,
             default=0.35,
-            help="The ratio of the validation set.",
+            help="The ratio/size of the validation set. If > 1, interpreted as absolute size, else as ratio.",
         )
 
         parser.add_argument(
@@ -123,10 +123,10 @@ class Experiment(ABC):
         args = self.args()
 
         logger.info(f"Loading dataset(s): {args.dataset}")
-        ds_train, ds_val, ds_test = load_datasets(*args.dataset, val_ratio=args.val_ratio)
-        dl_train = TableLoader(ds_train, batch_size=10, shuffle=True)
-        dl_eval = TableLoader(ds_val, batch_size=25, shuffle=False)
-        dl_test = TableLoader(ds_test, batch_size=25, shuffle=False)
+        ds_train, ds_val, ds_test = load_datasets(*args.dataset, val_size=args.val_size)
+        dl_train = TableLoader(ds_train, batch_size=8, shuffle=True)
+        dl_eval = TableLoader(ds_val, batch_size=50, shuffle=False)
+        dl_test = TableLoader(ds_test, batch_size=50, shuffle=False)
         logger.info(
             f"Loaded datasets with sample counts: "
             f"train={len(dl_train.df)}, val={len(dl_eval.df)}, test={len(dl_test.df)}"
@@ -158,7 +158,8 @@ class Experiment(ABC):
             model=args.model,
             num_tokens=adv_model.num_tokens,
             attack=type(univ_attack).__name__,
-            dataset=",".join(args.dataset),
+            dataset=", ".join(args.dataset),
+            evaluators=", ".join(ev.name for ev in evaluators)
         )
 
         stop = StopCriteria(max_epochs=2000, max_time=60 * 60 * 3)
