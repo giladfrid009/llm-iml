@@ -5,6 +5,7 @@ from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack
 from src.metric_logger import MetricLogger
+from src.utils.torch import clear_memory
 
 import inspect
 from typing import Any, Callable
@@ -121,7 +122,11 @@ class IML(UnivAttack):
         for ev in self.evaluators:
             if self.judge_metric in ev.metric_names:
                 return ev
-        raise ValueError(f"Judge metric {self.judge_metric} not found in any evaluator.")
+        
+        raise ValueError(
+            f"Judge metric {self.judge_metric} not found in any evaluator. "
+            f"Available metrics: {[ev.metric_names for ev in self.evaluators]}"
+        )
 
     def make_attack(self, epoch_num: int) -> SampleAttack:
         if self.attack_builder_func is None:
@@ -169,10 +174,12 @@ class IML(UnivAttack):
 
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
+                clear_memory() # TODO: remove?
                 init_embeds = self.univ_embeds.expand(len(input_convs), -1, -1)
                 attack_result = self.inner_attack.fit(input_convs, target_texts, init_embeds=init_embeds)
                 sample_convs = attack_result.conversations
                 sample_embeds = attack_result.adv_embeds
+                clear_memory() # TODO: remove?
 
             # skip failed per-sample attacks
             if self.skip_failed_attacks:

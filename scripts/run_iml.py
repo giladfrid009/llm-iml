@@ -7,41 +7,16 @@ module_dir = pathlib.Path(__file__).parent.resolve().parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
-from gserve.configs import ServeConfig, LLMConfig
 from scripts.experiment import Experiment
-
-from src.eval import (
-    Evaluator,
-    BeaverCost,
-    HarmBenchJudge,
-    LlamaEvaluator,
-    LlamaGuard,
-    MDJudge,
-    StrongReject,
-    KeywordMatching,
-    WildGuard,
-)
-
 from src.sample_attacks import SoftPrompt
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
 from src.initialize import Initializer
 from src.config import GenConfig, StopCriteria
 from src.activ_extractor import ActivationExtractor
-from src.metric_logger import MetricLogger
 
 
 class IML_Experiment(Experiment):
-    def create_evaluators(self) -> list[Evaluator]:
-        return [
-            LlamaGuard(
-                serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
-                model_name="meta-llama/Llama-Guard-3-8B",
-            ),
-            # StrongReject(serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60)),
-            KeywordMatching(),
-        ]
-
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         # TODO: try less tokens
         # TODO: try different initializations
@@ -50,7 +25,15 @@ class IML_Experiment(Experiment):
         # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False) # USUALLY PERFORMS WORSE
         return adv_model
 
-    def initialize_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
+    def initialize_attack(self, adv_model, evaluators, metric_logger) -> UnivAttack:
+        gen_config = GenConfig(
+            max_new_tokens=216,
+            do_sample=True,
+            # remove_invalid_values=True,
+            top_p=0.9,
+            temperature=0.6,
+        )
+
         # TODO: try Adam - doesnt do much difference, maybe worse
         # TODO: we can create an attack_builder func and try with inner_attack scheduling,
         # i.e. scheduling the number of steps
@@ -85,20 +68,6 @@ class IML_Experiment(Experiment):
             capture_output=True,
         )
 
-        gen_config = GenConfig(
-            max_new_tokens=216,
-            do_sample=True,
-            # remove_invalid_values=True,
-            top_p=0.9,
-            temperature=0.6,
-        )
-
-        metric_logger = MetricLogger(
-            self.args().run_name,
-            project="LLM-IML",
-            root_dir="logs",
-        )
-
         # TODO: try without dynamic labels and different amount
         # TODO: try with skip_already_fooled=True - doesnt do much difference, maybe worse
         # TODO: try with skip_failed_attacks=False (for ablations)
@@ -109,8 +78,8 @@ class IML_Experiment(Experiment):
             optimizer=optimizer,
             activ_extractor=activ_extractor,
             evaluators=evaluators,
-            # judge_metric="StrongReject/Thresh@0.5",
-            judge_metric="LlamaGuard/Llama-Guard-3-8B",
+            judge_metric="StrongReject/Thresh@0.5",
+            # judge_metric="LlamaGuard/Llama-Guard-3-8B",
             eval_freq=2,
             gen_config=gen_config,
             mixed_precision=False,

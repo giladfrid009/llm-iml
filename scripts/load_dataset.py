@@ -101,7 +101,7 @@ def split_data(
 
 
 def load_datasets(
-    *names: str,
+    names: list[str],
     val_size: float | int = 0.5,
     test_size: float | int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -113,7 +113,7 @@ def load_datasets(
     else:
         ds_full = pd.concat(ds_list, axis=0, join="outer", ignore_index=True)
         ds_full.reset_index(drop=True, inplace=True)
-        logger.info(f"Joined datasets: {list(names)}")
+        logger.info(f"Joined datasets: {names}")
 
         orig_size = len(ds_full)
         ds_full.drop_duplicates(subset=["prompt"], keep="first", inplace=True, ignore_index=True)

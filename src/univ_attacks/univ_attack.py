@@ -113,9 +113,6 @@ class UnivAttack:
     def device(self) -> torch.device:
         return self.adv_model.device
 
-    def close(self):
-        self.metric_logger.close()
-
     def save_checkpoint(self, file_name: str = "best_embeds.pt"):
         torch.save(self.best_embeds, pathlib.Path(self.metric_logger.log_dir) / file_name)
 
@@ -264,9 +261,10 @@ class UnivAttack:
 
                         # evaluation step
                         if should_stop or (step > 0 and step % round(self.eval_freq * len(dl_train)) == 0):
+                            clear_memory() # TODO: remove?
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[self.judge_metric])
-                            clear_memory()
+                            clear_memory() # TODO: remove?
 
                             self.save_checkpoint()
                             self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step)

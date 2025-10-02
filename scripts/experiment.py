@@ -14,9 +14,11 @@ from src.univ_attacks import UnivAttack
 from src.adv_model import AdvModel
 from src.config import StopCriteria
 from src.eval import Evaluator
+from src.metric_logger import MetricLogger
 
 from scripts.load_model import SUPPORTED_MODELS, load_model
 from scripts.load_dataset import SUPPORTED_DATASETS, load_datasets
+from scripts.load_evaluator import SUPPORTED_EVALUATORS, load_evaluators
 
 
 logger = create_logger(__name__)
@@ -44,7 +46,8 @@ class Experiment(ABC):
             type=str,
             choices=SUPPORTED_MODELS,
             required=True,
-            help="The model name to attack.",
+            metavar="MODEL",
+            help=f"The model name to attack. Available models: {SUPPORTED_MODELS}",
         )
 
         parser.add_argument(
@@ -53,7 +56,18 @@ class Experiment(ABC):
             nargs="+",
             choices=SUPPORTED_DATASETS,
             required=True,
-            help="The dataset(s) to use. If multiple datasets are provided, they will be concatenated.",
+            metavar="DATASET",
+            help=f"The dataset(s) to use. Available datasets: {SUPPORTED_DATASETS}",
+        )
+
+        parser.add_argument(
+            "--evaluator",
+            type=str,
+            nargs="+",
+            choices=SUPPORTED_EVALUATORS,
+            required=True,
+            metavar="EVALUATOR",
+            help=f"The attack evaluator(s) to use. Available evaluators: {SUPPORTED_EVALUATORS}",
         )
 
         parser.add_argument(
@@ -108,64 +122,81 @@ class Experiment(ABC):
         env.set_seed(seed)
 
     @abstractmethod
-    def create_evaluators(self) -> list[Evaluator]:
+    def create_adversarial_model(
+        self,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+    ) -> AdvModel:
         pass
 
     @abstractmethod
-    def create_adversarial_model(self, model: PreTrainedModel, tokenizer: PreTrainedTokenizer) -> AdvModel:
-        pass
-
-    @abstractmethod
-    def initialize_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
+    def initialize_attack(
+        self,
+        adv_model: AdvModel,
+        evaluators: list[Evaluator],
+        metric_logger: MetricLogger,
+    ) -> UnivAttack:
         pass
 
     def run(self):
         args = self.args()
 
+        if not torch.cuda.is_available():
+            logger.error("No GPU available. Exiting.")
+            sys.exit(1)
+
         logger.info(f"Loading dataset(s): {args.dataset}")
-        ds_train, ds_val, ds_test = load_datasets(*args.dataset, val_size=args.val_size)
-        dl_train = TableLoader(ds_train, batch_size=8, shuffle=True)
-        dl_eval = TableLoader(ds_val, batch_size=50, shuffle=False)
-        dl_test = TableLoader(ds_test, batch_size=50, shuffle=False)
+        ds_train, ds_val, ds_test = load_datasets(args.dataset, val_size=args.val_size)
+        dl_train = TableLoader(ds_train, batch_size=5, shuffle=True)
+        dl_eval = TableLoader(ds_val, batch_size=25, shuffle=False)
+        dl_test = TableLoader(ds_test, batch_size=25, shuffle=False)
+
         logger.info(
             f"Loaded datasets with sample counts: "
-            f"train={len(dl_train.df)}, val={len(dl_eval.df)}, test={len(dl_test.df)}"
+            f"(train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)})."
         )
 
-        logger.info("Loading evaluators...")
-        evaluators = self.create_evaluators()
-        logger.info(f"Evaluators loaded: {[ev.name for ev in evaluators]}")
+        logger.info(f"Loading evaluator(s): {args.evaluator}")
+        device_count = torch.cuda.device_count()
+        gpus = [] if device_count <= 1 else list(range(device_count))[1:]
+        logger.info(f"GPUs available for evaluators: {gpus}")
+        evaluators = load_evaluators(args.evaluator, gpus=gpus)
 
         logger.info(f"Loading model: {args.model}")
         model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
         adv_model = self.create_adversarial_model(model, tokenizer)
         logger.info(f"Model architecture: {adv_model.model}")
 
-        logger.info("Initializing attack...")
-        univ_attack = self.initialize_attack(adv_model, evaluators)
+        with MetricLogger(self.args().run_name, project="LLM-IML") as metric_logger:
+            logger.info("Initializing attack...")
+            univ_attack = self.initialize_attack(adv_model, evaluators, metric_logger)
 
-        logger.info("Logging experiment data...")
-        if main_file := getattr(sys.modules.get("__main__"), "__file__", None):
-            univ_attack.metric_logger.log_code(main_file)
-        if expr_file := getattr(sys.modules.get(__name__), "__file__", None):
-            univ_attack.metric_logger.log_code(expr_file)
+            if main_file := getattr(sys.modules.get("__main__"), "__file__", None):
+                metric_logger.log_code(main_file)
+            if expr_file := getattr(sys.modules.get(__name__), "__file__", None):
+                metric_logger.log_code(expr_file)
 
-        univ_attack.metric_logger.cm_task.register_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
-        univ_attack.metric_logger.cm_task.register_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
-        univ_attack.metric_logger.cm_task.register_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
+            metric_logger.cm_task.register_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
+            metric_logger.cm_task.register_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
+            metric_logger.cm_task.register_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
 
-        univ_attack.metric_logger.add_tags(
-            model=args.model,
-            num_tokens=adv_model.num_tokens,
-            attack=type(univ_attack).__name__,
-            dataset=", ".join(args.dataset),
-            evaluators=", ".join(ev.name for ev in evaluators)
-        )
+            metric_logger.add_tags(
+                model=args.model,
+                num_tokens=adv_model.num_tokens,
+                attack=type(univ_attack).__name__,
+                dataset=", ".join(args.dataset),
+                evaluators=", ".join(args.evaluator),
+            )
 
-        stop = StopCriteria(max_epochs=2000, max_time=60 * 60 * 3)
-
-        try:
             logger.info("Running attack...")
+
+            stop = StopCriteria(
+                max_epochs=2000,
+                max_time=60 * 60 * 2,
+                patience=20,
+                patience_delta=0.1,
+            )
+
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)
 
             logger.info("Running test evaluation...")
@@ -173,10 +204,8 @@ class Experiment(ABC):
             univ_attack.metric_logger.log_metrics(metrics)
             univ_attack.metric_logger.cm_task.upload_artifact(name="test_result", artifact_object=dl_eval.df)
 
-        finally:
-            univ_attack.close()
-            for eval in evaluators:
-                eval.close()
+        for eval in evaluators:
+            eval.close()
 
     def main(self):
         try:

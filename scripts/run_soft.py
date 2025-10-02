@@ -6,46 +6,15 @@ module_dir = pathlib.Path(__file__).parent.resolve().parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
-from gserve.configs import ServeConfig, LLMConfig
 from scripts.experiment import Experiment
-
-from src.eval import (
-    Evaluator,
-    BeaverCost,
-    HarmBenchJudge,
-    LlamaEvaluator,
-    LlamaGuard,
-    MDJudge,
-    StrongReject,
-    KeywordMatching,
-    WildGuard,
-)
-
 from src.univ_attacks import UnivAttack, UnivSoftPrompt
 from src.fgsm_optim import FGSM
 from src.adv_model import AdvModel
 from src.initialize import Initializer
 from src.config import GenConfig, StopCriteria
-from src.metric_logger import MetricLogger
 
 
 class SoftPrompt_Experiment(Experiment):
-    def create_evaluators(self) -> list[Evaluator]:
-        return [
-            # HarmBenchEvaluator(
-            #     serve_config=ServeConfig(
-            #         gpu_ids=[1],
-            #         startup_timeout=10 * 60,
-            #         client_timeout=60,
-            #         verbose=False,
-            #     ),
-            # ),
-            StrongReject(
-                serve_config=ServeConfig(gpu_ids=[1], startup_timeout=20 * 60, client_timeout=60),
-            ),
-            KeywordMatching(),
-        ]
-
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
         # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False)
@@ -56,7 +25,7 @@ class SoftPrompt_Experiment(Experiment):
         )
         return adv_model
 
-    def initialize_attack(self, adv_model: AdvModel, evaluators: list[Evaluator]) -> UnivAttack:
+    def initialize_attack(self, adv_model, evaluators, metric_logger) -> UnivAttack:
         gen_config = GenConfig(
             max_new_tokens=512,
             do_sample=False,
@@ -66,12 +35,6 @@ class SoftPrompt_Experiment(Experiment):
         optimizer = FGSM(
             adv_model.parameters(),
             lr=0.001,
-        )
-
-        metric_logger = MetricLogger(
-            self.args().run_name,
-            project="LLM-IML",
-            root_dir="logs",
         )
 
         return UnivSoftPrompt(

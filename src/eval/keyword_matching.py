@@ -13,7 +13,8 @@ ALL_REFUSALS = {
     "GCG3": gcg.GCG3,
     "GCG4": gcg.GCG4,
     "GCG5": gcg.GCG5,
-    "AutoDAN": autodan.AUTODAN,
+    "AutoDAN-Liu": autodan.AUTODAN_LIU,
+    "AutoDAN-Zhu": autodan.AUTODAN_ZHU,
     "SCAV1": scav.SCAV1,
     "SCAV2": scav.SCAV2,
 }

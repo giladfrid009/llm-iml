@@ -15,9 +15,8 @@ def clear_memory() -> None:
     Frees unused memory by calling the garbage collector and clearing the CUDA cache.
     This helps prevent out-of-memory errors in GPU-limited environments.
     """
-    for _ in range(2):
-        gc.collect()
-        torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 def extract_device(module: torch.nn.Module) -> torch.device:

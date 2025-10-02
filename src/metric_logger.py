@@ -32,6 +32,12 @@ class MetricLogger:
         logger.info(f"Created log directory at: {path}")
         return path
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     def close(self):
         if self.cm_task is not None:
             self.cm_task.flush(wait_for_uploads=True)
