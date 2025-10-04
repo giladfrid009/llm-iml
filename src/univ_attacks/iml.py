@@ -65,7 +65,7 @@ class IML(UnivAttack):
         evaluators: list[Evaluator],
         judge_metric: str | None = None,
         eval_freq: int | float = 1,
-        mixed_precision: bool = True,
+        mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
         skip_already_fooled: bool = False,
         skip_failed_attacks: bool = True,
@@ -160,7 +160,7 @@ class IML(UnivAttack):
             # skip already successfully fooled samples
             if self.skip_already_fooled:
                 with torch.inference_mode():
-                    responses = self.adv_model.chat(input_convs, self.gen_config)
+                    responses = self.adv_model.chat(input_convs, self.gen_config, adv_embeds=self.univ_embeds)
                     eval_result = self.judge_evaluator.eval_batch(input_texts, responses)
                     eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
                     fooled_mask = eval_metric >= 1.0

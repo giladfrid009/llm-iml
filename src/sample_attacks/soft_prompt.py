@@ -22,7 +22,7 @@ class SoftPrompt(SampleAttack):
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
         early_stopping: bool = False,
-        mixed_precision: bool = True,
+        mixed_precision: bool = False,
         kv_caching: bool = True,
         verbose: bool = True,
     ):
@@ -153,7 +153,6 @@ class SoftPrompt(SampleAttack):
         logits: torch.Tensor,
         target_ids: torch.Tensor,
         target_mask: torch.Tensor,
-        sample_mean: bool = True,
     ) -> torch.Tensor:
         """
         CE loss for the logits and target_ids, masked by target_mask.
@@ -165,13 +164,10 @@ class SoftPrompt(SampleAttack):
         # compute token-wise loss
         flat_losses = torch.nn.functional.cross_entropy(logits, target_ids, reduction="none")
 
-        if not sample_mean:
-            return flat_losses.mean()
-
         # scatter losses back to the original shape and compute sample-mean
         loss_matrix = torch.zeros_like(target_mask, dtype=logits.dtype)
         loss_matrix[target_mask] = flat_losses
-        loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
+        loss = torch.sum(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
         return loss
 
     def fit(
@@ -244,7 +240,6 @@ class SoftPrompt(SampleAttack):
                         logits=logits,
                         target_ids=target_ids,
                         target_mask=target_mask,
-                        sample_mean=False,
                     )
 
                 # backward pass and optimization step

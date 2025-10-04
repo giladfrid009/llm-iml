@@ -2,13 +2,12 @@ from abc import abstractmethod, ABC
 import torch
 import random
 import argparse
-import logging
 import sys
 import time
 from transformers import PreTrainedModel, PreTrainedTokenizer  # pyright: ignore[reportPrivateImportUsage]
 
 from src.utils import env
-from src.utils.logging import create_logger, setup_logging
+from src.utils.logging import create_logger, setup_logging, loglevel_names
 from src.data import TableLoader
 from src.univ_attacks import UnivAttack
 from src.adv_model import AdvModel
@@ -16,9 +15,9 @@ from src.config import StopCriteria
 from src.eval import Evaluator
 from src.metric_logger import MetricLogger
 
-from scripts.load_model import SUPPORTED_MODELS, load_model
-from scripts.load_dataset import SUPPORTED_DATASETS, load_datasets
-from scripts.load_evaluator import SUPPORTED_EVALUATORS, load_evaluators
+from scripts.utils.load_model import SUPPORTED_MODELS, load_model
+from scripts.utils.load_dataset import SUPPORTED_DATASETS, load_datasets
+from scripts.utils.load_evaluator import SUPPORTED_EVALUATORS, load_evaluators
 
 
 logger = create_logger(__name__)
@@ -74,6 +73,7 @@ class Experiment(ABC):
             "--run_name",
             type=str,
             default=time.strftime("%Y-%m-%d_%H-%M-%S"),
+            metavar="NAME",
             help="The name of the run, used for logging.",
         )
 
@@ -81,6 +81,7 @@ class Experiment(ABC):
             "--val_size",
             type=float,
             default=0.35,
+            metavar="SIZE",
             help="The ratio/size of the validation set. If > 1, interpreted as absolute size, else as ratio.",
         )
 
@@ -94,9 +95,10 @@ class Experiment(ABC):
         parser.add_argument(
             "--log_level",
             type=str,
-            choices=[lvl.lower() for lvl in logging.getLevelNamesMapping().keys()],
-            default="info",
-            help="Logging level.",
+            choices=loglevel_names(),
+            default="INFO",
+            metavar="LEVEL",
+            help=f"Logging level to python-logger. Available levels: {loglevel_names()}",
         )
 
         self.add_arguments(parser)

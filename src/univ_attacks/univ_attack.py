@@ -12,7 +12,6 @@ from tqdm.auto import tqdm
 import pathlib
 from abc import abstractmethod
 import torch
-import torch.nn.functional as F
 
 logger = create_logger(__name__)
 
@@ -24,7 +23,7 @@ class UnivAttack:
         evaluators: list[Evaluator],
         judge_metric: str | None = None,
         eval_freq: int | float = 1,
-        mixed_precision: bool = True,
+        mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
         metric_logger: MetricLogger | None = None,
     ):
@@ -146,7 +145,7 @@ class UnivAttack:
             for batch_data in tqdm(dl, desc="Generating", leave=False):
                 prompts = batch_data["prompt"]
                 conversations = [[{"role": "user", "content": prm}] for prm in prompts]
-                responses = adv_model.chat(conversations, config=config, **kwargs)
+                responses = adv_model.chat(conversations, config, adv_embeds=self.adv_model.adv_embeds, **kwargs)
                 all_responses.extend(responses)
 
         dl.set_column("response", all_responses)
@@ -261,10 +260,10 @@ class UnivAttack:
 
                         # evaluation step
                         if should_stop or (step > 0 and step % round(self.eval_freq * len(dl_train)) == 0):
-                            clear_memory() # TODO: remove?
+                            clear_memory()  # TODO: remove?
                             metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[self.judge_metric])
-                            clear_memory() # TODO: remove?
+                            clear_memory()  # TODO: remove?
 
                             self.save_checkpoint()
                             self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step)

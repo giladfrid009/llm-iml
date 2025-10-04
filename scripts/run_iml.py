@@ -27,11 +27,11 @@ class IML_Experiment(Experiment):
 
     def initialize_attack(self, adv_model, evaluators, metric_logger) -> UnivAttack:
         gen_config = GenConfig(
-            max_new_tokens=216,
+            max_new_tokens=512,
             do_sample=True,
             # remove_invalid_values=True,
-            top_p=0.9,
-            temperature=0.6,
+            # top_p=0.9,
+            # temperature=0.6,
         )
 
         # TODO: try Adam - doesnt do much difference, maybe worse

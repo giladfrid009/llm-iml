@@ -101,7 +101,7 @@ class AdvModel(nn.Module):
         # adversarial embeddings
         self.adv_embeds: torch.Tensor | None = None
 
-    def get_hparams(self) -> dict:       
+    def get_hparams(self) -> dict:
         return {
             "model_name": self.model.name_or_path,
             "tokenizer_name": self.tokenizer.name_or_path,
@@ -118,6 +118,9 @@ class AdvModel(nn.Module):
         Yields:
             Iterator[nn.Parameter]: Trainable parameters.
         """
+        # TODO: We should completely remove the self.adv_embeds as instance variable
+        # and always accept it as an argument to the relevant functions
+        # we anyways almost no-where use self.adv_embeds
         yield self.adv_embeds
 
     # TODO: EXPERIMENTAL
@@ -182,22 +185,44 @@ class AdvModel(nn.Module):
             raise ValueError("Adversarial embeddings are not set. Please set them using `set_embeddings` method.")
         return self.adv_embeds.clone().detach() if clone else self.adv_embeds
 
-    def inject_tokens(self, conversations: list[list[dict[str, str]]]) -> list[list[dict[str, str]]]:
+    def inject_tokens(
+        self,
+        conversations: list[list[dict[str, str]]],
+        add_spaces: bool = False,
+        adv_suffix: bool = True,
+    ) -> list[list[dict[str, str]]]:
         """
         Injects adversarial tokens to the last message in each conversation.
-        Note that the injected tokens do not change the original conversations.
+        A clone of the input conversations is returned.
 
         Args:
-            messages (list[list[dict[str, str]]]): A batch of conversations. Each conversation is a list of messages,
-                where each message is a dictionary with keys "role" and "content".
+            messages (list[list[dict[str, str]]]): A batch of conversations.
+            add_spaces (bool): If True, separates the adversarial tokens with spaces.
+            adv_suffix (bool): Whether to add the adversarial tokens as a suffix or prefix to the last message.
 
         Returns:
-            list[list[dict[str, str]]]: A batch of conversations with adversarial tokens injected into the last message.
+            (list[list[dict[str, str]]]): A batch of conversations with adversarial tokens injected into the last message.
         """
         conversations = copy.deepcopy(conversations)
+
+        separator = " " if add_spaces else ""
+        adv_block = separator.join([self.adv_token] * self.num_tokens)
+
         for conv in conversations:
+            # don't inject if adv_token already present
+            if any(self.adv_token in msg["content"] for msg in conv):
+                continue
+
             last_msg = conv[-1]
-            last_msg["content"] += self.adv_token * self.num_tokens
+            content = last_msg["content"]
+
+            if adv_suffix:
+                spacer = " " if add_spaces and not content.endswith(" ") else ""
+                last_msg["content"] = f"{content}{spacer}{adv_block}"
+            else:
+                spacer = " " if add_spaces and not content.startswith(" ") else ""
+                last_msg["content"] = f"{adv_block}{spacer}{content}"
+
         return conversations
 
     def tokenize(
@@ -223,7 +248,10 @@ class AdvModel(nn.Module):
                 - `target_mask` (torch.BoolTensor): Only if `target_texts != None`. Mask for the target tokens
         """
 
-        # add adver tokens
+        # add adv tokens
+        # TODO: we should move inject out of this function
+        # TODO: should inject tokens only if adv_embeds is not None?
+        # and also only if there are no self.adv_token in the messages already
         conversations = self.inject_tokens(conversations)
 
         if target_texts is not None:
@@ -331,6 +359,8 @@ class AdvModel(nn.Module):
             list[str]: List of generated adversarial texts.
         """
 
+        # BUG: in self.tokenize we always add adversarial tokens, even if adv_embeds is None
+        # TODO: make sure above bug doesnt appear anywhere else
         encodings = self.tokenize(conversations)
 
         result: torch.Tensor = self.generate(

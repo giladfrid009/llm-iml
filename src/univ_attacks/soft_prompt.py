@@ -17,7 +17,7 @@ class UnivSoftPrompt(UnivAttack):
         evaluators: list[Evaluator],
         judge_metric: str | None = None,
         eval_freq: int | float = 1,
-        mixed_precision: bool = True,
+        mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
         metric_logger: MetricLogger | None = None,
     ):
@@ -34,23 +34,36 @@ class UnivSoftPrompt(UnivAttack):
         self.optimizer = optimizer
 
         self.metric_logger.log_hparams("univ_soft_prompt", optimizer=self.optimizer.__class__.__name__)
-        self.metric_logger.log_hparams("optim", optimizer.state_dict()["param_groups"][0], name=self.optimizer.__class__.__name__)
+        self.metric_logger.log_hparams(
+            "optim", optimizer.state_dict()["param_groups"][0], name=self.optimizer.__class__.__name__
+        )
 
     def criterion(
         self,
         logits: torch.Tensor,
         input_ids: torch.Tensor,
         target_mask: torch.Tensor,
+        sample_mean: bool = True,
     ) -> torch.Tensor:
         # align predicted logits and target_ids
         logits = logits[:, :-1]  # remove new token
-        target_ids = input_ids[:, 1:]  # remove BOS token
+        input_ids = input_ids[:, 1:]  # remove BOS token
         target_mask = target_mask[:, 1:]  # remove BOS token
 
-        # compute flat CE loss
+        # extract only targets
         target_logits = logits[target_mask].view(-1, logits.size(-1))
-        target_ids = target_ids[target_mask].view(-1)
-        loss = torch.nn.functional.cross_entropy(target_logits, target_ids, reduction="mean")
+        target_ids = input_ids[target_mask].view(-1)
+
+        # compute token-wise loss
+        flat_losses = torch.nn.functional.cross_entropy(target_logits, target_ids, reduction="none")
+
+        if not sample_mean:
+            return flat_losses.mean()
+
+        # scatter losses back to the original shape and compute sample-mean
+        loss_matrix = torch.zeros_like(target_mask, dtype=logits.dtype)
+        loss_matrix[target_mask] = flat_losses
+        loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
         return loss
 
     def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int) -> float | None:
@@ -72,6 +85,7 @@ class UnivSoftPrompt(UnivAttack):
                 logits=result.logits,
                 input_ids=encodings.input_ids,
                 target_mask=encodings.target_mask,
+                sample_mean=False, # TODO: true or false?
             )
 
         # grad step

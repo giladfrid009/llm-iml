@@ -9,7 +9,7 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 from gserve.configs import ServeConfig, LLMConfig
-from scripts.load_evaluator import load_single_evaluator, SUPPORTED_EVALUATORS
+from scripts.utils.load_evaluator import load_single_evaluator, SUPPORTED_EVALUATORS
 from src.utils.logging import create_logger
 from src.utils.torch import clear_memory
 from src.eval import Evaluator

@@ -8,6 +8,11 @@ LOG_DATEFMT = "%m-%d %H:%M:%S"
 LOG_LEVEL_ENV = "IML_LOG_LEVEL"
 
 
+def loglevel_names() -> list[str]:
+    """Return a list of valid log level names."""
+    return list(logging.getLevelNamesMapping().keys())
+
+
 def parse_log_level(value: str, default: int = logging.INFO) -> int:
     name_to_level = logging.getLevelNamesMapping()
     value = value.strip().upper()

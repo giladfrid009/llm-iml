@@ -6,6 +6,13 @@ from dataclasses import dataclass
 
 @dataclass
 class SampleOutput:
+    """
+    Note:
+        If `adv_embeds` is not None, the `conversations` are expected to contain adversarial tokens in the appropriate places,
+        to be replaced by the adversarial embeddings during model forward.
+    """
+    # TODO: should be like that, currently not like that
+
     conversations: list[list[dict[str, str]]]
     adv_embeds: torch.Tensor | None = None
 
@@ -46,7 +53,7 @@ class SampleAttack(ABC):
             SampleOutput: An object containing adversarial conversations, and optionally adversarial embeddings.
         """
         raise NotImplementedError("Subclasses must implement this method.")
-    
+
     @abstractmethod
     def get_hparams(self) -> dict:
         """
