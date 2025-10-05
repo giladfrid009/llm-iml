@@ -2,7 +2,6 @@ from src.adv_model import AdvModel
 from src.sample_attacks.soft_prompt import SoftPrompt
 from src.sample_attacks.sample_attack import SampleOutput
 from src.discretize import Discretize
-from src import tokenize
 
 from typing import Callable, Iterable
 from tqdm.auto import tqdm

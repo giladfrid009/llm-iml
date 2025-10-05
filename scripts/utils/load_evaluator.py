@@ -5,6 +5,7 @@ from gserve.configs import ServeConfig, LLMConfig
 from src.eval import (
     Evaluator,
     BeaverCost,
+    GPTJudge,
     HarmBenchJudge,
     LlamaEvaluator,
     LlamaGuard,
@@ -20,6 +21,7 @@ logger = create_logger(__name__)
 
 class EvalName(str, Enum):
     BEAVER = "beaver"
+    GPT35_TURBO = "gpt-3.5-turbo"
     HARMBENCH = "hb-judge"
     LLAMA2 = "llama2-7b"
     LLAMA3 = "llama3-8b"
@@ -40,6 +42,9 @@ SUPPORTED_EVALUATORS = [e.value for e in EvalName]
 def load_single_evaluator(name: str, serve_config: ServeConfig, **kwargs) -> Evaluator:
     if name == EvalName.BEAVER:
         return BeaverCost(device_map=serve_config.gpu_ids[0], **kwargs)
+
+    if name == EvalName.GPT35_TURBO:
+        return GPTJudge(model="gpt-3.5-turbo", max_tokens=5)
 
     if name == EvalName.HARMBENCH:
         return HarmBenchJudge(serve_config, **kwargs)

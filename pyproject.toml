@@ -32,6 +32,8 @@ dependencies = [
     "dotenv>=0.9.9",
     "pyarrow>=21.0.0",
     "datasets>=4.1.1",
+    "peft>=0.17.1",
+    "openai>=1.90.0",
 ]
 
 [tool.uv.sources]

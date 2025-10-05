@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from torch import optim
 import sys
 import pathlib
@@ -17,6 +18,9 @@ from src.activ_extractor import ActivationExtractor
 
 
 class IML_Experiment(Experiment):
+    def add_arguments(self, parser: ArgumentParser) -> None:
+        pass
+    
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         # TODO: try less tokens
         # TODO: try different initializations

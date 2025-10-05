@@ -78,11 +78,35 @@ class Experiment(ABC):
         )
 
         parser.add_argument(
-            "--val_size",
+            "--eval_size",
             type=float,
             default=0.35,
             metavar="SIZE",
-            help="The ratio/size of the validation set. If > 1, interpreted as absolute size, else as ratio.",
+            help="The ratio/size of the evaluation set. If > 1, interpreted as absolute size, else as ratio.",
+        )
+
+        parser.add_argument(
+            "--train_batch",
+            type=int,
+            default=10,
+            metavar="SIZE",
+            help="The training batch size.",
+        )
+
+        parser.add_argument(
+            "--eval_batch",
+            type=int,
+            default=25,
+            metavar="SIZE",
+            help="The evaluation batch size.",
+        )
+
+        parser.add_argument(
+            "--max_time",
+            type=int,
+            default=120,
+            metavar="MINUTES",
+            help="The maximum training time in minutes.",
         )
 
         parser.add_argument(
@@ -148,10 +172,10 @@ class Experiment(ABC):
             sys.exit(1)
 
         logger.info(f"Loading dataset: {args.dataset}")
-        ds_train, ds_val, ds_test = load_datasets(args.dataset, val_size=args.val_size)
-        dl_train = TableLoader(ds_train, batch_size=5, shuffle=True)
-        dl_eval = TableLoader(ds_val, batch_size=25, shuffle=False)
-        dl_test = TableLoader(ds_test, batch_size=25, shuffle=False)
+        ds_train, ds_val, ds_test = load_datasets(args.dataset, val_size=args.eval_size)
+        dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True)
+        dl_eval = TableLoader(ds_val, batch_size=args.eval_batch, shuffle=False)
+        dl_test = TableLoader(ds_test, batch_size=args.eval_batch, shuffle=False)
 
         logger.info(
             f"Loaded datasets with sample counts: "
@@ -194,7 +218,9 @@ class Experiment(ABC):
 
             stop = StopCriteria(
                 max_epochs=2000,
-                max_time=60 * 60 * 2,
+                max_time=args.max_time * 60,
+                patience=20,
+                patience_delta=0.01,
             )
 
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)
