@@ -2,7 +2,6 @@ from src.adv_model import AdvModel
 from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 
 import inspect
-from typeguard import check_type
 from typing import Callable, Iterable
 from tqdm.auto import tqdm
 import torch
@@ -11,8 +10,6 @@ import copy
 
 from transformers.tokenization_utils_base import BatchEncoding
 from transformers.cache_utils import DynamicCache
-
-LegacyCache = tuple[tuple[torch.Tensor], tuple[torch.Tensor]]
 
 
 class SoftPrompt(SampleAttack):
@@ -84,6 +81,8 @@ class SoftPrompt(SampleAttack):
         kv_result = self.adv_model.forward(
             encodings.input_ids[:, :kv_idx],
             encodings.attention_mask[:, :kv_idx],
+            adv_mask=None,
+            adv_embeds=None,
             use_cache=True,
         )
 
@@ -113,13 +112,12 @@ class SoftPrompt(SampleAttack):
             if isinstance(value, torch.Tensor):
                 new_data[key] = value[mask]
 
-            elif isinstance(value, DynamicCache):
+            elif key == "kv_cache" and value is None:
+                new_data[key] = None
+
+            elif key == "kv_cache" and isinstance(value, DynamicCache):
                 indices = mask.nonzero(as_tuple=True)[0]
                 cache = value.batch_select_indices(indices)
-                new_data[key] = cache
-
-            elif check_type(value, LegacyCache):
-                cache = (tuple(tensor[mask] for tensor in value[0]), tuple(tensor[mask] for tensor in value[1]))
                 new_data[key] = cache
 
             else:
@@ -127,6 +125,7 @@ class SoftPrompt(SampleAttack):
 
         return BatchEncoding(new_data)
 
+    @torch.no_grad()
     def _check_early_stopping(
         self,
         logits: torch.Tensor,
@@ -187,13 +186,13 @@ class SoftPrompt(SampleAttack):
         optim = self.optim_factory([adv_embeds])
 
         # tokenize
+        conversations = self.adv_model.inject_tokens(conversations)
         encodings = self.adv_model.tokenize(conversations, target_texts)
 
         # compute kv-cache if enabled
         if self.kv_caching:
             with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                 encodings = self._compute_cache(encodings)
-
         # early stopping state
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
         optim_embeds = adv_embeds
@@ -249,4 +248,4 @@ class SoftPrompt(SampleAttack):
 
                 pbar.set_postfix({"loss": loss.item()})
 
-        return SampleOutput(conversations=conversations, adv_embeds=adv_embeds.detach())
+        return SampleOutput(conversations, adv_embeds.detach())

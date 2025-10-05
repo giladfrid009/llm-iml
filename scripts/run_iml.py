@@ -29,7 +29,7 @@ class IML_Experiment(Experiment):
         gen_config = GenConfig(
             max_new_tokens=512,
             do_sample=True,
-            # remove_invalid_values=True,
+            remove_invalid_values=True,
             # top_p=0.9,
             # temperature=0.6,
         )
@@ -78,9 +78,9 @@ class IML_Experiment(Experiment):
             optimizer=optimizer,
             activ_extractor=activ_extractor,
             evaluators=evaluators,
-            judge_metric="StrongReject/Thresh@0.5",
-            # judge_metric="LlamaGuard/Llama-Guard-3-8B",
-            eval_freq=2,
+            # judge_metric="StrongReject/Thresh@0.5",
+            judge_metric="LlamaGuard/Meta-Llama-Guard-2-8B",
+            eval_freq=0.5,
             gen_config=gen_config,
             mixed_precision=False,
             skip_already_fooled=False,

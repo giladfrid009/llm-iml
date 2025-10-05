@@ -136,16 +136,18 @@ class UnivAttack:
         Returns:
             list[str]: List of generated responses.
         """
+        if dl.drop_last or dl.shuffle:
+            raise ValueError("dl must have shuffle=False and drop_last=False")
 
         config = config if config else self.gen_config
-        dl = dl.copy(shuffle=False, drop_last=False)
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
             all_responses = []
             for batch_data in tqdm(dl, desc="Generating", leave=False):
                 prompts = batch_data["prompt"]
                 conversations = [[{"role": "user", "content": prm}] for prm in prompts]
-                responses = adv_model.chat(conversations, config, adv_embeds=self.adv_model.adv_embeds, **kwargs)
+                conversations = self.adv_model.inject_tokens(conversations)
+                responses = adv_model.chat(conversations, adv_model.adv_embeds, config, **kwargs)
                 all_responses.extend(responses)
 
         dl.set_column("response", all_responses)
@@ -176,15 +178,11 @@ class UnivAttack:
         Returns:
             dict[str, float]:
         """
+        if dl_eval.drop_last or dl_eval.shuffle:
+            raise ValueError("dl_eval must have shuffle=False and drop_last=False")
 
         if isinstance(evaluators, Evaluator):
             evaluators = [evaluators]
-
-        # TODO: (low priority) add support to evaluating multiple generations per prompt
-        # easiest and probably cleanest solution is to copy each row in dl_eval multiple times
-
-        if dl_eval.drop_last or dl_eval.shuffle:
-            raise ValueError("dl_eval must have shuffle=False and drop_last=False")
 
         self.predict(adv_model=adv_model, dl=dl_eval, config=gen_config, **kwargs)
 

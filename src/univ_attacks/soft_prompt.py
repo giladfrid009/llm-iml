@@ -72,6 +72,7 @@ class UnivSoftPrompt(UnivAttack):
         # construct input conversations
         input_text, target_text = data["prompt"], data["target"]
         conversations = [[{"role": "user", "content": prm}] for prm in input_text]
+        conversations = self.adv_model.inject_tokens(conversations)
         encodings = self.adv_model.tokenize(conversations, target_text)
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
@@ -79,13 +80,14 @@ class UnivSoftPrompt(UnivAttack):
                 input_ids=encodings.input_ids,
                 attention_mask=encodings.attention_mask,
                 adv_mask=encodings.adv_mask,
+                adv_embeds=self.univ_embeds,
             )
 
             loss = self.criterion(
                 logits=result.logits,
                 input_ids=encodings.input_ids,
                 target_mask=encodings.target_mask,
-                sample_mean=False, # TODO: true or false?
+                sample_mean=False,  # NOTE: in the official impl. the average is over all tokens, not over samples
             )
 
         # grad step

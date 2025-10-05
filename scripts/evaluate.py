@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         nargs="+",
         default=SUPPORTED_EVALUATORS,
-        help="List of evaluator name(s) to run. If not provided, all evaluators will be run.",
+        help="List of evaluator names to run. If not provided, all evaluators will be run.",
         choices=SUPPORTED_EVALUATORS,
     )
 

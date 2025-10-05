@@ -56,7 +56,7 @@ class Experiment(ABC):
             choices=SUPPORTED_DATASETS,
             required=True,
             metavar="DATASET",
-            help=f"The dataset(s) to use. Available datasets: {SUPPORTED_DATASETS}",
+            help=f"The datasets to use. Available datasets: {SUPPORTED_DATASETS}",
         )
 
         parser.add_argument(
@@ -66,7 +66,7 @@ class Experiment(ABC):
             choices=SUPPORTED_EVALUATORS,
             required=True,
             metavar="EVALUATOR",
-            help=f"The attack evaluator(s) to use. Available evaluators: {SUPPORTED_EVALUATORS}",
+            help=f"The attack evaluators to use. Available evaluators: {SUPPORTED_EVALUATORS}",
         )
 
         parser.add_argument(
@@ -147,7 +147,7 @@ class Experiment(ABC):
             logger.error("No GPU available. Exiting.")
             sys.exit(1)
 
-        logger.info(f"Loading dataset(s): {args.dataset}")
+        logger.info(f"Loading dataset: {args.dataset}")
         ds_train, ds_val, ds_test = load_datasets(args.dataset, val_size=args.val_size)
         dl_train = TableLoader(ds_train, batch_size=5, shuffle=True)
         dl_eval = TableLoader(ds_val, batch_size=25, shuffle=False)
@@ -158,7 +158,7 @@ class Experiment(ABC):
             f"(train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)})."
         )
 
-        logger.info(f"Loading evaluator(s): {args.evaluator}")
+        logger.info(f"Loading evaluator: {args.evaluator}")
         device_count = torch.cuda.device_count()
         gpus = [] if device_count <= 1 else list(range(device_count))[1:]
         logger.info(f"GPUs available for evaluators: {gpus}")
@@ -195,8 +195,6 @@ class Experiment(ABC):
             stop = StopCriteria(
                 max_epochs=2000,
                 max_time=60 * 60 * 2,
-                patience=20,
-                patience_delta=0.1,
             )
 
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)

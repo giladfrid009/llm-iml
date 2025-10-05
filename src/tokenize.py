@@ -2,6 +2,7 @@ import torch
 import copy
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
+import re
 
 
 def chat_with_targets(
@@ -205,3 +206,36 @@ def chat(
             "adv_mask": adv_mask,
         }
     )
+
+
+def replace_tokens(
+    tokenizer: PreTrainedTokenizer,
+    conversations: list[list[dict[str, str]]],
+    repl_ids: list[list[int]],
+    adv_token: str,
+) -> list[list[dict[str, str]]]:
+    """
+    Replace all occurrences of the adversarial token in the conversations with the provided token IDs.
+
+    Args:
+        tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
+        conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+            Each message is a dictionary with keys "role" and "content".
+        repl_ids (list[list[int]]): A list of lists of token IDs to replace the adversarial tokens with.
+        adv_token (str): The adversarial token to be replaced.
+
+    Returns:
+        list[list[dict[str, str]]]: The modified conversations with adversarial tokens replaced by the specified token IDs.
+    """
+    conversations = copy.deepcopy(conversations)
+    pattern = re.compile(re.escape(adv_token))
+
+    for conv, ids in zip(conversations, repl_ids):
+        adv_tks = tokenizer.convert_ids_to_tokens(ids)
+        adv_it = iter(adv_tks)
+
+        for msg in conv:
+            content = msg["content"]
+            msg["content"] = pattern.sub(lambda _: next(adv_it), content)
+
+    return conversations

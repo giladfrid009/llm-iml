@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-import torch.nn.functional as F
 from typing import Iterator
 import copy
 
@@ -12,6 +11,7 @@ from transformers.tokenization_utils_base import BatchEncoding
 from src import tokenize
 from src.utils.torch import extract_device
 from src.config import GenConfig
+from src.discretize import Discretize
 
 
 class AdverEmbedding(nn.Module):
@@ -123,18 +123,13 @@ class AdvModel(nn.Module):
         # we anyways almost no-where use self.adv_embeds
         yield self.adv_embeds
 
-    # TODO: EXPERIMENTAL
     @torch.no_grad()
     def discretize(self) -> None:
         if self.adv_embeds is None:
             raise ValueError("Adversarial embeddings are not set. Please set them using `set_embeddings` method.")
 
-        adv_embeds = F.normalize(self.adv_embeds, p=2, dim=-1)  # shape [b, n, d]
-        weights = F.normalize(self.orig_embedder.weight, p=2, dim=-1)  # shape [v, d]
-        weights = weights.unsqueeze(0).expand(adv_embeds.size(0), -1, -1)  # shape [b, v, d]
-        dists = torch.cdist(adv_embeds, weights, p=2)  # shape [b, n, v]
-        closest_indices = torch.argmin(dists, dim=-1)  # shape [b, n]
-        self.adv_embeds = self.orig_embedder(closest_indices)  # shape [b, n, d]
+        closest_indices = Discretize.cosine_similarity(self.adv_embeds, self.orig_embedder.weight)
+        self.adv_embeds = self.embed(closest_indices)  # shape [b, n, d]
 
     def train(self, mode: bool = True) -> "AdvModel":
         """
@@ -225,6 +220,29 @@ class AdvModel(nn.Module):
 
         return conversations
 
+    def repl_tokens(
+        self,
+        conversations: list[list[dict[str, str]]],
+        repl_ids: list[list[int]],
+    ) -> list[list[dict[str, str]]]:
+        """
+        Replace all occurrences of the adversarial token in the conversations with the provided token IDs.
+
+        Args:
+            conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+                Each message is a dictionary with keys "role" and "content".
+            repl_ids (list[list[int]]): A list of lists of token IDs to replace the adversarial tokens with.
+
+        Returns:
+            list[list[dict[str, str]]]: The modified conversations with adversarial tokens replaced by the specified token IDs.
+        """
+        return tokenize.replace_tokens(
+            tokenizer=self.tokenizer,
+            conversations=conversations,
+            repl_ids=repl_ids,
+            adv_token=self.adv_token,
+        )
+
     def tokenize(
         self,
         conversations: list[list[dict[str, str]]],
@@ -247,13 +265,6 @@ class AdvModel(nn.Module):
                 - `const_idx` (torch.IntTensor): Only if `target_texts != None`. Index values for the constant tokens for KV-cache.
                 - `target_mask` (torch.BoolTensor): Only if `target_texts != None`. Mask for the target tokens
         """
-
-        # add adv tokens
-        # TODO: we should move inject out of this function
-        # TODO: should inject tokens only if adv_embeds is not None?
-        # and also only if there are no self.adv_token in the messages already
-        conversations = self.inject_tokens(conversations)
-
         if target_texts is not None:
             tokenized = tokenize.chat_with_targets(
                 tokenizer=self.tokenizer,
@@ -282,13 +293,10 @@ class AdvModel(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        adv_mask: torch.Tensor | None = None,
-        adv_embeds: torch.Tensor | None = None,
+        adv_mask: torch.Tensor | None,
+        adv_embeds: torch.Tensor | None,
         **kwargs,
     ):
-        if adv_embeds is None:
-            adv_embeds = self.adv_embeds
-
         if adv_mask is not None and adv_embeds is not None:
             inputs_embeds = self.embed(input_ids, adv_embeds, adv_mask)
         else:
@@ -306,20 +314,18 @@ class AdvModel(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        adv_mask: torch.Tensor | None = None,
-        adv_embeds: torch.Tensor | None = None,
+        adv_mask: torch.Tensor | None,
+        adv_embeds: torch.Tensor | None,
         config: GenConfig | None = None,
         **kwargs,
     ) -> GenerateDecoderOnlyOutput | torch.Tensor:
         # generation config
         if config is None:
             config = GenConfig()
+
         generation_config = copy.deepcopy(self.model.generation_config)
         if generation_config is not None:
             config.patch_other(generation_config)
-
-        if adv_embeds is None:
-            adv_embeds = self.adv_embeds
 
         if adv_mask is not None and adv_embeds is not None:
             inputs_embeds = self.embed(input_ids, adv_embeds, adv_mask)
@@ -338,12 +344,13 @@ class AdvModel(nn.Module):
             **kwargs,
         )  # type: ignore
 
+    # TODO: before every chat call make sure we inject adv tokens appropriately
     @torch.inference_mode()
     def chat(
         self,
         conversations: list[list[dict[str, str]]],
+        adv_embeds: torch.Tensor | None,
         config: GenConfig | None = None,
-        adv_embeds: torch.Tensor | None = None,
         **kwargs,
     ) -> list[str]:
         """
@@ -351,16 +358,15 @@ class AdvModel(nn.Module):
 
         Args:
             conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
-                Each message is a dictionary with keys "role" and "content".
+                Each message is a dictionary with keys "role" and "content". Must contain adversarial token placeholders if adv_embeds are to be used.
+            adv_embeds (torch.Tensor | None): The adversarial embeddings to be used during generation. If None, no adversarial embeddings are used.
             config (GenConfig | None): Generation configuration. If None, uses the default generation configuration.
-            adv_embeds (torch.Tensor | None): Override to `self.adv_embeds` for the generation.
 
         Returns:
             list[str]: List of generated adversarial texts.
         """
 
         # BUG: in self.tokenize we always add adversarial tokens, even if adv_embeds is None
-        # TODO: make sure above bug doesnt appear anywhere else
         encodings = self.tokenize(conversations)
 
         result: torch.Tensor = self.generate(

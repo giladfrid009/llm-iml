@@ -1,40 +1,18 @@
 from src.adv_model import AdvModel
 from src.sample_attacks.soft_prompt import SoftPrompt
 from src.sample_attacks.sample_attack import SampleOutput
+from src.discretize import Discretize
+from src import tokenize
 
-import re
 from typing import Callable, Iterable
 from tqdm.auto import tqdm
 import torch
 import copy
-import torch.nn.functional as F
 from torch import nn
 
 
 def default_optimizer(params: Iterable[torch.Tensor]) -> torch.optim.Optimizer:
     return torch.optim.Adam(params, lr=0.001, weight_decay=0.0)
-
-
-def discretize_cosine(soft_embeds: torch.Tensor, vocab_matrix: torch.Tensor) -> torch.Tensor:
-    """
-    Discretize the soft embeddings to the nearest hard embedding using cosine similarity.
-
-    Args:
-        soft_embeds (torch.Tensor): Soft embeddings of shape [b, n, d]
-        vocab_matrix (torch.Tensor): Vocabulary embeddings of shape [v, d]
-
-    Returns:
-        ids (torch.Tensor): Nearest neighbor of each soft embedding in the vocabulary, shape [b, n]
-    """
-
-    # L2-normalize
-    q = F.normalize(soft_embeds, p=2, dim=-1)  # [b, n, d]
-    w = F.normalize(vocab_matrix, p=2, dim=-1)  # [v, d]
-
-    # cosine sim == dot product for unit vectors
-    sims = torch.matmul(q, w.T)  # [b, n, v]
-    ids = sims.argmax(dim=-1)  # [b, n]
-    return ids
 
 
 class SoftProject(nn.Module):
@@ -65,8 +43,8 @@ class SoftProject(nn.Module):
                 return self.embedding(ids)
 
             @staticmethod
-            def backward(ctx, grad_output: torch.Tensor):
-                return grad_output
+            def backward(ctx, *grad_outputs: torch.Tensor):
+                return grad_outputs
 
         self._STE = _STE
 
@@ -88,27 +66,7 @@ class SoftProject(nn.Module):
         Project the soft embeddings to the nearest hard embeddings in the forward pass
         and pass the gradient through in the backward pass.
         """
-        return self._STE.apply(soft_embeds)
-
-
-# class project_soft_embeds(torch.autograd.Function):
-#     """
-#     This is a PyTorch layer that projects the soft embeddings to the nearest
-#     hard embedding in the forward pass and passes the gradient through in the
-#     backward pass. This is a straight-through estimator.
-#     """
-
-#     embed_layer: torch.nn.Embedding = None  # type: ignore
-
-#     @staticmethod
-#     def forward(ctx, input):
-#         ids = discretize_cosine(input, project_soft_embeds.embed_layer.weight)
-#         proj = project_soft_embeds.embed_layer(ids)
-#         return proj
-
-#     @staticmethod
-#     def backward(ctx, grad_output):
-#         return (grad_output,)  # straight-through estimator
+        return self._STE.apply(soft_embeds)  # type: ignore
 
 
 class PEZ(SoftPrompt):
@@ -124,7 +82,8 @@ class PEZ(SoftPrompt):
         steps: int = 100,
         early_stopping: bool = False,
         mixed_precision: bool = False,
-        kv_caching: bool = True,
+        kv_caching: bool = True,  # TODO: compare both True and False results; - I think there is a difference
+        return_embeds: bool = False,  # TODO: compare both True and False results; change to True after testing
         verbose: bool = True,
     ):
         super().__init__(
@@ -136,6 +95,13 @@ class PEZ(SoftPrompt):
             kv_caching=kv_caching,
             verbose=verbose,
         )
+
+        self.return_embeds = return_embeds
+
+    def get_hparams(self) -> dict:
+        hparams = super().get_hparams()
+        hparams["return_embeds"] = self.return_embeds
+        return hparams
 
     def _initialize_embeddings(
         self,
@@ -154,7 +120,7 @@ class PEZ(SoftPrompt):
             dtype=torch.long,
         )
 
-        embeds = self.adv_model.orig_embedder(random_ids).clone().detach()
+        embeds = self.adv_model.embed(random_ids).clone().detach()
         embeds.requires_grad_(True)
         return embeds
 
@@ -178,9 +144,10 @@ class PEZ(SoftPrompt):
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory([adv_embeds])
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(optim, self.steps)
-        soft_project = SoftProject(self.adv_model.orig_embedder, discretize_cosine)
+        soft_project = SoftProject(self.adv_model.orig_embedder, Discretize.cosine_similarity)
 
         # tokenize
+        conversations = self.adv_model.inject_tokens(conversations)
         encodings = self.adv_model.tokenize(conversations, target_texts)
 
         # compute kv-cache if enabled
@@ -209,7 +176,7 @@ class PEZ(SoftPrompt):
                     # forward pass
                     optim_embeds = soft_project.forward(optim_embeds)
 
-                    result = self.adv_model.forward(
+                    adv_content = self.adv_model.forward(
                         input_ids=step_encodings.input_ids,
                         attention_mask=step_encodings.attention_mask,
                         adv_mask=step_encodings.adv_mask,
@@ -218,7 +185,7 @@ class PEZ(SoftPrompt):
                     )
 
                     # align predicted logits and target_ids
-                    logits: torch.Tensor = result.logits[:, :-1]  # remove new token
+                    logits: torch.Tensor = adv_content.logits[:, :-1]  # remove new token
                     target_ids = step_encodings.input_ids[:, 1:]  # remove BOS token
                     target_mask = step_encodings.target_mask[:, 1:]  # remove BOS token
 
@@ -246,22 +213,15 @@ class PEZ(SoftPrompt):
 
                 pbar.set_postfix({"loss": loss.item()})
 
-        # TODO: clean up
         with torch.no_grad():
             # replace adv token placeholders with discrete tokens
             adv_ids = soft_project.discretize(adv_embeds)
-            conversations = self.adv_model.inject_tokens(conversations)
-            last_message = [conv[-1]["content"] for conv in conversations]
 
-            adv_messages = []
-            for string, ids in zip(last_message, adv_ids):
-                embedding_tokens = self.adv_model.tokenizer.convert_ids_to_tokens(ids.tolist())
-                it = iter(embedding_tokens)
-                adv_token = re.escape(self.adv_model.adv_token)
-                result = re.sub(adv_token, repl=lambda _: next(it), string=string)
-                adv_messages.append(result)
+            if self.return_embeds:
+                # return convs with adv-token placeholders and the discrete embeddings
+                discrete_embeds = self.adv_model.embed(adv_ids)
+                return SampleOutput(conversations, discrete_embeds.detach())
 
-            for conv, inp in zip(conversations, adv_messages):
-                conv[-1]["content"] = inp
-
-        return SampleOutput(conversations=conversations)
+        # replace adv token placeholders with discrete tokens
+        conversations = self.adv_model.repl_tokens(conversations, repl_ids=adv_ids.tolist())
+        return SampleOutput(conversations)

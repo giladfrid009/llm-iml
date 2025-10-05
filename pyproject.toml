@@ -29,7 +29,6 @@ dependencies = [
     "gserve",
     "clearml>=2.0.0",
     "sentence-transformers>=5.0.0",
-    "typeguard>=4.4.4",
     "dotenv>=0.9.9",
     "pyarrow>=21.0.0",
     "datasets>=4.1.1",

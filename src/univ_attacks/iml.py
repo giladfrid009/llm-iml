@@ -122,7 +122,7 @@ class IML(UnivAttack):
         for ev in self.evaluators:
             if self.judge_metric in ev.metric_names:
                 return ev
-        
+
         raise ValueError(
             f"Judge metric {self.judge_metric} not found in any evaluator. "
             f"Available metrics: {[ev.metric_names for ev in self.evaluators]}"
@@ -155,13 +155,19 @@ class IML(UnivAttack):
         # construct input conversations
         input_texts, target_texts = data["prompt"], data["target"]
         input_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
+        input_convs = self.adv_model.inject_tokens(input_convs)
 
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
             # skip already successfully fooled samples
             if self.skip_already_fooled:
                 with torch.inference_mode():
-                    responses = self.adv_model.chat(input_convs, self.gen_config, adv_embeds=self.univ_embeds)
-                    eval_result = self.judge_evaluator.eval_batch(input_texts, responses)
+                    init_responses = self.adv_model.chat(
+                        conversations=input_convs,
+                        adv_embeds=self.univ_embeds,
+                        config=self.gen_config,
+                    )
+
+                    eval_result = self.judge_evaluator.eval_batch(input_texts, init_responses)
                     eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
                     fooled_mask = eval_metric >= 1.0
 
@@ -174,54 +180,57 @@ class IML(UnivAttack):
 
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
-                clear_memory() # TODO: remove?
+                clear_memory()  # TODO: remove?
                 init_embeds = self.univ_embeds.expand(len(input_convs), -1, -1)
-                attack_result = self.inner_attack.fit(input_convs, target_texts, init_embeds=init_embeds)
-                sample_convs = attack_result.conversations
-                sample_embeds = attack_result.adv_embeds
-                clear_memory() # TODO: remove?
+                clean_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
+                sample_result = self.inner_attack.fit(clean_convs, target_texts, init_embeds=init_embeds)
+                clear_memory()  # TODO: remove?
 
             # skip failed per-sample attacks
             if self.skip_failed_attacks:
                 with torch.inference_mode():
-                    responses = self.adv_model.chat(sample_convs, self.gen_config, adv_embeds=sample_embeds)
-                    eval_result = self.judge_evaluator.eval_batch(input_texts, responses)
+                    sample_responses = self.adv_model.chat(
+                        conversations=sample_result.conversations,
+                        adv_embeds=sample_result.adv_embeds,
+                        config=self.gen_config,
+                    )
+
+                    eval_result = self.judge_evaluator.eval_batch(input_texts, sample_responses)
                     eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
                     success_mask = eval_metric >= 1.0
 
                     if not success_mask.any():
                         return None
 
-                    # set target texts to generated responses
                     if self.dynamic_labels > 0:
-                        target_texts = self.truncate_tokens(responses, self.dynamic_labels)
+                        # set target texts to generated sample responses
+                        target_texts = self.truncate_tokens(sample_responses, self.dynamic_labels)
 
                     input_convs = [conv for conv, m in zip(input_convs, success_mask) if m]
-                    sample_convs = [conv for conv, m in zip(sample_convs, success_mask) if m]
                     target_texts = [tgt for tgt, m in zip(target_texts, success_mask) if m]
-                    sample_embeds = sample_embeds[success_mask] if sample_embeds is not None else None
+                    sample_result = sample_result.masked_select(success_mask)
 
             elif self.dynamic_labels > 0 and (not self.skip_failed_attacks):
-                # we first need to generate responses
-                responses = self.adv_model.chat(
-                    sample_convs,
-                    self.gen_config,
-                    adv_embeds=sample_embeds,
+                # explicitly use all sample responses as new target texts
+                sample_responses = self.adv_model.chat(
+                    conversations=sample_result.conversations,
+                    adv_embeds=sample_result.adv_embeds,
+                    config=self.gen_config,
                     max_new_tokens=self.dynamic_labels,
                 )
 
                 # set target texts to generated responses
-                target_texts = self.truncate_tokens(responses, self.dynamic_labels)
+                target_texts = self.truncate_tokens(sample_responses, self.dynamic_labels)
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
-                sample_encodings = self.adv_model.tokenize(sample_convs, target_texts)
+                sample_encodings = self.adv_model.tokenize(sample_result.conversations, target_texts)
                 with torch.inference_mode():
                     self.adv_model.forward(
                         input_ids=sample_encodings.input_ids,
                         attention_mask=sample_encodings.attention_mask,
                         adv_mask=sample_encodings.adv_mask,
-                        adv_embeds=sample_embeds,
+                        adv_embeds=sample_result.adv_embeds,
                     )
                     sample_activs = self.activ_extractor.get_activations()
 
@@ -231,6 +240,7 @@ class IML(UnivAttack):
                     input_ids=univ_encodings.input_ids,
                     attention_mask=univ_encodings.attention_mask,
                     adv_mask=univ_encodings.adv_mask,
+                    adv_embeds=self.univ_embeds,
                 )
                 univ_activs = self.activ_extractor.get_activations()
 

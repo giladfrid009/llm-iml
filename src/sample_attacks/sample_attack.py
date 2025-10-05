@@ -1,7 +1,8 @@
-from src.adv_model import AdvModel
+from __future__ import annotations
 import torch
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from src.adv_model import AdvModel
 
 
 @dataclass
@@ -11,10 +12,14 @@ class SampleOutput:
         If `adv_embeds` is not None, the `conversations` are expected to contain adversarial tokens in the appropriate places,
         to be replaced by the adversarial embeddings during model forward.
     """
-    # TODO: should be like that, currently not like that
 
     conversations: list[list[dict[str, str]]]
     adv_embeds: torch.Tensor | None = None
+
+    def masked_select(self, mask: torch.Tensor) -> SampleOutput:
+        convs = [conv for conv, m in zip(self.conversations, mask) if m]
+        adv_embeds = self.adv_embeds[mask] if self.adv_embeds is not None else None
+        return SampleOutput(convs, adv_embeds)
 
 
 class SampleAttack(ABC):
