@@ -21,7 +21,7 @@ logger = create_logger(__name__)
 
 class EvalName(str, Enum):
     BEAVER = "beaver"
-    GPT35_TURBO = "gpt-3.5-turbo"
+    GPT35_TURBO = "gpt3.5-turbo"
     HARMBENCH = "hb-judge"
     LLAMA2 = "llama2-7b"
     LLAMA3 = "llama3-8b"
@@ -92,11 +92,16 @@ def load_evaluators(names: list[str], gpus: int | list[int] = 1) -> list[Evaluat
     evaluators = []
 
     # special handling of evaluators not requiring a GPU
-    if EvalName.KEYWORDMATCHING.value in names:
-        names = [n for n in names if n != EvalName.KEYWORDMATCHING.value]
-        evaluators.append(KeywordMatching())
+    NON_GPU = [EvalName.BEAVER.value, EvalName.GPT35_TURBO.value]
 
-    # truncate list of evaluators if there are more evaluators than GPUs
+    for name in names:
+        if name in NON_GPU:
+            evaluator = load_single_evaluator(name, ServeConfig(gpu_ids=[]))
+            evaluators.append(evaluator)
+
+    names = [n for n in names if n not in NON_GPU]
+
+    # now, truncate list of evaluators if there are more evaluators than GPUs
     if len(names) > len(gpus):
         names = names[: len(gpus)]
 

@@ -63,7 +63,7 @@ class IML(UnivAttack):
         optimizer: torch.optim.Optimizer,
         activ_extractor: ActivationExtractor,
         evaluators: list[Evaluator],
-        judge_metric: str | None = None,
+        eval_metric: str | None = None,
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
@@ -75,7 +75,7 @@ class IML(UnivAttack):
         super().__init__(
             adv_model=adv_model,
             evaluators=evaluators,
-            judge_metric=judge_metric,
+            eval_metric=eval_metric,
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
@@ -111,7 +111,9 @@ class IML(UnivAttack):
         self.metric_logger.log_hparams("activ_extractor", activ_extractor.get_hparams())
         self.metric_logger.log_hparams("inner_attack", self.inner_attack.get_hparams())
         self.metric_logger.log_hparams(
-            "optim", optimizer.state_dict()["param_groups"][0], name=self.optimizer.__class__.__name__
+            "optim",
+            optimizer.state_dict()["param_groups"][0],
+            name=self.optimizer.__class__.__name__,
         )
 
     @property
@@ -120,11 +122,11 @@ class IML(UnivAttack):
         Returns the evaluator used for judging the success of the attack.
         """
         for ev in self.evaluators:
-            if self.judge_metric in ev.metric_names:
+            if self.eval_metric in ev.metric_names:
                 return ev
 
         raise ValueError(
-            f"Judge metric {self.judge_metric} not found in any evaluator. "
+            f"Judge metric {self.eval_metric} not found in any evaluator. "
             f"Available metrics: {[ev.metric_names for ev in self.evaluators]}"
         )
 
@@ -168,7 +170,7 @@ class IML(UnivAttack):
                     )
 
                     eval_result = self.judge_evaluator.eval_batch(input_texts, init_responses)
-                    eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
+                    eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
                     fooled_mask = eval_metric >= 1.0
 
                     if fooled_mask.all():
@@ -196,7 +198,7 @@ class IML(UnivAttack):
                     )
 
                     eval_result = self.judge_evaluator.eval_batch(input_texts, sample_responses)
-                    eval_metric = torch.tensor(eval_result[self.judge_metric], device=self.device)
+                    eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
                     success_mask = eval_metric >= 1.0
 
                     if not success_mask.any():

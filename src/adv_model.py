@@ -365,8 +365,6 @@ class AdvModel(nn.Module):
         Returns:
             list[str]: List of generated adversarial texts.
         """
-
-        # BUG: in self.tokenize we always add adversarial tokens, even if adv_embeds is None
         encodings = self.tokenize(conversations)
 
         result: torch.Tensor = self.generate(

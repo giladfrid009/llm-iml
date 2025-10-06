@@ -197,15 +197,6 @@ class Experiment(ABC):
             logger.info("Initializing attack...")
             univ_attack = self.initialize_attack(adv_model, evaluators, metric_logger)
 
-            if main_file := getattr(sys.modules.get("__main__"), "__file__", None):
-                metric_logger.log_code(main_file)
-            if expr_file := getattr(sys.modules.get(__name__), "__file__", None):
-                metric_logger.log_code(expr_file)
-
-            metric_logger.cm_task.register_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
-            metric_logger.cm_task.register_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
-            metric_logger.cm_task.register_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
-
             metric_logger.add_tags(
                 model=args.model,
                 num_tokens=adv_model.num_tokens,
@@ -213,6 +204,16 @@ class Experiment(ABC):
                 dataset=", ".join(args.dataset),
                 evaluators=", ".join(args.evaluator),
             )
+
+            if main_file := getattr(sys.modules.get("__main__"), "__file__", None):
+                metric_logger.log_code(main_file)
+            if expr_file := getattr(sys.modules.get(__name__), "__file__", None):
+                metric_logger.log_code(expr_file)
+
+            if cm_task := metric_logger.cm_task:
+                cm_task.register_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
+                cm_task.register_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
+                cm_task.register_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
 
             logger.info("Running attack...")
 
@@ -226,9 +227,10 @@ class Experiment(ABC):
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)
 
             logger.info("Running test evaluation...")
-            metrics = univ_attack.evaluate(adv_model, evaluators, dl_test)
-            univ_attack.metric_logger.log_metrics(metrics)
-            univ_attack.metric_logger.cm_task.upload_artifact(name="test_result", artifact_object=dl_eval.df)
+            metrics = univ_attack.evaluate(evaluators, dl_test)
+            metric_logger.log_metrics(metrics)
+            if cm_task := metric_logger.cm_task:
+                cm_task.upload_artifact(name="test_result", artifact_object=dl_eval.df)
 
         for eval in evaluators:
             eval.close()

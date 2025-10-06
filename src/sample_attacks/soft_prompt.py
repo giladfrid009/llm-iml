@@ -54,12 +54,14 @@ class SoftPrompt(SampleAttack):
             embeddings.requires_grad_(True)
             return embeddings
 
-        return torch.randn(
+        embeddings = torch.randn(
             size=(num_inputs, self.adv_model.num_tokens, self.adv_model.adv_embedder.embed_dim),
             device=self.adv_model.device,
             dtype=self.adv_model.adv_embedder.embed_dtype,
             requires_grad=True,
         )
+
+        return embeddings * 0.1
 
     @torch.no_grad()
     def _compute_cache(self, encodings: BatchEncoding) -> BatchEncoding:

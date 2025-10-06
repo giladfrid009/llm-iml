@@ -21,7 +21,7 @@ class UnivAttack:
         self,
         adv_model: AdvModel,
         evaluators: list[Evaluator],
-        judge_metric: str | None = None,
+        eval_metric: str | None = None,
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
@@ -31,6 +31,7 @@ class UnivAttack:
         Args:
             adv_model (AdvModel): The adversarial model to use for text generation.
             evaluators (list[Evaluator]): List of evaluators to use for evaluation.
+            eval_metric (str | None): The main evaluation metric, used for selecting the best model.
             eval_freq (int | float): Frequency of evaluation during training.
                 - if int, evaluates every `eval_freq` epochs.
                 - if float, evaluates every `round(eval_freq * len(dl_train))` batches.
@@ -41,12 +42,13 @@ class UnivAttack:
         if gen_config is None:
             gen_config = GenConfig()
 
-        if judge_metric is None:
-            judge_metric = evaluators[0].metric_names[0]
+        if eval_metric is None:
+            eval_metric = evaluators[0].metric_names[0]
+            logger.info(f"Auto-selected main eval_metric: {eval_metric}")
 
         self.adv_model = adv_model
         self.evaluators = evaluators
-        self.judge_metric = judge_metric
+        self.eval_metric = eval_metric
         self.eval_freq = eval_freq
         self.gen_config = gen_config
         self.mixed_precision = mixed_precision
@@ -78,7 +80,7 @@ class UnivAttack:
             mixed_precision=self.mixed_precision,
             eval_freq=self.eval_freq,
             evaluators=[e.name for e in self.evaluators],
-            judge_metric=self.judge_metric,
+            eval_metric=self.eval_metric,
             log_dir=self.metric_logger.root_dir,
         )
 
@@ -113,12 +115,15 @@ class UnivAttack:
         return self.adv_model.device
 
     def save_checkpoint(self, file_name: str = "best_embeds.pt"):
+        if self.metric_logger.log_dir is None:
+            logger.warning("Log dir is None, cannot save checkpoint.")
+            return
+
         torch.save(self.best_embeds, pathlib.Path(self.metric_logger.log_dir) / file_name)
 
     @torch.inference_mode()
     def predict(
         self,
-        adv_model: AdvModel,
         dl: TableLoader,
         config: GenConfig | None = None,
         **kwargs: Any,
@@ -128,7 +133,6 @@ class UnivAttack:
         Sets the "response" column in the data loader with the generated responses.
 
         Args:
-            adv_model (AdvModel): The adversarial model to use for text generation.
             dl (TableLoader): Data loader with prompts for generation.
             config (GenConfig | None): Generation configuration to use for the model.
             **kwargs (dict): Additional keyword arguments for `AdvModel.chat`.
@@ -147,7 +151,7 @@ class UnivAttack:
                 prompts = batch_data["prompt"]
                 conversations = [[{"role": "user", "content": prm}] for prm in prompts]
                 conversations = self.adv_model.inject_tokens(conversations)
-                responses = adv_model.chat(conversations, adv_model.adv_embeds, config, **kwargs)
+                responses = self.adv_model.chat(conversations, self.univ_embeds, config, **kwargs)
                 all_responses.extend(responses)
 
         dl.set_column("response", all_responses)
@@ -157,7 +161,6 @@ class UnivAttack:
     @torch.inference_mode()
     def evaluate(
         self,
-        adv_model: AdvModel,
         evaluators: list[Evaluator] | Evaluator,
         dl_eval: TableLoader,
         gen_config: GenConfig | None = None,
@@ -168,7 +171,6 @@ class UnivAttack:
         Evaluates the model using the provided evaluators and data loader.
 
         Args:
-            adv_model (AdvModel): The adversarial model to evaluate.
             evaluators (list[Evaluator]): List of evaluators to use for evaluation.
             dl_eval (TableLoader): Data loader for evaluation.
             gen_config (GenConfig | None): Generation configuration to use for the model.
@@ -184,23 +186,23 @@ class UnivAttack:
         if isinstance(evaluators, Evaluator):
             evaluators = [evaluators]
 
-        self.predict(adv_model=adv_model, dl=dl_eval, config=gen_config, **kwargs)
+        self.predict(dl_eval, config=gen_config, **kwargs)
 
-        all_metrics = {}
+        all_metrics: dict[str, float] = {}
         for evaluator in evaluators:
             metrics = evaluator.evaluate(dl_eval)
             all_metrics.update(metrics)
 
         if update_best:
-            judge_metric = all_metrics.get(self.judge_metric)
-            if judge_metric is None:
+            value = all_metrics.get(self.eval_metric)
+            if value is None:
                 raise ValueError(
-                    f"Judge metric `{self.judge_metric}` not found in the list of produced metrics {list(all_metrics.keys())}."
+                    f"Eval metric `{self.eval_metric}` not found in the list of produced metrics {list(all_metrics.keys())}."
                 )
 
-            if self.best_metric < judge_metric:
-                self.best_metric = judge_metric
-                self.best_embeds = adv_model.get_embeddings(clone=True)
+            if self.best_metric < value:
+                self.best_metric = value
+                self.best_embeds = self.adv_model.get_embeddings(clone=True)
 
         return all_metrics
 
@@ -230,11 +232,11 @@ class UnivAttack:
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
             # initial evaluation
-            metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
+            metrics = self.evaluate(self.evaluators, dl_eval, update_best=True)
             clear_memory()
 
             self.save_checkpoint()
-            self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step=-1)
+            self.metric_logger.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step=-1)
             self.metric_logger.report_scalars(metrics, step=-1)
             epoch_pbar.set_postfix(metrics)
 
@@ -259,12 +261,12 @@ class UnivAttack:
                         # evaluation step
                         if should_stop or (step > 0 and step % round(self.eval_freq * len(dl_train)) == 0):
                             clear_memory()  # TODO: remove?
-                            metrics = self.evaluate(self.adv_model, self.evaluators, dl_eval, update_best=True)
-                            stop_criteria.update(epoch_num, metrics[self.judge_metric])
+                            metrics = self.evaluate(self.evaluators, dl_eval, update_best=True)
+                            stop_criteria.update(epoch_num, metrics[self.eval_metric])
                             clear_memory()  # TODO: remove?
 
                             self.save_checkpoint()
-                            self.metric_logger.report_scalar(f"{self.judge_metric} (best)", self.best_metric, step)
+                            self.metric_logger.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step)
                             self.metric_logger.report_scalars(metrics, step)
                             epoch_pbar.set_postfix(metrics)
 

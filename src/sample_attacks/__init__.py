@@ -1,6 +1,8 @@
 from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 from src.sample_attacks.soft_prompt import SoftPrompt
+from sample_attacks.soft_prompt_zero import SoftPromptZero
 from src.sample_attacks.pez import PEZ
+from src.sample_attacks.flip_attack import FlipAttack
 
 from src.sample_attacks.harm_bench import AutoPrompt
 from src.sample_attacks.harm_bench import DirectRequest
@@ -13,6 +15,8 @@ __all__ = [
     "SampleAttack",
     "SampleOutput",
     "SoftPrompt",
+    "SoftPromptZero",
+    "FlipAttack",
     "AutoPrompt",
     "DirectRequest",
     "GBDA",

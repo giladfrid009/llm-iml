@@ -7,15 +7,27 @@ logger = create_logger(__name__)
 
 
 class MetricLogger:
-    def __init__(self, *names: str, project: str, root_dir: str = "logs"):
-        if len(names) == 0:
+    def __init__(
+        self,
+        *names: str,
+        project: str,
+        root_dir: str = "logs",
+        disabled: bool = False,
+    ):
+        if len(names) == 0 and not disabled:
             raise ValueError("At least one name component must be provided.")
 
         self.run_name = str.join(" - ", names)
         self.project = project
         self.root_dir = root_dir
-        self.log_dir = self._create_directory(root_dir, *names)
-        self.cm_task: Task = Task.init(project_name=project, task_name=self.run_name)
+        self.disabled = disabled
+
+        self.log_dir: str | None = None
+        self.cm_task: Task | None = None
+
+        if not disabled:
+            self.log_dir = self._create_directory(root_dir, *names)
+            self.cm_task = Task.init(project_name=project, task_name=self.run_name)
 
     def get_hparams(self) -> dict[str, Any]:
         return {
@@ -23,6 +35,7 @@ class MetricLogger:
             "project": self.project,
             "root_dir": self.root_dir,
             "log_dir": self.log_dir,
+            "disabled": self.disabled,
         }
 
     def _create_directory(self, *subdir_parts: str) -> str:
@@ -54,6 +67,9 @@ class MetricLogger:
             *args (dict): Positional dictionaries of hyperparameters to log.
             **kwargs: Keyword arguments of hyperparameters to log.
         """
+        if self.cm_task is None or self.disabled:
+            logger.debug("MetricLogger is disabled. Skipping log_hparams.")
+            return
 
         def flatten_dict(d: dict, parent_key: str = "", sep: str = "/") -> dict:
             items = []
@@ -72,6 +88,10 @@ class MetricLogger:
         self.cm_task.update_parameters(hparams)
 
     def log_code(self, file_path: str):
+        if self.cm_task is None or self.disabled:
+            logger.debug("MetricLogger is disabled. Skipping log_code.")
+            return
+
         if not pathlib.Path(file_path).is_file():
             logger.warning(f"File '{file_path}' does not exist. Cannot log code.")
             return
@@ -89,6 +109,10 @@ class MetricLogger:
             logger.warning(f"Failed to log code file '{file_path}'.")
 
     def add_tags(self, **tags):
+        if self.cm_task is None or self.disabled:
+            logger.debug("MetricLogger is disabled. Skipping add_tags.")
+            return
+
         if len(tags) == 0:
             logger.warning("No tags provided.")
             return
@@ -105,10 +129,18 @@ class MetricLogger:
         Args:
             metrics (dict[str, int | float]): The metrics to log.
         """
+        if self.cm_task is None or self.disabled:
+            logger.debug("MetricLogger is disabled. Skipping log_metrics.")
+            return
+
         for k, v in metrics.items():
             self.cm_task.logger.report_single_value(k, v)
 
     def report_scalars(self, scalers: dict[str, int | float], step: int):
+        if self.cm_task is None or self.disabled:
+            logger.debug("MetricLogger is disabled. Skipping report_scalars.")
+            return
+
         for key, value in scalers.items():
             self.report_scalar(key, value, step)
 
@@ -121,6 +153,10 @@ class MetricLogger:
             value (int | float | None): The scalar value to log.
             step (int): The step number.
         """
+        if self.cm_task is None or self.disabled:
+            logger.debug("MetricLogger is disabled. Skipping report_scalar.")
+            return
+
         if "/" in tag:
             split = tag.split("/", maxsplit=1)
             title, series = split[0], split[1]

@@ -41,7 +41,7 @@ class SoftPrompt_Experiment(Experiment):
             adv_model=adv_model,
             optimizer=optimizer,
             evaluators=evaluators,
-            judge_metric="StrongReject/Thresh@0.5",
+            eval_metric="StrongReject/Thresh@0.5",
             eval_freq=10,
             gen_config=gen_config,
             mixed_precision=False,

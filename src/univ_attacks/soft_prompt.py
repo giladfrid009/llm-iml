@@ -15,7 +15,7 @@ class UnivSoftPrompt(UnivAttack):
         adv_model: AdvModel,
         optimizer: FGSM,
         evaluators: list[Evaluator],
-        judge_metric: str | None = None,
+        eval_metric: str | None = None,
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
@@ -24,7 +24,7 @@ class UnivSoftPrompt(UnivAttack):
         super().__init__(
             adv_model=adv_model,
             evaluators=evaluators,
-            judge_metric=judge_metric,
+            eval_metric=eval_metric,
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
@@ -33,9 +33,14 @@ class UnivSoftPrompt(UnivAttack):
 
         self.optimizer = optimizer
 
-        self.metric_logger.log_hparams("univ_soft_prompt", optimizer=self.optimizer.__class__.__name__)
         self.metric_logger.log_hparams(
-            "optim", optimizer.state_dict()["param_groups"][0], name=self.optimizer.__class__.__name__
+            "univ_soft_prompt",
+            optimizer=self.optimizer.__class__.__name__,
+        )
+        self.metric_logger.log_hparams(
+            "optim",
+            optimizer.state_dict()["param_groups"][0],
+            name=self.optimizer.__class__.__name__,
         )
 
     def criterion(
