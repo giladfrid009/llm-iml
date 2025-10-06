@@ -4,7 +4,6 @@ from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
 
 import re
-import math
 import msgspec
 from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
@@ -99,8 +98,8 @@ class MDJudge(Evaluator):
             score = (score - 1) / 4
         else:
             logger.warning(f"Unexpected response: {response}")
-            harmful = math.nan
-            score = math.nan
+            harmful = float("nan")
+            score = float("nan")
 
         return {
             "harmful": harmful,

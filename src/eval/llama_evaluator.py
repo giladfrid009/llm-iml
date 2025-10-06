@@ -1,9 +1,9 @@
 from src.eval.evaluator import Evaluator
 from src.utils.logging import create_logger
+from src.aliases import Conv
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
 
-import math
 import msgspec
 from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
@@ -94,7 +94,7 @@ class LlamaEvaluator(Evaluator):
             "serve_config": self.serve_config.__dict__,
         }
 
-    def _fmt_convs(self, input_texts: list[str], response_texts: list[str]) -> list[list[dict[str, str]]]:
+    def _fmt_convs(self, input_texts: list[str], response_texts: list[str]) -> list[Conv]:
         """
         Formats the input texts and response texts into the required prompt format.
 
@@ -103,7 +103,7 @@ class LlamaEvaluator(Evaluator):
             response_texts (list[str]): List of model outputs corresponding to the input texts.
 
         Returns:
-            list[list[dict[str, str]]]: Formatted conversations for the model.
+            list[Conv]: Formatted conversations for the model.
         """
         return [
             [{"role": "user", "content": LLAMA_PROMPT.format(behavior=beh, generation=gen)}]
@@ -114,7 +114,7 @@ class LlamaEvaluator(Evaluator):
         response = response.strip().lower()
         if response not in ["yes", "no"]:
             logger.warning(f"Unexpected response: {response}")
-            return math.nan
+            return float("nan")
 
         return 1.0 if response == "yes" else 0.0
 

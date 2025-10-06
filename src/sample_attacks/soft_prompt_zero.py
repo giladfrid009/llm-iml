@@ -1,16 +1,14 @@
 from src.adv_model import AdvModel
 from src.sample_attacks.soft_prompt import SoftPrompt
 from src.sample_attacks.sample_attack import SampleOutput
+from src.aliases import Conv
 
 import inspect
 from typing import Callable, Iterable
 import torch
 
 
-Convs = list[list[dict[str, str]]]
-
-
-def default_injector(adv_model: AdvModel, conversations: Convs) -> Convs:
+def default_injector(adv_model: AdvModel, conversations: list[Conv]) -> list[Conv]:
     """
     Injects an adversarial prefix to each conversation in the list,
     with spaces separating the adversarial tokens.
@@ -46,7 +44,7 @@ class SoftPromptZero(SoftPrompt):
         self,
         adv_model: AdvModel,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
-        inject_func: Callable[[AdvModel, Convs], Convs] = default_injector,
+        inject_func: Callable[[AdvModel, list[Conv]], list[Conv]] = default_injector,
         init_func: Callable[[AdvModel, int], torch.Tensor] = default_initializer,
         **kwargs,
     ):
@@ -54,7 +52,7 @@ class SoftPromptZero(SoftPrompt):
         Args:
             adv_model (AdvModel): The adversarial model to attack.
             optim_factory (Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer]): Returns an optimizer given the parameters to optimize.
-            inject_func (Callable[[AdvModel, Convs], Convs]): Performs adversarial token injection to the conversations.
+            inject_func (Callable[[AdvModel, list[Conv]], list[Conv]]): Performs adversarial token injection to the conversations.
             init_func (Callable[[AdvModel, int], torch.Tensor]): Initializes new adversarial embeddings from scratch.
             **kwargs: Additional arguments passed to the `SoftPrompt` constructor.
         """
@@ -79,7 +77,7 @@ class SoftPromptZero(SoftPrompt):
 
     def fit(
         self,
-        conversations: list[list[dict[str, str]]],
+        conversations: list[Conv],
         target_texts: list[str],
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:

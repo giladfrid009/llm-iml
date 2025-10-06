@@ -1,7 +1,7 @@
-from transformers import PreTrainedTokenizer
+from transformers.tokenization_utils import PreTrainedTokenizer
+from accelerate.utils import find_executable_batch_size
 from typing import List
 import torch
-from accelerate.utils import find_executable_batch_size
 
 
 def get_template(tokenizer: PreTrainedTokenizer, **kwargs) -> str:

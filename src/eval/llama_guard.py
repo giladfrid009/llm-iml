@@ -3,7 +3,6 @@ from src.utils.logging import create_logger
 from gserve.vllm_service import VLLMService
 from gserve.configs import LLMConfig, ServeConfig
 
-import math
 import msgspec
 from vllm import SamplingParams
 
@@ -102,7 +101,7 @@ class LlamaGuard(Evaluator):
         tgt_responses = ["unsafe", "safe"]
         if not any(tgt in response for tgt in tgt_responses):
             logger.warning(f"Unexpected response: {response}")
-            return math.nan
+            return float("nan")
 
         return 1.0 if "unsafe" in response else 0.0
 

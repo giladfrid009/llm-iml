@@ -1,12 +1,12 @@
-from src.adv_model import AdvModel
-from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
-
 import inspect
 from typing import Callable, Iterable
 from tqdm.auto import tqdm
 import torch
 import copy
 
+from src.adv_model import AdvModel
+from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
+from src.aliases import Conv
 
 from transformers.tokenization_utils_base import BatchEncoding
 from transformers.cache_utils import DynamicCache
@@ -173,7 +173,7 @@ class SoftPrompt(SampleAttack):
 
     def fit(
         self,
-        conversations: list[list[dict[str, str]]],
+        conversations: list[Conv],
         target_texts: list[str],
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:

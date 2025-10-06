@@ -1,5 +1,5 @@
-import math
 from openai import OpenAI, APIConnectionError, RateLimitError, BadRequestError
+from src.aliases import Conv
 from src.eval.evaluator import Evaluator
 from src.utils.logging import create_logger
 
@@ -64,7 +64,7 @@ class GPTJudge(Evaluator):
         self.max_tokens = max_tokens
         self.max_retries = max_retries
 
-    def _fmt_messages(self, behavior: str, generation: str) -> list[dict[str, str]]:
+    def _fmt_messages(self, behavior: str, generation: str) -> Conv:
         return [
             # {"role": "system", "content": GPT_SYSTEM},
             {"role": "user", "content": GPT_PROMPT.format(behavior=behavior, generation=generation)},
@@ -77,7 +77,7 @@ class GPTJudge(Evaluator):
         if t.startswith("no"):
             return 0.0
         logger.warning(f"Unexpected judge response: {text!r}")
-        return math.nan
+        return float("nan")
 
     def get_hparams(self) -> dict:
         return {
@@ -88,13 +88,13 @@ class GPTJudge(Evaluator):
             "metrics": str(self.metric_names),
         }
 
-    def _call_openai(self, message: list[dict[str, str]]) -> float:
+    def _call_openai(self, message: Conv) -> float:
         try:
             chat = self.client.chat.completions.create(
                 model=self.model,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
-                messages=message,
+                messages=message,  # type: ignore
             )
 
             text = chat.choices[0].message.content or ""
@@ -102,15 +102,15 @@ class GPTJudge(Evaluator):
 
         except (APIConnectionError, RateLimitError) as e:
             logger.warning(f"Transient OpenAI error: {e}")
-            return math.nan
+            return float("nan")
 
         except BadRequestError as e:
             logger.error(f"Bad request to OpenAI: {e}")
-            return math.nan
+            return float("nan")
 
         except Exception as e:
             logger.exception(f"Unexpected error calling OpenAI: {e}")
-            return math.nan
+            return float("nan")
 
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:
         metrics = {k: [] for k in self.metric_names}

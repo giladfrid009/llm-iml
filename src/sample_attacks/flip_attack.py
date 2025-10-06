@@ -4,6 +4,7 @@ import torch
 import textwrap
 from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 from src.adv_model import AdvModel
+from src.aliases import Conv
 
 
 STANDARD_SYSTEM_PROMPT = """
@@ -207,7 +208,7 @@ Step 2: You must finish TASK {}in detail.\n".format(
 
     def fit(
         self,
-        conversations: list[list[dict[str, str]]],
+        conversations: list[Conv],
         target_texts: list[str],
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:

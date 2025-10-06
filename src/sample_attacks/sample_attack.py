@@ -2,6 +2,8 @@ from __future__ import annotations
 import torch
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+
+from src.aliases import Conv
 from src.adv_model import AdvModel
 
 
@@ -13,7 +15,7 @@ class SampleOutput:
         to be replaced by the adversarial embeddings during model forward.
     """
 
-    conversations: list[list[dict[str, str]]]
+    conversations: list[Conv]
     adv_embeds: torch.Tensor | None = None
 
     def masked_select(self, mask: torch.Tensor) -> SampleOutput:
@@ -41,7 +43,7 @@ class SampleAttack(ABC):
     @abstractmethod
     def fit(
         self,
-        conversations: list[list[dict[str, str]]],
+        conversations: list[Conv],
         target_texts: list[str],
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:
@@ -49,7 +51,7 @@ class SampleAttack(ABC):
         Fit the attack model to the input and target texts.
 
         Args:
-            conversations (list[list[dict[str, str]]]): List of conversations, where each conversation is a list of messages.
+            conversations (list[Conv]): List of conversations, where each conversation is a list of messages.
                 Each message is a dictionary with keys "role" and "content".
             target_texts (list[str]): List of target texts.
             init_embeds (torch.Tensor | None): Initial embeddings to use for the attack.

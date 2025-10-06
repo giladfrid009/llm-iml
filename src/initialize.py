@@ -12,26 +12,35 @@ class Initializer:
     """
 
     @staticmethod
-    def make_empty(adv_model: AdvModel) -> torch.Tensor:
+    def make_empty(adv_model: AdvModel, batch_size: int = 1) -> torch.Tensor:
         """
         Initialize an empty tensor for adversarial embeddings.
         This is useful for starting with a neutral state.
+
+        Args:
+            adv_model (AdvModel): The adversarial model to initialize.
+            batch_size (int): The batch size for the embeddings tensor. 1 for a universal embedding, > 1 for batch of samples.
         """
         return torch.empty(
-            size=(1, adv_model.num_tokens, adv_model.adv_embedder.embed_dim),
+            size=(batch_size, adv_model.num_tokens, adv_model.adv_embedder.embed_dim),
             dtype=adv_model.adv_embedder.embed_dtype,
             device=adv_model.adv_embedder.device,
         )
 
     @staticmethod
-    def full(adv_model: AdvModel, value: float = 0.0):
-        embeds = Initializer.make_empty(adv_model)
+    def full(adv_model: AdvModel, value: float = 0.0, batch_size: int = 1):
+        embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds.fill_(value)
         adv_model.set_embeddings(embeds)
 
     @staticmethod
-    def uniform(adv_model: AdvModel, low: float = -1.0, high: float = 1.0):
-        embeds = Initializer.make_empty(adv_model)
+    def uniform(
+        adv_model: AdvModel,
+        low: float = -1.0,
+        high: float = 1.0,
+        batch_size: int = 1,
+    ):
+        embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds.uniform_(low, high)
         adv_model.set_embeddings(embeds)
 
@@ -40,13 +49,14 @@ class Initializer:
         adv_model: AdvModel,
         mean: float | torch.Tensor = 0.0,
         std: float | torch.Tensor = 1.0,
+        batch_size: int = 1,
     ):
-        embeds = Initializer.make_empty(adv_model)
+        embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds = embeds.normal_() * std + mean
         adv_model.set_embeddings(embeds)
 
     @staticmethod
-    def from_mean_std(adv_model: AdvModel):
+    def from_mean_std(adv_model: AdvModel, batch_size: int = 1):
         """
         Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
         The mean and std are computed per embedding dimension across all original embeddings.
@@ -55,7 +65,7 @@ class Initializer:
         mean = torch.mean(orig_weight, dim=0)
         std = torch.std(orig_weight, dim=0)
 
-        new_embeds = Initializer.make_empty(adv_model)
+        new_embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         new_embeds = new_embeds.normal_() * std + mean
         adv_model.set_embeddings(new_embeds)
 
@@ -96,6 +106,7 @@ class Initializer:
         strict: bool = True,
         pad_word: str = ".",
         verbose: bool = True,
+        batch_size: int = 1,
     ):
         """
         Initialize adversarial embeddings from a string of text.
@@ -109,6 +120,7 @@ class Initializer:
                 - If False, allow variable length. That may result in a change of :attr:`adv_model.num_tokens` value.
             pad_word (str): The word to use for padding if strict is True, to reach the target length.
             verbose (bool): If True, print the initialized tokens and their length.
+            batch_size (int): The batch size for the embeddings tensor. 1 for a universal prompt, > 1 for batch of prompts.
         """
         tokenizer = adv_model.tokenizer
         embedder = adv_model.orig_embedder
@@ -158,7 +170,11 @@ class Initializer:
             pad_token_id: int = tokenizer.convert_tokens_to_ids(pad_word)  # type: ignore
             input_ids[attention_mask == 0] = pad_token_id
 
-        embeddings = embedder(input_ids)
+        embeddings: torch.Tensor = embedder(input_ids)
+
+        if batch_size > 1:
+            embeddings = embeddings.repeat(batch_size, 1, 1)
+
         adv_model.set_embeddings(embeddings, strict=strict)
 
         if verbose:
@@ -167,3 +183,49 @@ class Initializer:
             logger.info(f"Initialized from text: '{text}'")
             logger.info(f"Embed Tokens: {str_list}")
             logger.info(f"Embed Length: {len(str_list)}")
+
+    @staticmethod
+    def from_random_ids(
+        adv_model: AdvModel,
+        allow_nonascii: bool = False,
+        allow_special: bool = False,
+        batch_size: int = 1,
+    ):
+        """
+        Initialize adversarial embeddings from random token IDs.
+        This method samples random token IDs from the tokenizer's vocabulary,
+        according to the specified constraints, and uses the original embedder to create embeddings.
+
+        Args:
+            adv_model (AdvModel): The adversarial model to initialize.
+            allow_nonascii (bool): Whether to allow non-ascii tokens.
+            allow_special (bool): Whether to allow special tokens.
+            batch_size (int): The batch size for the embeddings tensor. 1 for a universal prompt, > 1 for batch of prompts.
+        """
+        tokenizer = adv_model.tokenizer
+        embedder = adv_model.orig_embedder
+
+        def is_ascii(id: int) -> bool:
+            s = tokenizer.convert_ids_to_tokens(id)
+            return s.isascii() and s.isprintable()
+
+        allowed_ids = list(range(embedder.num_embeddings))
+
+        if not allow_nonascii:
+            allowed_ids = [id for id in allowed_ids if is_ascii(id)]
+
+        if not allow_special:
+            allowed_ids = [id for id in allowed_ids if id not in tokenizer.all_special_ids]
+
+        allowed_ids = torch.tensor(allowed_ids, device=adv_model.device)
+
+        rand_indices = torch.randint(
+            low=0,
+            high=len(allowed_ids),
+            size=(batch_size, adv_model.num_tokens),
+            device=adv_model.device,
+        )
+
+        rand_ids = allowed_ids[rand_indices]
+        embeddings = embedder(rand_ids)
+        adv_model.set_embeddings(embeddings)

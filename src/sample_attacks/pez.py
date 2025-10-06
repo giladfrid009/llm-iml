@@ -2,6 +2,7 @@ from src.adv_model import AdvModel
 from src.sample_attacks.soft_prompt import SoftPrompt
 from src.sample_attacks.sample_attack import SampleOutput
 from src.discretize import Discretize
+from src.aliases import Conv
 
 from typing import Callable, Iterable
 from tqdm.auto import tqdm
@@ -125,7 +126,7 @@ class PEZ(SoftPrompt):
 
     def fit(
         self,
-        conversations: list[list[dict[str, str]]],
+        conversations: list[Conv],
         target_texts: list[str],
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:

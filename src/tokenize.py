@@ -1,13 +1,14 @@
 import torch
 import copy
+import re
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
-import re
+from src.aliases import Conv
 
 
 def chat_with_targets(
     tokenizer: PreTrainedTokenizer,
-    conversations: list[list[dict[str, str]]],
+    conversations: list[Conv],
     target_texts: list[str],
     adv_token: str,
 ) -> BatchEncoding:
@@ -17,7 +18,7 @@ def chat_with_targets(
 
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
-        conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+        conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
             Each message is a dictionary with keys "role" and "content".
         target_texts (list[str]): A list of target texts corresponding to each conversation.
         adv_token (str): The adversarial token to split the conversations on.
@@ -72,7 +73,7 @@ def chat_with_targets(
 
 def chat_with_cache(
     tokenizer: PreTrainedTokenizer,
-    conversations: list[list[dict[str, str]]],
+    conversations: list[Conv],
     adv_token: str,
 ) -> BatchEncoding:
     """
@@ -88,7 +89,7 @@ def chat_with_cache(
 
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
-        conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+        conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
             Each message is a dictionary with keys "role" and "content".
         adv_token (str): The adversarial token to split the conversations on.
 
@@ -112,7 +113,7 @@ def chat_with_cache(
         enable_thinking=False,
     )  # type: ignore
 
-    adv_token_id = tokenizer.convert_tokens_to_ids(adv_token)
+    adv_token_id: int = tokenizer.convert_tokens_to_ids(adv_token)  # type: ignore
 
     # find the index of the first adversarial token
     # should be the same for both full and partial conversations
@@ -163,7 +164,7 @@ def chat_with_cache(
 
 def chat(
     tokenizer: PreTrainedTokenizer,
-    conversations: list[list[dict[str, str]]],
+    conversations: list[Conv],
     adv_token: str,
 ) -> BatchEncoding:
     """
@@ -171,7 +172,7 @@ def chat(
 
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
-        conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+        conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
             Each message is a dictionary with keys "role" and "content".
         adv_token (str): The adversarial token.
 
@@ -210,22 +211,22 @@ def chat(
 
 def replace_tokens(
     tokenizer: PreTrainedTokenizer,
-    conversations: list[list[dict[str, str]]],
+    conversations: list[Conv],
     repl_ids: list[list[int]],
     adv_token: str,
-) -> list[list[dict[str, str]]]:
+) -> list[Conv]:
     """
     Replace all occurrences of the adversarial token in the conversations with the provided token IDs.
 
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
-        conversations (list[list[dict[str, str]]]): A batch of conversations, where each conversation is a list of messages.
+        conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
             Each message is a dictionary with keys "role" and "content".
         repl_ids (list[list[int]]): A list of lists of token IDs to replace the adversarial tokens with.
         adv_token (str): The adversarial token to be replaced.
 
     Returns:
-        list[list[dict[str, str]]]: The modified conversations with adversarial tokens replaced by the specified token IDs.
+        list[Conv]: The modified conversations with adversarial tokens replaced by the specified token IDs.
     """
     conversations = copy.deepcopy(conversations)
     pattern = re.compile(re.escape(adv_token))
