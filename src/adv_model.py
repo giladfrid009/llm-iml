@@ -206,23 +206,29 @@ class AdvModel(nn.Module):
     def inject_tokens(
         self,
         conversations: list[Conv],
+        num_tokens: int | None = None,
         add_spaces: bool | None = None,
         adv_suffix: bool | None = None,
     ) -> list[Conv]:
         """
         Injects adversarial tokens to the last message in each conversation.
         A clone of the input conversations is returned.
+        
+        Note: if `None` is passed to any of the optional arguments, the corresponding 
+        default attribute of `self` will be used.
 
         Args:
             messages (list[Conv]): A batch of conversations.
+            num_tokens (int | None): Number of adversarial tokens to inject.
             add_spaces (bool | None): If True, separates the adversarial tokens with spaces.
-                If None, uses the value of `self.add_spaces`.
             adv_suffix (bool | None): Whether to add the adversarial tokens as a suffix or prefix to the last message.
-                If None, uses the value of `self.adv_suffix`.
 
         Returns:
             (list[Conv]): A batch of conversations with adversarial tokens injected into the last message.
         """
+        if num_tokens is None:
+            num_tokens = self.num_tokens
+        
         if add_spaces is None:
             add_spaces = self.add_spaces
 
@@ -231,7 +237,7 @@ class AdvModel(nn.Module):
 
         conversations = copy.deepcopy(conversations)
         separator = " " if add_spaces else ""
-        adv_block = separator.join([self.adv_token] * self.num_tokens)
+        adv_block = separator.join([self.adv_token] * num_tokens)
 
         for conv in conversations:
             # don't inject if adv_token already present

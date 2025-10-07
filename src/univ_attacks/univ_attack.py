@@ -39,12 +39,18 @@ class UnivAttack:
             gen_config (GenConfig  | None): Default generation configuration.
             metric_logger (MetricLogger | None): Metric logger for logging experiment data and metrics.
         """
-        if gen_config is None:
-            gen_config = GenConfig()
-
         if eval_metric is None:
             eval_metric = evaluators[0].metric_names[0]
             logger.info(f"Auto-selected main eval_metric: {eval_metric}")
+
+        if not any(eval_metric in ev.metric_names for ev in evaluators):
+            raise ValueError(
+                f"eval_metric `{eval_metric}` not found in the list of evaluators metrics. "
+                f"Available Metrics: {[ev.metric_names for ev in evaluators]}."
+            )
+
+        if gen_config is None:
+            gen_config = GenConfig()
 
         self.adv_model = adv_model
         self.evaluators = evaluators

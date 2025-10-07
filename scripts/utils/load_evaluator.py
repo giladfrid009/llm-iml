@@ -92,7 +92,10 @@ def load_evaluators(names: list[str], gpus: int | list[int] = 1) -> list[Evaluat
     evaluators = []
 
     # special handling of evaluators not requiring a GPU
-    NON_GPU = [EvalName.BEAVER.value, EvalName.GPT35_TURBO.value]
+    NON_GPU = [
+        EvalName.GPT35_TURBO.value,
+        EvalName.KEYWORDMATCHING.value,
+    ]
 
     for name in names:
         if name in NON_GPU:

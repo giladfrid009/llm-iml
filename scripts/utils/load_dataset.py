@@ -15,6 +15,8 @@ class DatasetName(str, Enum):
     ADVBENCH_SMALL = "advbench-small"  # one used by IRIS for training
     JAILBREAK_BENCH = "jailbreak-bench"
     MALICIOUS_INSTRUCT = "malicious-instruct"
+    JAILBREAK_DISTILL = "jailbreak-distill"
+    WILDGUARD_MIX = "wildguard-mix"
 
 
 SUPPORTED_DATASETS = [e.value for e in DatasetName]
@@ -31,14 +33,17 @@ def load_single_dataset(name: str) -> Dataset:
         raise ValueError(f"Unsupported dataset: {name}. Supported datasets are: {SUPPORTED_DATASETS}")
 
     if name == DatasetName.HARMBENCH:
+        # source: https://github.com/centerforaisafety/HarmBench/tree/main/data/behavior_datasets
         ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
         return ds_dict["train"].filter(lambda x: x["functional_category"] in ["standard", "contextual"])
 
     if name == DatasetName.HARMBENCH_STANDARD:
+        # source: https://github.com/centerforaisafety/HarmBench/tree/main/data/behavior_datasets
         ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
         return ds_dict["train"].filter(lambda x: x["functional_category"] == "standard")
 
     if name == DatasetName.HARMBENCH_CONTEXT:
+        # source: https://github.com/centerforaisafety/HarmBench/tree/main/data/behavior_datasets
         ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
         return ds_dict["train"].filter(lambda x: x["functional_category"] == "contextual")
 
@@ -46,6 +51,8 @@ def load_single_dataset(name: str) -> Dataset:
         return datasets.load_dataset("walledai/AdvBench", split="train")  # type: ignore
 
     if name == DatasetName.ADVBENCH_SMALL:
+        # source: https://github.com/patrickrchao/JailbreakingLLMs/blob/main/data/harmful_behaviors_custom.csv
+        # IRIS paper uses this small subset for training
         ds_dict: DatasetDict = datasets.load_dataset("data/advbench_small")  # type: ignore
         return ds_dict["train"]
 
@@ -54,8 +61,27 @@ def load_single_dataset(name: str) -> Dataset:
         return ds.rename_columns({"Goal": "prompt", "Target": "target"})
 
     if name == DatasetName.MALICIOUS_INSTRUCT:
+        # source: https://github.com/sj21j/Regularized_Relaxation/blob/master/data/MaliciousInstruct/harmful_behaviors.csv
+        # without labels: https://huggingface.co/datasets/walledai/MaliciousInstruct
         ds_dict: DatasetDict = datasets.load_dataset("data/malicious_instruct")  # type: ignore
         return ds_dict["train"]
+
+    if name == DatasetName.JAILBREAK_DISTILL:
+        # source: https://huggingface.co/datasets/jackzhang/JBDistill-Bench
+        ds_dict: DatasetDict = datasets.load_dataset("data/jailbreak_distill")  # type: ignore
+        return ds_dict["train"]
+
+    if name == DatasetName.WILDGUARD_MIX:
+
+        def filter_fn(d: dict[str, str]) -> bool:
+            return (
+                d["prompt_harm_label"] == "harmful"
+                and d["response_harm_label"] == "harmful"
+                and not d["response"].strip().startswith("[")
+            )
+
+        ds: Dataset = datasets.load_dataset("allenai/wildguardmix", name="wildguardtrain", split="train")  # type: ignore
+        return ds.filter(filter_fn).map(lambda x: {"target": x["response"][:10], **x})
 
     raise ValueError(f"Unsupported dataset: {name}")
 
