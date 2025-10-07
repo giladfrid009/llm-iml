@@ -12,7 +12,7 @@ class DatasetName(str, Enum):
     HARMBENCH_STANDARD = "harmbench-std"
     HARMBENCH_CONTEXT = "harmbench-ctx"
     ADVBENCH = "advbench"
-    ADVBENCH_SMALL = "advbench-small"  # one used by IRIS for training
+    ADVBENCH_SMALL = "advbench-small"
     JAILBREAK_BENCH = "jailbreak-bench"
     MALICIOUS_INSTRUCT = "malicious-instruct"
     JAILBREAK_DISTILL = "jailbreak-distill"
