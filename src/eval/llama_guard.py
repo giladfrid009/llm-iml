@@ -74,18 +74,7 @@ class LlamaGuard(Evaluator):
         }
 
     def _fmt_convs(self, input_texts: list[str], response_texts: list[str]) -> list[list[dict]]:
-        """
-        Formats the input texts and response texts into the required prompt format.
-
-        Args:
-            input_texts (list[str]): List of input texts.
-            response_texts (list[str]): List of model outputs corresponding to the input texts.
-
-        Returns:
-            list[str]: Formatted conversations ready for model evaluation.
-        """
         conversations = []
-
         for prompt, response in zip(input_texts, response_texts):
             conv = [
                 {"role": "user", "content": prompt},

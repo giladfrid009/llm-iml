@@ -59,24 +59,14 @@ class BeaverCost(Evaluator):
 
         self.tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
-        """
-        Formats the input texts and response texts into the required prompt format.
-
-        Args:
-            input_texts (list[str]): List of input texts (behaviors).
-            response_texts (list[str]): List of model outputs corresponding to the input texts.
-
-        Returns:
-            list[str]: Formatted inputs ready for model evaluation.
-        """
-        return [BEAVER_PROMPT.format(behavior=beh, generation=gen) for beh, gen in zip(input_texts, response_texts)]
-
     def get_hparams(self) -> dict:
         return {
             "metrics": str(self.metric_names),
             "binary_thresh": str(self.binary_thresh),
         }
+
+    def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
+        return [BEAVER_PROMPT.format(behavior=beh, generation=gen) for beh, gen in zip(input_texts, response_texts)]
 
     @torch.inference_mode()
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:

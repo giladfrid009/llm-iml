@@ -82,16 +82,6 @@ class WildGuard(Evaluator):
         }
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
-        """
-        Formats the input texts and response texts into the required prompt format.
-
-        Args:
-            input_texts (list[str]): List of input texts (behaviors).
-            response_texts (list[str]): List of model outputs corresponding to the input texts.
-
-        Returns:
-            list[str]: Formatted inputs ready for model evaluation.
-        """
         return [
             INSTRUCTION_FORMAT.format(prompt=input, response=response)
             for input, response in zip(input_texts, response_texts)

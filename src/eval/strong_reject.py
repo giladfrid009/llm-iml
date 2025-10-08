@@ -103,16 +103,6 @@ class StrongReject(Evaluator):
         }
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
-        """
-        Formats the input texts and response texts into the required prompt format.
-
-        Args:
-            input_texts (list[str]): List of input texts.
-            response_texts (list[str]): List of model outputs corresponding to the input texts.
-
-        Returns:
-            list[str]: Formatted inputs ready for model evaluation.
-        """
         return [
             STRONG_REJECT_PROMPT.format(forbidden_prompt=inp, response=resp)
             for inp, resp in zip(input_texts, response_texts)

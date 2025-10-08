@@ -95,16 +95,6 @@ class LlamaEvaluator(Evaluator):
         }
 
     def _fmt_convs(self, input_texts: list[str], response_texts: list[str]) -> list[Conv]:
-        """
-        Formats the input texts and response texts into the required prompt format.
-
-        Args:
-            input_texts (list[str]): List of input texts (behaviors).
-            response_texts (list[str]): List of model outputs corresponding to the input texts.
-
-        Returns:
-            list[Conv]: Formatted conversations for the model.
-        """
         return [
             [{"role": "user", "content": LLAMA_PROMPT.format(behavior=beh, generation=gen)}]
             for beh, gen in zip(input_texts, response_texts)

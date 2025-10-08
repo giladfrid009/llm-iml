@@ -80,16 +80,6 @@ class HarmBenchJudge(Evaluator):
         }
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
-        """
-        Formats the input texts and response texts into the required prompt format.
-
-        Args:
-            input_texts (list[str]): List of input texts (behaviors).
-            response_texts (list[str]): List of model outputs corresponding to the input texts.
-
-        Returns:
-            list[str]: Formatted inputs ready for model evaluation.
-        """
         return [
             LLAMA2_CLS_PROMPT.format(behavior=input, generation=response)
             for input, response in zip(input_texts, response_texts)
@@ -100,7 +90,7 @@ class HarmBenchJudge(Evaluator):
         if response not in ["yes", "no"]:
             logger.warning(f"Unexpected response: {response}")
             return float("nan")
-        
+
         return 1.0 if response == "yes" else 0.0
 
     def eval_batch(self, prompts: list[str], responses: list[str]) -> dict[str, list[float]]:

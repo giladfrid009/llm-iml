@@ -39,6 +39,8 @@ SUPPORTED_MODELS = [
 ]
 
 
+# TODO: if we use it we need to choose appropriate system prompt and
+# user prompt. Currently these are placeholders.
 class GPTJudge(Evaluator):
     """
     Evaluator that calls OpenAI-hosted Chat Completions models.
@@ -64,6 +66,15 @@ class GPTJudge(Evaluator):
         self.max_tokens = max_tokens
         self.max_retries = max_retries
 
+    def get_hparams(self) -> dict:
+        return {
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "max_retries": self.max_retries,
+            "metrics": str(self.metric_names),
+        }
+
     def _fmt_messages(self, behavior: str, generation: str) -> Conv:
         return [
             # {"role": "system", "content": GPT_SYSTEM},
@@ -78,15 +89,6 @@ class GPTJudge(Evaluator):
             return 0.0
         logger.warning(f"Unexpected judge response: {text!r}")
         return float("nan")
-
-    def get_hparams(self) -> dict:
-        return {
-            "model": self.model,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "max_retries": self.max_retries,
-            "metrics": str(self.metric_names),
-        }
 
     def _call_openai(self, message: Conv) -> float:
         try:
