@@ -10,6 +10,7 @@ from src.eval import (
     LlamaEvaluator,
     LlamaGuard,
     MDJudge,
+    JBBJudge,
     StrongReject,
     WildGuard,
     KeywordMatching,
@@ -31,6 +32,7 @@ class EvalName(str, Enum):
     LLAMAGUARD3_8B = "llamaguard3-8b"
     LLAMAGUARD4_12B = "llamaguard4-12b"
     MDJUDGE = "md-judge"
+    JBBJUDGE = "jbb-judge"
     STRONGREJECT = "strong-reject"
     WILDGUARD = "wild-guard"
     KEYWORDMATCHING = "keyword-matching"
@@ -72,6 +74,9 @@ def load_single_evaluator(name: str, serve_config: ServeConfig, **kwargs) -> Eva
 
     if name == EvalName.MDJUDGE:
         return MDJudge(serve_config, **kwargs)
+
+    if name == EvalName.JBBJUDGE:
+        return JBBJudge(serve_config, **kwargs)
 
     if name == EvalName.STRONGREJECT:
         return StrongReject(serve_config, **kwargs)

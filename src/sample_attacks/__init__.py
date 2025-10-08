@@ -3,7 +3,6 @@ from src.sample_attacks.soft_prompt import SoftPrompt
 from src.sample_attacks.soft_prompt_zero import SoftPromptZero
 from src.sample_attacks.pez import PEZ
 from src.sample_attacks.ample_gcg import AmpleGCG
-from src.sample_attacks.flip_attack import FlipAttack
 from src.sample_attacks.preset_attack import PresetAttack
 
 from src.sample_attacks.harm_bench import AutoPrompt
@@ -19,7 +18,6 @@ __all__ = [
     "SoftPrompt",
     "SoftPromptZero",
     "AmpleGCG",
-    "FlipAttack",
     "PresetAttack",
     "AutoPrompt",
     "DirectRequest",

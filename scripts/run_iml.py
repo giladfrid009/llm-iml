@@ -24,7 +24,7 @@ class IML_Experiment(Experiment):
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         # TODO: try less tokens
         # TODO: try different initializations
-        adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
+        adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20, add_spaces=True)
         Initializer.normal(adv_model, std=0.1)  # High STD = Worse
         # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False) # USUALLY PERFORMS WORSE
         return adv_model

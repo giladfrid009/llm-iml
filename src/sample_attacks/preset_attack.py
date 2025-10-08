@@ -11,6 +11,13 @@ from src.utils.logging import create_logger
 logger = create_logger(__name__)
 
 
+# look at artifacts here: https://jailbreakbench.github.io/index#leaderboard
+# ALL Harmbench artifacts here: https://github.com/justinphan3110cais/harmbench_website/tree/data/playground_data
+# More artifacts here from ReNeLLM: https://drive.google.com/drive/folders/1YimdAHIDH4AEeps2MVRhTe52ucURzZMD
+# EasyJailbreak results: https://github.com/EasyJailbreak/EasyJailbreak?tab=readme-ov-file#-experimental-results
+# adaptive attacks artifacts: https://github.com/tml-epfl/llm-adaptive-attacks/tree/main/jailbreak_artifacts
+
+
 class PresetAttack(SampleAttack):
     def __init__(
         self,
