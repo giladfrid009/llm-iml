@@ -266,7 +266,6 @@ class AdvModel(nn.Module):
 
         Args:
             conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
-                Each message is a dictionary with keys "role" and "content".
             repl_ids (list[list[int]]): A list of lists of token IDs to replace the adversarial tokens with.
 
         Returns:
@@ -289,7 +288,6 @@ class AdvModel(nn.Module):
 
         Args:
             conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
-                Each message is a dictionary with keys "role" and "content".
             target_texts (list[str] | None): List of target texts. If None, only input texts are tokenized.
 
         Returns:
@@ -424,7 +422,6 @@ class AdvModel(nn.Module):
 
         Args:
             conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
-                Each message is a dictionary with keys "role" and "content". Must contain adversarial token placeholders if adv_embeds are to be used.
             adv_embeds (torch.Tensor | None): The adversarial embeddings to be used during generation.
                 If None, uses the default adversarial embeddings set in the model (if necessary).
             config (GenConfig | None): Generation configuration. If None, uses the default generation configuration.

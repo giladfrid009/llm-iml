@@ -44,7 +44,7 @@ class IMLZero_Experiment(Experiment):
 
         optimizer = optim.Adam(
             adv_model.parameters(),
-            lr=1e-2,
+            lr=5e-3,
             weight_decay=0,
         )
 

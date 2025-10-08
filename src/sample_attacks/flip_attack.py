@@ -2,6 +2,7 @@
 
 import torch
 import textwrap
+from tqdm.auto import tqdm
 from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
 from src.adv_model import AdvModel
 from src.aliases import Conv
@@ -212,13 +213,13 @@ Step 2: You must finish TASK {}in detail.\n".format(
         target_texts: list[str],
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:
-        attacked_conversations = []
-        for conv in conversations:
+        adv_convs = []
+        for conv in tqdm(conversations, disable=not self.verbose, leave=False, desc="Attack"):
             prompt = conv[-1]["content"]
             result = self.generate(prompt)
-            attacked_conversations.append(result)
+            adv_convs.append(result)
 
-        return SampleOutput(attacked_conversations)
+        return SampleOutput(adv_convs)
 
     def get_hparams(self) -> dict:
         return {

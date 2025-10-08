@@ -56,8 +56,8 @@ class Evaluator(ABC):
 
     def evaluate(self, dl_eval: TableLoader) -> dict[str, float]:
         """
-        Evaluates the model on the provided data loader using the generated outputs.
-        This methods sets a column `eval-{self.name}` in the data loader with the evaluation metric.
+        Evaluates the model on the provided data loader using the generated outputs.  
+        This methods sets new columns in the data loader for each metric in `self.metric_names`.
 
         Args:
             dl_eval (TableLoader): Data loader for evaluation.

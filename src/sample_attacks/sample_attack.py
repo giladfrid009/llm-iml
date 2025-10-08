@@ -52,7 +52,6 @@ class SampleAttack(ABC):
 
         Args:
             conversations (list[Conv]): List of conversations, where each conversation is a list of messages.
-                Each message is a dictionary with keys "role" and "content".
             target_texts (list[str]): List of target texts.
             init_embeds (torch.Tensor | None): Initial embeddings to use for the attack.
 

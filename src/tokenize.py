@@ -19,7 +19,6 @@ def chat_with_targets(
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
         conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
-            Each message is a dictionary with keys "role" and "content".
         target_texts (list[str]): A list of target texts corresponding to each conversation.
         adv_token (str): The adversarial token to split the conversations on.
 
@@ -90,7 +89,6 @@ def chat_with_cache(
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
         conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
-            Each message is a dictionary with keys "role" and "content".
         adv_token (str): The adversarial token to split the conversations on.
 
     Returns:
@@ -173,7 +171,6 @@ def chat(
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
         conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
-            Each message is a dictionary with keys "role" and "content".
         adv_token (str): The adversarial token.
 
     Returns:
@@ -221,7 +218,6 @@ def replace_tokens(
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
         conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
-            Each message is a dictionary with keys "role" and "content".
         repl_ids (list[list[int]]): A list of lists of token IDs to replace the adversarial tokens with.
         adv_token (str): The adversarial token to be replaced.
 
