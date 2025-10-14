@@ -28,35 +28,35 @@ class Initializer:
         )
 
     @staticmethod
-    def full(adv_model: AdvModel, value: float = 0.0, batch_size: int = 1):
+    def full(adv_model: AdvModel, value: float = 0.0, batch_size: int = 1) -> torch.Tensor:
         embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds.fill_(value)
-        adv_model.set_embeddings(embeds)
+        return embeds
 
     @staticmethod
-    def uniform(
+    def random_uniform(
         adv_model: AdvModel,
         low: float = -1.0,
         high: float = 1.0,
         batch_size: int = 1,
-    ):
+    ) -> torch.Tensor:
         embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds.uniform_(low, high)
-        adv_model.set_embeddings(embeds)
+        return embeds
 
     @staticmethod
-    def normal(
+    def random_normal(
         adv_model: AdvModel,
         mean: float | torch.Tensor = 0.0,
         std: float | torch.Tensor = 1.0,
         batch_size: int = 1,
-    ):
+    ) -> torch.Tensor:
         embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds = embeds.normal_() * std + mean
-        adv_model.set_embeddings(embeds)
+        return embeds
 
     @staticmethod
-    def from_mean_std(adv_model: AdvModel, batch_size: int = 1):
+    def from_mean_std(adv_model: AdvModel, batch_size: int = 1) -> torch.Tensor:
         """
         Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
         The mean and std are computed per embedding dimension across all original embeddings.
@@ -67,14 +67,14 @@ class Initializer:
 
         new_embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         new_embeds = new_embeds.normal_() * std + mean
-        adv_model.set_embeddings(new_embeds)
+        return new_embeds
 
     @staticmethod
     def from_lp_ball(
         adv_model: AdvModel,
         norm: float = 2.0,
         radius: float = 1.0,
-    ):
+    ) -> torch.Tensor:
         """
         Initialize adversarial embeddings by sampling each token-embedding
         uniformly from the Lp ball of given norm and radius.
@@ -97,7 +97,7 @@ class Initializer:
 
         embeds = vec * rad
         embeds = embeds.unsqueeze(0)  # add batch dimension
-        adv_model.set_embeddings(embeds)
+        return embeds
 
     @staticmethod
     def from_string(
@@ -107,7 +107,7 @@ class Initializer:
         pad_word: str = ".",
         verbose: bool = True,
         batch_size: int = 1,
-    ):
+    ) -> torch.Tensor:
         """
         Initialize adversarial embeddings from a string of text.
         This method tokenizes the text and uses the original embedder to create embeddings.
@@ -175,8 +175,6 @@ class Initializer:
         if batch_size > 1:
             embeddings = embeddings.repeat(batch_size, 1, 1)
 
-        adv_model.set_embeddings(embeddings, strict=strict)
-
         if verbose:
             ids_list = input_ids.flatten().tolist()
             str_list = tokenizer.convert_ids_to_tokens(ids_list, skip_special_tokens=False)
@@ -184,13 +182,15 @@ class Initializer:
             logger.info(f"Embed Tokens: {str_list}")
             logger.info(f"Embed Length: {len(str_list)}")
 
+        return embeddings
+
     @staticmethod
     def from_random_ids(
         adv_model: AdvModel,
         allow_nonascii: bool = False,
         allow_special: bool = False,
         batch_size: int = 1,
-    ):
+    ) -> torch.Tensor:
         """
         Initialize adversarial embeddings from random token IDs.
         This method samples random token IDs from the tokenizer's vocabulary,
@@ -228,4 +228,4 @@ class Initializer:
 
         rand_ids = allowed_ids[rand_indices]
         embeddings = embedder(rand_ids)
-        adv_model.set_embeddings(embeddings)
+        return embeddings

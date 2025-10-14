@@ -44,7 +44,7 @@ class Experiment(ABC):
             "--model",
             type=str,
             choices=SUPPORTED_MODELS,
-            required=True,
+            default="meta-llama/Llama-2-7b-chat-hf",
             metavar="MODEL",
             help=f"The model name to attack. Available models: {SUPPORTED_MODELS}",
         )
@@ -54,7 +54,7 @@ class Experiment(ABC):
             type=str,
             nargs="+",
             choices=SUPPORTED_DATASETS,
-            required=True,
+            default=["harmbench-std"],
             metavar="DATASET",
             help=f"The datasets to use. Available datasets: {SUPPORTED_DATASETS}",
         )
@@ -64,7 +64,7 @@ class Experiment(ABC):
             type=str,
             nargs="+",
             choices=SUPPORTED_EVALUATORS,
-            required=True,
+            default=["strong-reject", "keyword-matching"],
             metavar="EVALUATOR",
             help=f"The attack evaluators to use. Available evaluators: {SUPPORTED_EVALUATORS}",
         )
@@ -107,6 +107,14 @@ class Experiment(ABC):
             default=120,
             metavar="MINUTES",
             help="The maximum training time in minutes.",
+        )
+
+        parser.add_argument(
+            "--max_epochs",
+            type=int,
+            default=2000,
+            metavar="NUM",
+            help="The maximum number of training epochs.",
         )
 
         parser.add_argument(
@@ -218,10 +226,8 @@ class Experiment(ABC):
             logger.info("Running attack...")
 
             stop = StopCriteria(
-                max_epochs=2000,
+                max_epochs=args.max_epochs,
                 max_time=args.max_time * 60,
-                patience=20,
-                patience_delta=0.01,
             )
 
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)

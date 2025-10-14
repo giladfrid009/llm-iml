@@ -26,19 +26,19 @@ def create_serve(gpu_id: int) -> ServeConfig:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--path",
+        type=str,
+        required=True,
+        help="Path to evaluation data CSV file.",
+    )
+
+    parser.add_argument(
         "--names",
         type=str,
         nargs="+",
         default=SUPPORTED_EVALUATORS,
         help="List of evaluator names to run. If not provided, all evaluators will be run.",
         choices=SUPPORTED_EVALUATORS,
-    )
-
-    parser.add_argument(
-        "--path",
-        type=str,
-        default="tests/eval_data.csv",
-        help="Path to evaluation data CSV file.",
     )
 
     parser.add_argument(

@@ -2,10 +2,10 @@ import inspect
 from typing import Callable, Iterable
 from tqdm.auto import tqdm
 import torch
-import copy
 
 from src.adv_model import AdvModel
 from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
+from src.initialize import Initializer
 from src.aliases import Conv
 
 from transformers.tokenization_utils_base import BatchEncoding
@@ -20,7 +20,6 @@ class SoftPrompt(SampleAttack):
         steps: int = 100,
         early_stopping: bool = False,
         mixed_precision: bool = False,
-        kv_caching: bool = True,
         verbose: bool = True,
     ):
         super().__init__(adv_model, verbose)
@@ -29,7 +28,6 @@ class SoftPrompt(SampleAttack):
         self.optim_factory = optim_factory
         self.early_stopping = early_stopping
         self.mixed_precision = mixed_precision
-        self.kv_caching = kv_caching
 
     def get_hparams(self) -> dict:
         dummy_optim = self.optim_factory([torch.zeros(1)])
@@ -38,7 +36,6 @@ class SoftPrompt(SampleAttack):
             "steps": self.steps,
             "early_stopping": self.early_stopping,
             "mixed_precision": self.mixed_precision,
-            "kv_caching": self.kv_caching,
             "optim": dummy_optim.state_dict()["param_groups"][0],
             "optim/name": dummy_optim.__class__.__name__,
             "optim_factory": inspect.getsource(self.optim_factory),
@@ -49,19 +46,12 @@ class SoftPrompt(SampleAttack):
         num_inputs: int,
         init_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        if init_embeds is not None:
-            embeddings = init_embeds.clone().detach()
-            embeddings.requires_grad_(True)
-            return embeddings
+        if init_embeds is None:
+            init_embeds = Initializer.random_normal(self.adv_model, std=0.1, batch_size=num_inputs)
 
-        embeddings = torch.randn(
-            size=(num_inputs, self.adv_model.num_tokens, self.adv_model.adv_embedder.embed_dim),
-            device=self.adv_model.device,
-            dtype=self.adv_model.adv_embedder.embed_dtype,
-            requires_grad=True,
-        )
-
-        return embeddings * 0.1
+        init_embeds = init_embeds.clone().detach()
+        init_embeds.requires_grad_(True)
+        return init_embeds
 
     @torch.no_grad()
     def _compute_cache(self, encodings: BatchEncoding) -> BatchEncoding:
@@ -191,10 +181,12 @@ class SoftPrompt(SampleAttack):
         conversations = self.adv_model.inject_tokens(conversations)
         encodings = self.adv_model.tokenize(conversations, target_texts)
 
-        # compute kv-cache if enabled
-        if self.kv_caching:
-            with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-                encodings = self._compute_cache(encodings)
+        # compute kv-cache
+        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+            encodings = self._compute_cache(encodings)
+            kv_cache: DynamicCache = encodings.kv_cache
+            cache_length = kv_cache.get_seq_length()
+
         # early stopping state
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
         optim_embeds = adv_embeds
@@ -203,9 +195,9 @@ class SoftPrompt(SampleAttack):
             for step in pbar:
                 optim.zero_grad()
 
-                # NOTE: need to copy kv-cache since forward modifies it in-place
+                # NOTE: need to crop kv-cache since forward modifies it in-place
                 step_encodings = encodings.copy()
-                step_encodings["kv_cache"] = copy.deepcopy(step_encodings.get("kv_cache", None))
+                step_encodings["kv_cache"] = kv_cache.crop(cache_length)
 
                 # select only unfinished samples if early stopping is enabled
                 if self.early_stopping:

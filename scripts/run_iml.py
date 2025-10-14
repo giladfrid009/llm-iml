@@ -25,8 +25,9 @@ class IML_Experiment(Experiment):
         # TODO: try less tokens
         # TODO: try different initializations
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20, add_spaces=True)
-        Initializer.normal(adv_model, std=0.1)  # High STD = Worse
-        # Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False) # USUALLY PERFORMS WORSE
+        embeds = Initializer.random_normal(adv_model, std=0.1)  # High STD = Worse
+        # embeds = Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False) # USUALLY PERFORMS WORSE
+        adv_model.set_embeddings(embeds)
         return adv_model
 
     def initialize_attack(self, adv_model, evaluators, metric_logger) -> UnivAttack:

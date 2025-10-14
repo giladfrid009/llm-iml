@@ -17,6 +17,7 @@ class DatasetName(str, Enum):
     MALICIOUS_INSTRUCT = "malicious-instruct"
     JAILBREAK_DISTILL = "jailbreak-distill"
     WILDGUARD_MIX = "wildguard-mix"
+    BEAVERTAILS = "beaver-tails"
 
 
 SUPPORTED_DATASETS = [e.value for e in DatasetName]
@@ -57,6 +58,7 @@ def load_single_dataset(name: str) -> Dataset:
         return ds_dict["train"]
 
     if name == DatasetName.JAILBREAK_BENCH:
+        # 55% original samples, rest from AdvBench and HarmBench
         ds: Dataset = datasets.load_dataset("JailbreakBench/JBB-Behaviors", name="behaviors", split="harmful")  # type: ignore
         return ds.rename_columns({"Goal": "prompt", "Target": "target"})
 
@@ -68,6 +70,7 @@ def load_single_dataset(name: str) -> Dataset:
 
     if name == DatasetName.JAILBREAK_DISTILL:
         # source: https://huggingface.co/datasets/jackzhang/JBDistill-Bench
+        # Some overlap with HarmBench
         ds_dict: DatasetDict = datasets.load_dataset("data/jailbreak_distill")  # type: ignore
         return ds_dict["train"]
 
@@ -82,6 +85,31 @@ def load_single_dataset(name: str) -> Dataset:
 
         ds: Dataset = datasets.load_dataset("allenai/wildguardmix", name="wildguardtrain", split="train")  # type: ignore
         return ds.filter(filter_fn).map(lambda x: {"target": x["response"][:10], **x})
+
+    if name == DatasetName.BEAVERTAILS:
+
+        def filter_fn(d: dict[str, str]) -> bool:
+            forbidden_categories = [
+                "animal_abuse",
+                "child_abuse",
+                "drug_abuse,weapons,banned_substance",
+                "financial_crime,property_crime,theft",
+                "terrorism,organized_crime",
+                "violence,aiding_and_abetting,incitement",
+                "self_harm",
+                # "controversial_topics,politics",
+                # "discrimination,stereotype,injustice",
+                # "hate_speech,offensive_language",
+                # "misinformation_regarding_ethics,laws_and_safety",
+                # "non_violent_unethical_behavior",
+                # "privacy_violation",
+                # "sexually_explicit,adult_content",
+            ]
+
+            return d["is_safe"] is False and any(d[cat] is True for cat in forbidden_categories)
+
+        ds: Dataset = datasets.load_dataset("PKU-Alignment/BeaverTails", split="30k_train")  # type: ignore
+        return ds.rename_column("response", "target")
 
     raise ValueError(f"Unsupported dataset: {name}")
 
@@ -131,7 +159,11 @@ def load_datasets(
     val_size: float | int = 0.5,
     test_size: float | int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    ds_list: list[pd.DataFrame] = [load_single_dataset(name).to_pandas(batched=False) for name in names]  # type: ignore
+    ds_list: list[pd.DataFrame] = []
+    for name in names:
+        ds: pd.DataFrame = load_single_dataset(name).to_pandas(batched=False)  # type: ignore
+        ds["ds_name"] = name
+        ds_list.append(ds)
 
     if len(ds_list) == 1:
         ds_full = ds_list[0]

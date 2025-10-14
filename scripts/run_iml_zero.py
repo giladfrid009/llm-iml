@@ -23,7 +23,8 @@ class IMLZero_Experiment(Experiment):
     
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
-        Initializer.normal(adv_model, std=0.1)
+        embeds = Initializer.random_normal(adv_model, std=0.1)
+        adv_model.set_embeddings(embeds)
         return adv_model
 
     def initialize_attack(self, adv_model, evaluators, metric_logger) -> UnivAttack:

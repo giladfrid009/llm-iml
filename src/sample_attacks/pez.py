@@ -2,13 +2,16 @@ from src.adv_model import AdvModel
 from src.sample_attacks.soft_prompt import SoftPrompt
 from src.sample_attacks.sample_attack import SampleOutput
 from src.discretize import Discretize
+from src.initialize import Initializer
 from src.aliases import Conv
 
+import inspect
 from typing import Callable, Iterable
 from tqdm.auto import tqdm
 import torch
 import copy
 from torch import nn
+from transformers.cache_utils import DynamicCache
 
 
 def default_optimizer(params: Iterable[torch.Tensor]) -> torch.optim.Optimizer:
@@ -48,6 +51,12 @@ class SoftProject(nn.Module):
 
         self._STE = _STE
 
+    def get_hparams(self) -> dict:
+        return {
+            "num_embeddings": self.embedding.num_embeddings,
+            "discretize_func": inspect.getsource(self.discretize_func),
+        }
+
     @torch.no_grad()
     def discretize(self, soft_embeds: torch.Tensor) -> torch.Tensor:
         """
@@ -82,7 +91,6 @@ class PEZ(SoftPrompt):
         steps: int = 100,
         early_stopping: bool = False,
         mixed_precision: bool = False,
-        kv_caching: bool = True,  # TODO: compare both True and False results; - I think there is a difference
         return_embeds: bool = False,  # TODO: compare both True and False results; change to True after testing
         verbose: bool = True,
     ):
@@ -92,15 +100,20 @@ class PEZ(SoftPrompt):
             steps=steps,
             early_stopping=early_stopping,
             mixed_precision=mixed_precision,
-            kv_caching=kv_caching,
             verbose=verbose,
         )
 
         self.return_embeds = return_embeds
+        self.soft_project = SoftProject(self.adv_model.orig_embedder, Discretize.cosine_similarity)
 
     def get_hparams(self) -> dict:
         hparams = super().get_hparams()
-        hparams["return_embeds"] = self.return_embeds
+        hparams.update(
+            {
+                "return_embeds": self.return_embeds,
+                "soft_project": self.soft_project.get_hparams(),
+            }
+        )
         return hparams
 
     def _initialize_embeddings(
@@ -108,21 +121,17 @@ class PEZ(SoftPrompt):
         num_inputs: int,
         init_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        if init_embeds is not None:
-            embeddings = init_embeds.clone().detach()
-            embeddings.requires_grad_(True)
-            return embeddings
+        if init_embeds is None:
+            init_embeds = Initializer.from_random_ids(
+                self.adv_model,
+                allow_nonascii=True,
+                allow_special=True,
+                batch_size=num_inputs,
+            )
 
-        random_ids = torch.randint(
-            self.adv_model.orig_embedder.weight.size(0),
-            (num_inputs, self.adv_model.num_tokens),
-            device=self.adv_model.device,
-            dtype=torch.long,
-        )
-
-        embeds = self.adv_model.embed(random_ids).clone().detach()
-        embeds.requires_grad_(True)
-        return embeds
+        init_embeds = init_embeds.clone().detach()
+        init_embeds.requires_grad_(True)
+        return init_embeds
 
     def fit(
         self,
@@ -131,6 +140,8 @@ class PEZ(SoftPrompt):
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:
         conversations = copy.deepcopy(conversations)
+        
+        # HB impl. adds space before adversarial tokens
         for conv in conversations:
             conv[-1]["content"] = conv[-1]["content"] + " "
 
@@ -144,16 +155,16 @@ class PEZ(SoftPrompt):
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory([adv_embeds])
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(optim, self.steps)
-        soft_project = SoftProject(self.adv_model.orig_embedder, Discretize.cosine_similarity)
 
         # tokenize
-        conversations = self.adv_model.inject_tokens(conversations)
+        conversations = self.adv_model.inject_tokens(conversations, add_spaces=False, adv_suffix=True)
         encodings = self.adv_model.tokenize(conversations, target_texts)
 
-        # compute kv-cache if enabled
-        if self.kv_caching:
-            with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-                encodings = self._compute_cache(encodings)
+        # compute kv-cache
+        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+            encodings = self._compute_cache(encodings)
+            kv_cache: DynamicCache = encodings.kv_cache
+            cache_length = kv_cache.get_seq_length()
 
         # early stopping state
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
@@ -163,9 +174,9 @@ class PEZ(SoftPrompt):
             for step in pbar:
                 optim.zero_grad()
 
-                # NOTE: need to copy kv-cache since forward modifies it in-place
+                # NOTE: need to crop kv-cache since forward modifies it in-place
                 step_encodings = encodings.copy()
-                step_encodings["kv_cache"] = copy.deepcopy(step_encodings.get("kv_cache", None))
+                step_encodings["kv_cache"] = kv_cache.crop(cache_length)
 
                 # select only unfinished samples if early stopping is enabled
                 if self.early_stopping:
@@ -174,7 +185,7 @@ class PEZ(SoftPrompt):
 
                 with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                     # forward pass
-                    optim_embeds = soft_project.forward(optim_embeds)
+                    optim_embeds = self.soft_project.forward(optim_embeds)
 
                     adv_content = self.adv_model.forward(
                         input_ids=step_encodings.input_ids,
@@ -215,7 +226,7 @@ class PEZ(SoftPrompt):
 
         with torch.no_grad():
             # replace adv token placeholders with discrete tokens
-            adv_ids = soft_project.discretize(adv_embeds)
+            adv_ids = self.soft_project.discretize(adv_embeds)
 
             if self.return_embeds:
                 # return convs with adv-token placeholders and the discrete embeddings

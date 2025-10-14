@@ -1,6 +1,5 @@
 from src.eval.evaluator import Evaluator, MultiEvaluator
 from src.eval.beaver_cost import BeaverCost
-from src.eval.gpt_judge import GPTJudge
 from src.eval.harmbench_judge import HarmBenchJudge
 from src.eval.jbb_judge import JBBJudge
 from src.eval.llama_evaluator import LlamaEvaluator
@@ -14,7 +13,6 @@ __all__ = [
     "Evaluator",
     "MultiEvaluator",
     "BeaverCost",
-    "GPTJudge",
     "HarmBenchJudge",
     "JBBJudge",
     "LlamaEvaluator",
