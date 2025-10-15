@@ -1,4 +1,5 @@
 from src.utils.logging import create_logger
+from typing import Any
 import datasets
 from datasets import DatasetDict, Dataset
 from enum import Enum
@@ -23,11 +24,20 @@ class DatasetName(str, Enum):
 SUPPORTED_DATASETS = [e.value for e in DatasetName]
 
 
-def load_single_dataset(name: str) -> Dataset:
+def load_raw_dataset(name: str) -> DatasetDict:
     """
-    Loads and returns a dataset with two main columns (and possibly other auxiliary columns):
+    Loads and returns a dataset by name. Each dataset is expected to have the following columns:
     - "prompt": The input prompt to the model.
     - "target": The expected output or label for the prompt.
+
+    If the dataset does not have predefined splits, it will be loaded as a single "train" split.
+    The user can then split it into training, validation, and test sets as needed.
+
+    Args:
+        name (str): The name of the dataset to load. Must be one of the supported datasets.
+
+    Returns:
+        DatasetDict: A dictionary-like object containing the dataset splits.
     """
 
     if name not in SUPPORTED_DATASETS:
@@ -35,60 +45,70 @@ def load_single_dataset(name: str) -> Dataset:
 
     if name == DatasetName.HARMBENCH:
         # source: https://github.com/centerforaisafety/HarmBench/tree/main/data/behavior_datasets
-        ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
-        return ds_dict["train"].filter(lambda x: x["functional_category"] in ["standard", "contextual"])
+        return datasets.load_dataset(f"data/{DatasetName.HARMBENCH.value}")  # type: ignore
 
     if name == DatasetName.HARMBENCH_STANDARD:
         # source: https://github.com/centerforaisafety/HarmBench/tree/main/data/behavior_datasets
-        ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
-        return ds_dict["train"].filter(lambda x: x["functional_category"] == "standard")
+        return datasets.load_dataset(f"data/{DatasetName.HARMBENCH_STANDARD.value}")  # type: ignore
 
     if name == DatasetName.HARMBENCH_CONTEXT:
+        # NOTE: no splits, only train
         # source: https://github.com/centerforaisafety/HarmBench/tree/main/data/behavior_datasets
-        ds_dict: DatasetDict = datasets.load_dataset("data/harmbench")  # type: ignore
-        return ds_dict["train"].filter(lambda x: x["functional_category"] == "contextual")
+        return datasets.load_dataset(f"data/{DatasetName.HARMBENCH_CONTEXT.value}")  # type: ignore
 
     if name == DatasetName.ADVBENCH:
-        return datasets.load_dataset("walledai/AdvBench", split="train")  # type: ignore
+        # source: https://huggingface.co/datasets/walledai/AdvBench
+        return datasets.load_dataset(f"data/{DatasetName.ADVBENCH.value}")  # type: ignore
 
     if name == DatasetName.ADVBENCH_SMALL:
-        # source: https://github.com/patrickrchao/JailbreakingLLMs/blob/main/data/harmful_behaviors_custom.csv
         # IRIS paper uses this small subset for training
-        ds_dict: DatasetDict = datasets.load_dataset("data/advbench_small")  # type: ignore
-        return ds_dict["train"]
+        # NOTE: no splits, only train
+        # source: https://github.com/patrickrchao/JailbreakingLLMs/blob/main/data/harmful_behaviors_custom.csv
+        return datasets.load_dataset(f"data/{DatasetName.ADVBENCH_SMALL.value}")  # type: ignore
 
     if name == DatasetName.JAILBREAK_BENCH:
-        # 55% original samples, rest from AdvBench and HarmBench
-        ds: Dataset = datasets.load_dataset("JailbreakBench/JBB-Behaviors", name="behaviors", split="harmful")  # type: ignore
-        return ds.rename_columns({"Goal": "prompt", "Target": "target"})
+        # NOTE: no splits, only train
+        # NOTE: some overlap with AdvBench and HarmBench
+        # source: https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors
+        return datasets.load_dataset(f"data/{DatasetName.JAILBREAK_BENCH.value}")  # type: ignore
 
     if name == DatasetName.MALICIOUS_INSTRUCT:
+        # NOTE: no splits, only train
         # source: https://github.com/sj21j/Regularized_Relaxation/blob/master/data/MaliciousInstruct/harmful_behaviors.csv
         # without labels: https://huggingface.co/datasets/walledai/MaliciousInstruct
-        ds_dict: DatasetDict = datasets.load_dataset("data/malicious_instruct")  # type: ignore
-        return ds_dict["train"]
+        return datasets.load_dataset(f"data/{DatasetName.MALICIOUS_INSTRUCT.value}")  # type: ignore
 
     if name == DatasetName.JAILBREAK_DISTILL:
+        # NOTE: Some overlap with HarmBench
         # source: https://huggingface.co/datasets/jackzhang/JBDistill-Bench
-        # Some overlap with HarmBench
-        ds_dict: DatasetDict = datasets.load_dataset("data/jailbreak_distill")  # type: ignore
-        return ds_dict["train"]
+        return datasets.load_dataset(f"data/{DatasetName.JAILBREAK_DISTILL.value}")  # type: ignore
 
     if name == DatasetName.WILDGUARD_MIX:
 
-        def filter_fn(d: dict[str, str]) -> bool:
+        def filter_fn(d: dict[str, Any]) -> bool:
             return (
                 d["prompt_harm_label"] == "harmful"
                 and d["response_harm_label"] == "harmful"
+                and isinstance(d["response"], str)
                 and not d["response"].strip().startswith("[")
             )
 
-        ds: Dataset = datasets.load_dataset("allenai/wildguardmix", name="wildguardtrain", split="train")  # type: ignore
-        return ds.filter(filter_fn).map(lambda x: {"target": x["response"][:10], **x})
+        ds_train: Dataset = datasets.load_dataset("allenai/wildguardmix", name="wildguardtrain", split="train")  # type: ignore
+        ds_train = ds_train.filter(filter_fn).map(lambda x: {"target": x["response"][:10], **x})
+
+        # split eval from train, eval of size 100
+        split_dict = ds_train.train_test_split(test_size=100, seed=42)
+        ds_train = split_dict["train"]
+        ds_eval = split_dict["test"]
+
+        ds_test: Dataset = datasets.load_dataset("allenai/wildguardmix", name="wildguardtest", split="test")  # type: ignore
+        ds_test = ds_test.filter(filter_fn).map(lambda x: {"target": x["response"][:10], **x})
+
+        return DatasetDict({"train": ds_train, "validation": ds_eval, "test": ds_test})
 
     if name == DatasetName.BEAVERTAILS:
 
-        def filter_fn(d: dict[str, str]) -> bool:
+        def filter_fn(d: dict[str, Any]) -> bool:
             forbidden_categories = [
                 "animal_abuse",
                 "child_abuse",
@@ -108,75 +128,56 @@ def load_single_dataset(name: str) -> Dataset:
 
             return d["is_safe"] is False and any(d[cat] is True for cat in forbidden_categories)
 
-        ds: Dataset = datasets.load_dataset("PKU-Alignment/BeaverTails", split="30k_train")  # type: ignore
-        return ds.rename_column("response", "target")
+        ds_train: Dataset = datasets.load_dataset("PKU-Alignment/BeaverTails", split="30k_train")  # type: ignore
+        ds_train = ds_train.filter(filter_fn).rename_column("response", "target")
+        ds_train = ds_train.map(lambda x: {"target": x["target"][:10], **x})
+
+        # split eval from train, eval of size 100
+        split_dict = ds_train.train_test_split(test_size=100, seed=42)
+        ds_train = split_dict["train"]
+        ds_eval = split_dict["test"]
+
+        ds_test: Dataset = datasets.load_dataset("PKU-Alignment/BeaverTails", split="30k_test")  # type: ignore
+        ds_test = ds_test.filter(filter_fn).rename_column("response", "target")
+        ds_test = ds_test.map(lambda x: {"target": x["target"][:10], **x})
+
+        return DatasetDict({"train": ds_train, "validation": ds_eval, "test": ds_test})
 
     raise ValueError(f"Unsupported dataset: {name}")
 
 
-def split_data(
-    full_data: pd.DataFrame,
-    val_size: float | int,
-    test_size: float | int,
-    split_seed: int = 42,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    if val_size < 0 or test_size < 0:
-        raise ValueError("Validation and test sizes must be non-negative.")
+def load_dataset(name: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Loads a dataset by name and returns the training, validation, and test sets as pandas DataFrames.
 
-    # compute sizes
-    total_size = len(full_data)
-    val_size = int(val_size) if val_size > 1 else int(total_size * val_size)
-    test_size = int(test_size) if test_size > 1 else int(total_size * test_size)
-    train_size = total_size - val_size - test_size
+    Args:
+        names (list[str]): List of dataset names to load. Each name must be one of the supported datasets.
 
-    full_data = full_data.sample(frac=1, random_state=split_seed).reset_index(drop=True)
-    ds_train = full_data.iloc[:train_size]
-    ds_val = full_data.iloc[train_size : train_size + val_size]
-    ds_test = full_data.iloc[train_size + val_size :]
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: A tuple containing the training, validation, and test datasets as pandas DataFrames.
+    """
 
-    if len(ds_val) == 0 and len(ds_test) == 0:
-        ds_val = ds_train.copy()
-        ds_test = ds_train.copy()
-        logger.info("Both validation and test sets are empty, using training set for both.")
+    ds_dict = load_raw_dataset(name)
 
-    elif len(ds_val) == 0:
-        ds_val = ds_test.copy()
-        logger.info("Validation set is empty, using test set as validation set.")
+    ds_train = ds_dict["train"]
+    ds_val = ds_dict["validation"] if "validation" in ds_dict else None
+    ds_test = ds_dict["test"] if "test" in ds_dict else None
 
-    elif len(ds_test) == 0:
-        ds_test = ds_val.copy()
-        logger.info("Test set is empty, using validation set as test set.")
+    if ds_val is None and ds_test is None:
+        ds_val = ds_train.shuffle(seed=0)
+        ds_test = ds_train.shuffle(seed=1)
+        logger.info(f"Dataset {name} has no validation or test set, using training set for both.")
 
-    ds_train = ds_train.sample(frac=1, random_state=0).reset_index(drop=True)
-    ds_val = ds_val.sample(frac=1, random_state=1).reset_index(drop=True)
-    ds_test = ds_test.sample(frac=1, random_state=2).reset_index(drop=True)
+    if ds_val is None and ds_test is not None:
+        ds_val = ds_test.shuffle(seed=2)
+        logger.info(f"Dataset {name} has no validation set, using test set as validation set.")
 
-    return ds_train, ds_val, ds_test
+    if ds_test is None and ds_val is not None:
+        ds_test = ds_val.shuffle(seed=3)
+        logger.info(f"Dataset {name} has no test set, using validation set as test set.")
 
-
-def load_datasets(
-    names: list[str],
-    val_size: float | int = 0.5,
-    test_size: float | int = 0,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    ds_list: list[pd.DataFrame] = []
-    for name in names:
-        ds: pd.DataFrame = load_single_dataset(name).to_pandas(batched=False)  # type: ignore
-        ds["ds_name"] = name
-        ds_list.append(ds)
-
-    if len(ds_list) == 1:
-        ds_full = ds_list[0]
-
-    else:
-        ds_full = pd.concat(ds_list, axis=0, join="outer", ignore_index=True)
-        ds_full.reset_index(drop=True, inplace=True)
-        logger.info(f"Joined datasets: {names}")
-
-        orig_size = len(ds_full)
-        ds_full.drop_duplicates(subset=["prompt"], keep="first", inplace=True, ignore_index=True)
-        ds_full.dropna(subset=["prompt"], inplace=True, ignore_index=True)
-        ds_full.reset_index(drop=True, inplace=True)
-        logger.info(f"Dropped {orig_size - len(ds_full)} duplicate rows. Dataset size is now {len(ds_full)}.")
-
-    return split_data(ds_full, val_size, test_size, split_seed=42)
+    return (
+        ds_train.to_pandas(),
+        ds_val.to_pandas(),  # type: ignore
+        ds_test.to_pandas(),  # type: ignore
+    )

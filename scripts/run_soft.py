@@ -19,9 +19,8 @@ class SoftPrompt_Experiment(Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.set_defaults(
             model="meta-llama/Llama-2-7b-chat-hf",
-            dataset=["harmbench-std"],
+            dataset="harmbench-std",
             evaluator=["hb-judge"],
-            eval_size=0.5,
             train_batch=16,
             max_epochs=200,
         )

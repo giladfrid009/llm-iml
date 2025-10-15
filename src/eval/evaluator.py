@@ -56,7 +56,7 @@ class Evaluator(ABC):
 
     def evaluate(self, dl_eval: TableLoader) -> dict[str, float]:
         """
-        Evaluates the model on the provided data loader using the generated outputs.  
+        Evaluates the model on the provided data loader using the generated outputs.
         This methods sets new columns in the data loader for each metric in `self.metric_names`.
 
         Args:
@@ -70,7 +70,9 @@ class Evaluator(ABC):
 
         metrics: dict[str, list[float]] = {k: [] for k in self.metric_names}
         for batch_data in tqdm(dl_eval, desc=f"Evaluating {self.name}", disable=not self.verbose, leave=False):
-            batch_metric = self.eval_batch(batch_data["prompt"], batch_data["response"])
+            batch_prompts = [str(s) for s in batch_data["prompt"]]
+            batch_responses = [str(s) for s in batch_data["response"]]
+            batch_metric = self.eval_batch(batch_prompts, batch_responses)
             for metric_name, metric_values in batch_metric.items():
                 metrics[metric_name].extend(metric_values)
 

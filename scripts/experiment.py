@@ -16,7 +16,7 @@ from src.eval import Evaluator
 from src.metric_logger import MetricLogger
 
 from scripts.utils.load_model import SUPPORTED_MODELS, load_model
-from scripts.utils.load_dataset import SUPPORTED_DATASETS, load_datasets
+from scripts.utils.load_dataset import SUPPORTED_DATASETS, load_dataset
 from scripts.utils.load_evaluator import SUPPORTED_EVALUATORS, load_evaluators
 
 
@@ -52,9 +52,8 @@ class Experiment(ABC):
         parser.add_argument(
             "--dataset",
             type=str,
-            nargs="+",
             choices=SUPPORTED_DATASETS,
-            default=["harmbench-std"],
+            default="harmbench-std",
             metavar="DATASET",
             help=f"The datasets to use. Available datasets: {SUPPORTED_DATASETS}",
         )
@@ -75,14 +74,6 @@ class Experiment(ABC):
             default=time.strftime("%Y-%m-%d_%H-%M-%S"),
             metavar="NAME",
             help="The name of the run, used for logging.",
-        )
-
-        parser.add_argument(
-            "--eval_size",
-            type=float,
-            default=0.35,
-            metavar="SIZE",
-            help="The ratio/size of the evaluation set. If > 1, interpreted as absolute size, else as ratio.",
         )
 
         parser.add_argument(
@@ -180,7 +171,7 @@ class Experiment(ABC):
             sys.exit(1)
 
         logger.info(f"Loading dataset: {args.dataset}")
-        ds_train, ds_val, ds_test = load_datasets(args.dataset, val_size=args.eval_size)
+        ds_train, ds_val, ds_test = load_dataset(args.dataset)
         dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True)
         dl_eval = TableLoader(ds_val, batch_size=args.eval_batch, shuffle=False)
         dl_test = TableLoader(ds_test, batch_size=args.eval_batch, shuffle=False)
@@ -201,7 +192,8 @@ class Experiment(ABC):
         adv_model = self.create_adversarial_model(model, tokenizer)
         logger.info(f"Model architecture: {adv_model.model}")
 
-        with MetricLogger(self.args().run_name, project="LLM-IML") as metric_logger:
+        root_dir = f"logs/{args.model.split('/')[-1]}/{args.dataset}"
+        with MetricLogger(self.args().run_name, root_dir=root_dir, project="LLM-IML") as metric_logger:
             logger.info("Initializing attack...")
             univ_attack = self.initialize_attack(adv_model, evaluators, metric_logger)
 
