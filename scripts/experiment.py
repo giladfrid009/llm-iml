@@ -11,7 +11,7 @@ from src.utils.logging import create_logger, setup_logging, loglevel_names
 from src.data import TableLoader
 from src.univ_attacks import UnivAttack
 from src.adv_model import AdvModel
-from src.config import StopCriteria
+from src.config import GenConfig, StopCriteria
 from src.eval import Evaluator
 from src.metric_logger import MetricLogger
 
@@ -93,22 +93,6 @@ class Experiment(ABC):
         )
 
         parser.add_argument(
-            "--max_time",
-            type=int,
-            default=120,
-            metavar="MINUTES",
-            help="The maximum training time in minutes.",
-        )
-
-        parser.add_argument(
-            "--max_epochs",
-            type=int,
-            default=2000,
-            metavar="NUM",
-            help="The maximum number of training epochs.",
-        )
-
-        parser.add_argument(
             "--seed",
             type=int,
             default=random.randint(0, 1000000),
@@ -122,6 +106,93 @@ class Experiment(ABC):
             default="INFO",
             metavar="LEVEL",
             help=f"Logging level to python-logger. Available levels: {loglevel_names()}",
+        )
+
+        attack_args = parser.add_argument_group("Base attack parameters")
+
+        attack_args.add_argument(
+            "--eval_metric",
+            type=str,
+            default=None,
+            metavar="NAME",
+            help="The evaluation metric to use for selecting the best adversarial prompt. "
+            "If not specified, the default metric of the first evaluator will be used.",
+        )
+
+        attack_args.add_argument(
+            "--eval_freq",
+            type=float,
+            default=1,
+            metavar="NUM",
+            help="Frequency of evaluation during training, in epochs. Can be a float.",
+        )
+
+        attack_args.add_argument(
+            "--use_amp",
+            choices=["true", "false"],
+            metavar="BOOL",
+            default="false",
+            help="Whether to use automatic mixed precision (AMP) for training.",
+        )
+
+        gen_args = parser.add_argument_group("Generation parameters")
+
+        gen_args.add_argument(
+            "--do_sample",
+            choices=["true", "false"],
+            metavar="BOOL",
+            default="true",
+            help="Whether to use sampling for generation.",
+        )
+
+        gen_args.add_argument(
+            "--temperature",
+            type=float,
+            default=None,
+            metavar="TEMP",
+            help="Sampling temperature for generation.",
+        )
+
+        gen_args.add_argument(
+            "--top_p",
+            type=float,
+            default=None,
+            metavar="P",
+            help="Nucleus sampling top-p value for generation.",
+        )
+
+        gen_args.add_argument(
+            "--top_k",
+            type=int,
+            default=None,
+            metavar="K",
+            help="Top-k sampling value for generation.",
+        )
+
+        gen_args.add_argument(
+            "--max_new_tokens",
+            type=int,
+            default=512,
+            metavar="NUM",
+            help="Maximum number of new tokens to generate.",
+        )
+
+        stop_args = parser.add_argument_group("Stopping Criteria")
+
+        stop_args.add_argument(
+            "--max_time",
+            type=int,
+            default=120,
+            metavar="MINUTES",
+            help="The maximum training time in minutes.",
+        )
+
+        stop_args.add_argument(
+            "--max_epochs",
+            type=int,
+            default=2000,
+            metavar="NUM",
+            help="The maximum number of training epochs.",
         )
 
         self.add_arguments(parser)
@@ -159,6 +230,10 @@ class Experiment(ABC):
         self,
         adv_model: AdvModel,
         evaluators: list[Evaluator],
+        eval_metric: str | None,
+        eval_freq: float,
+        mixed_precision: bool,
+        gen_config: GenConfig,
         metric_logger: MetricLogger,
     ) -> UnivAttack:
         pass
@@ -195,7 +270,24 @@ class Experiment(ABC):
         root_dir = f"logs/{args.model.split('/')[-1]}/{args.dataset}"
         with MetricLogger(self.args().run_name, root_dir=root_dir, project="LLM-IML") as metric_logger:
             logger.info("Initializing attack...")
-            univ_attack = self.initialize_attack(adv_model, evaluators, metric_logger)
+
+            gen_config = GenConfig(
+                max_new_tokens=args.max_new_tokens,
+                do_sample=args.do_sample.lower() == "true",
+                temperature=args.temperature,
+                top_p=args.top_p,
+                top_k=args.top_k,
+            )
+
+            univ_attack = self.initialize_attack(
+                adv_model=adv_model,
+                evaluators=evaluators,
+                eval_metric=args.eval_metric,
+                eval_freq=args.eval_freq,
+                mixed_precision=args.use_amp.lower() == "true",
+                gen_config=gen_config,
+                metric_logger=metric_logger,
+            )
 
             metric_logger.add_tags(
                 model=args.model,

@@ -20,6 +20,15 @@ class Evaluator(ABC):
         self.metric_names = metric_names
         self.verbose = verbose
 
+    def default_metric(self) -> str:
+        """
+        Returns the default metric name for this evaluator.
+
+        Returns:
+            str: Default metric name.
+        """
+        return self.metric_names[0]
+
     @abstractmethod
     def get_hparams(self) -> dict:
         """
@@ -119,6 +128,9 @@ class MultiEvaluator(Evaluator):
         self.evaluators = evaluators
         self.combine_fn = combine_fn
 
+    def default_metric(self) -> str:
+        return self.name
+    
     def get_hparams(self) -> dict:
         hparams: dict[str, Any] = {
             "inner_evaluators": str([ev.name for ev in self.evaluators]),

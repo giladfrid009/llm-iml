@@ -13,27 +13,29 @@ from src.sample_attacks import SoftPromptZero
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
 from src.initialize import Initializer
-from src.config import GenConfig, StopCriteria
 from src.activ_extractor import ActivationExtractor
 
 
 class IMLZero_Experiment(Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         pass
-    
+
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
         embeds = Initializer.random_normal(adv_model, std=0.1)
         adv_model.set_embeddings(embeds)
         return adv_model
 
-    def initialize_attack(self, adv_model, evaluators, metric_logger) -> UnivAttack:
-        gen_config = GenConfig(
-            max_new_tokens=512,
-            do_sample=True,
-            remove_invalid_values=True,
-        )
-
+    def initialize_attack(
+        self,
+        adv_model: AdvModel,
+        evaluators,
+        eval_metric,
+        eval_freq,
+        mixed_precision,
+        gen_config,
+        metric_logger,
+    ) -> UnivAttack:
         inner_attack = SoftPromptZero(
             adv_model,
             optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
@@ -61,15 +63,15 @@ class IMLZero_Experiment(Experiment):
             optimizer=optimizer,
             activ_extractor=activ_extractor,
             evaluators=evaluators,
-            eval_metric="StrongReject/Thresh@0.5",
-            # eval_metric="LlamaGuard/Meta-Llama-Guard-2-8B",
-            eval_freq=0.5,
+            eval_metric=eval_metric,
+            eval_freq=eval_freq,
             gen_config=gen_config,
-            mixed_precision=False,
+            mixed_precision=mixed_precision,
+            metric_logger=metric_logger,
+            # specialized args
             skip_already_fooled=False,
             skip_failed_attacks=True,
             dynamic_labels=20,
-            metric_logger=metric_logger,
         )
 
 

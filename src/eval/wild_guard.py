@@ -73,6 +73,9 @@ class WildGuard(Evaluator):
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
 
+    def default_metric(self) -> str:
+        return "WildGuard/Prompt-Harmful"
+
     def get_hparams(self) -> dict:
         return {
             "metrics": str(self.metric_names),

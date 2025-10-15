@@ -13,7 +13,6 @@ from src.sample_attacks import SoftPrompt
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
 from src.initialize import Initializer
-from src.config import GenConfig, StopCriteria
 from src.activ_extractor import ActivationExtractor
 
 
@@ -29,15 +28,16 @@ class IML_Experiment(Experiment):
         adv_model.set_embeddings(embeds)
         return adv_model
 
-    def initialize_attack(self, adv_model, evaluators, metric_logger) -> UnivAttack:
-        gen_config = GenConfig(
-            max_new_tokens=1024,  # TODO: check if 512 or 1024 matters
-            do_sample=True,
-            remove_invalid_values=True,
-            # top_p=0.9,
-            # temperature=0.6,
-        )
-
+    def initialize_attack(
+        self,
+        adv_model: AdvModel,
+        evaluators,
+        eval_metric,
+        eval_freq,
+        mixed_precision,
+        gen_config,
+        metric_logger,
+    ) -> UnivAttack:
         # TODO: try Adam - doesnt do much difference, maybe worse
         # TODO: we can create an attack_builder func and try with inner_attack scheduling,
         # i.e. scheduling the number of steps
@@ -81,16 +81,15 @@ class IML_Experiment(Experiment):
             optimizer=optimizer,
             activ_extractor=activ_extractor,
             evaluators=evaluators,
-            # eval_metric="StrongReject/Thresh@0.5",
-            # eval_metric="LlamaGuard/Meta-Llama-Guard-2-8B",
-            eval_metric="Matching/GCG1",
-            eval_freq=0.5,
+            eval_metric=eval_metric,
+            eval_freq=eval_freq,
             gen_config=gen_config,
-            mixed_precision=False,
+            mixed_precision=mixed_precision,
+            metric_logger=metric_logger,
+            # specialized args
             skip_already_fooled=False,
             skip_failed_attacks=True,
-            dynamic_labels=40,
-            metric_logger=metric_logger,
+            dynamic_labels=20,
         )
 
 

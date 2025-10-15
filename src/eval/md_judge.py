@@ -58,6 +58,9 @@ class MDJudge(Evaluator):
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
 
+    def default_metric(self) -> str:
+        return "MD-Judge/Harmful"
+
     def get_hparams(self) -> dict:
         return {
             "metrics": str(self.metric_names),

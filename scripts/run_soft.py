@@ -12,7 +12,6 @@ from src.univ_attacks import UnivAttack, UnivSoftPrompt
 from src.fgsm_optim import FGSM
 from src.adv_model import AdvModel
 from src.initialize import Initializer
-from src.config import GenConfig, StopCriteria
 
 
 class SoftPrompt_Experiment(Experiment):
@@ -24,7 +23,7 @@ class SoftPrompt_Experiment(Experiment):
             train_batch=16,
             max_epochs=200,
         )
-    
+
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
         embeds = Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !", strict=False)
@@ -36,12 +35,19 @@ class SoftPrompt_Experiment(Experiment):
         adv_model.set_embeddings(embeds)
         return adv_model
 
-    def initialize_attack(self, adv_model, evaluators, metric_logger) -> UnivAttack:
-        gen_config = GenConfig(
-            max_new_tokens=512,
-            do_sample=False,
-            remove_invalid_values=True,
-        )
+    def initialize_attack(
+        self,
+        adv_model: AdvModel,
+        evaluators,
+        eval_metric,
+        eval_freq,
+        mixed_precision,
+        gen_config,
+        metric_logger,
+    ) -> UnivAttack:
+        """
+        Creates a soft-prompt universal adversarial attack instance.
+        """
 
         optimizer = FGSM(
             adv_model.parameters(),
@@ -52,10 +58,10 @@ class SoftPrompt_Experiment(Experiment):
             adv_model=adv_model,
             optimizer=optimizer,
             evaluators=evaluators,
-            eval_metric="StrongReject/Thresh@0.5",
-            eval_freq=10,
+            eval_metric=eval_metric,
+            eval_freq=eval_freq,
             gen_config=gen_config,
-            mixed_precision=False,
+            mixed_precision=mixed_precision,
             metric_logger=metric_logger,
         )
 

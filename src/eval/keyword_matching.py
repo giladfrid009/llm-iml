@@ -34,7 +34,7 @@ class KeywordMatching(Evaluator):
         self.refusals_dict = refusals_dict
 
         super().__init__(name="Matching", metric_names=metric_names, verbose=verbose)
-
+    
     def get_hparams(self) -> dict:
         return {
             "refusals_dict": self.refusals_dict,
