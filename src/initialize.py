@@ -56,48 +56,31 @@ class Initializer:
         return embeds
 
     @staticmethod
+    def from_mean(adv_model: AdvModel, std: float = 0.001, batch_size: int = 1) -> torch.Tensor:
+        """
+        Initialize adversarial embeddings using the mean of the original embeddings.
+        The mean is computed per embedding dimension across all original embeddings.
+        """
+        orig_weight = adv_model.orig_embedder.weight
+        mean = torch.mean(orig_weight, dim=0, keepdim=True)
+
+        embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
+        embeds = embeds.normal_() * std + mean
+        return embeds.detach()
+
+    @staticmethod
     def from_mean_std(adv_model: AdvModel, batch_size: int = 1) -> torch.Tensor:
         """
         Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
         The mean and std are computed per embedding dimension across all original embeddings.
         """
         orig_weight = adv_model.orig_embedder.weight
-        mean = torch.mean(orig_weight, dim=0)
-        std = torch.std(orig_weight, dim=0)
+        mean = torch.mean(orig_weight, dim=0, keepdim=True)
+        std = torch.std(orig_weight, dim=0, keepdim=True)
 
-        new_embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
-        new_embeds = new_embeds.normal_() * std + mean
-        return new_embeds
-
-    @staticmethod
-    def from_lp_ball(
-        adv_model: AdvModel,
-        norm: float = 2.0,
-        radius: float = 1.0,
-    ) -> torch.Tensor:
-        """
-        Initialize adversarial embeddings by sampling each token-embedding
-        uniformly from the Lp ball of given norm and radius.
-
-        Args:
-            adv_model (AdvModel): The adversarial model to initialize.
-            norm (float): The norm of the Lp ball to sample from.
-            radius (float): The radius of the Lp ball to sample from.
-        """
-        embeds = Initializer.make_empty(adv_model)
-        device = embeds.device
-        N, D = adv_model.num_tokens, embeds.shape[-1]
-
-        vec = torch.rand(N, D, device=device)
-        vec = (-vec.log()).pow(1.0 / norm)
-        sgn = torch.randint(0, 2, (N, D), device=device, dtype=embeds.dtype) * 2 - 1
-        vec = sgn * vec
-        vec = vec / (vec.norm(p=norm, dim=-1, keepdim=True) + torch.finfo(embeds.dtype).eps)
-        rad = torch.rand((N, 1), device=device).pow(1.0 / D) * radius
-
-        embeds = vec * rad
-        embeds = embeds.unsqueeze(0)  # add batch dimension
-        return embeds
+        embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
+        embeds = embeds.normal_() * std + mean
+        return embeds.detach()
 
     @staticmethod
     def from_string(
@@ -123,7 +106,6 @@ class Initializer:
             batch_size (int): The batch size for the embeddings tensor. 1 for a universal prompt, > 1 for batch of prompts.
         """
         tokenizer = adv_model.tokenizer
-        embedder = adv_model.orig_embedder
         input_ids: torch.Tensor
 
         if not strict:
@@ -170,10 +152,10 @@ class Initializer:
             pad_token_id: int = tokenizer.convert_tokens_to_ids(pad_word)  # type: ignore
             input_ids[attention_mask == 0] = pad_token_id
 
-        embeddings: torch.Tensor = embedder(input_ids)
+        embeds = adv_model.orig_embedder.forward(input_ids)
 
         if batch_size > 1:
-            embeddings = embeddings.repeat(batch_size, 1, 1)
+            embeds = embeds.repeat(batch_size, 1, 1)
 
         if verbose:
             ids_list = input_ids.flatten().tolist()
@@ -182,7 +164,7 @@ class Initializer:
             logger.info(f"Embed Tokens: {str_list}")
             logger.info(f"Embed Length: {len(str_list)}")
 
-        return embeddings
+        return embeds.detach()
 
     @staticmethod
     def from_random_ids(
@@ -203,13 +185,12 @@ class Initializer:
             batch_size (int): The batch size for the embeddings tensor. 1 for a universal prompt, > 1 for batch of prompts.
         """
         tokenizer = adv_model.tokenizer
-        embedder = adv_model.orig_embedder
 
         def is_ascii(id: int) -> bool:
             s = tokenizer.convert_ids_to_tokens(id)
             return s.isascii() and s.isprintable()
 
-        allowed_ids = list(range(embedder.num_embeddings))
+        allowed_ids = list(range(adv_model.orig_embedder.num_embeddings))
 
         if not allow_nonascii:
             allowed_ids = [id for id in allowed_ids if is_ascii(id)]
@@ -227,5 +208,5 @@ class Initializer:
         )
 
         rand_ids = allowed_ids[rand_indices]
-        embeddings = embedder(rand_ids)
-        return embeddings
+        embeds = adv_model.orig_embedder.forward(rand_ids)
+        return embeds.detach()

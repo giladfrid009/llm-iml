@@ -78,11 +78,15 @@ class SoftPrompt(SampleAttack):
             use_cache=True,
         )
 
+        kv_cache = kv_result.past_key_values
+        if isinstance(kv_cache, tuple):  # convert legacy cache format
+            kv_cache = DynamicCache.from_legacy_cache(kv_cache)
+
         new_data = {
             "input_ids": encodings.input_ids[:, kv_idx:],
             "attention_mask": encodings.attention_mask,  # we need the full attention mask
             "adv_mask": encodings.adv_mask[:, kv_idx:],
-            "kv_cache": kv_result.past_key_values,
+            "kv_cache": kv_cache,
         }
 
         if "target_mask" in encodings:
@@ -156,7 +160,7 @@ class SoftPrompt(SampleAttack):
         flat_losses = torch.nn.functional.cross_entropy(logits, target_ids, reduction="none")
 
         # scatter losses back to the original shape and compute sample-mean
-        loss_matrix = torch.zeros_like(target_mask, dtype=logits.dtype)
+        loss_matrix = torch.zeros_like(target_mask, dtype=flat_losses.dtype)
         loss_matrix[target_mask] = flat_losses
         loss = torch.sum(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
         return loss
@@ -228,6 +232,10 @@ class SoftPrompt(SampleAttack):
                             pbar.n = pbar.total
                             pbar.close()
                             break
+
+                        # logits = logits[~finished_status]
+                        # target_ids = target_ids[~finished_status]
+                        # target_mask = target_mask[~finished_status]
 
                     loss = self.criterion(
                         logits=logits,

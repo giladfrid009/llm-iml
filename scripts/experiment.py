@@ -87,7 +87,7 @@ class Experiment(ABC):
         parser.add_argument(
             "--eval_batch",
             type=int,
-            default=25,
+            default=100,
             metavar="SIZE",
             help="The evaluation batch size.",
         )
@@ -106,6 +106,12 @@ class Experiment(ABC):
             default="INFO",
             metavar="LEVEL",
             help=f"Logging level to python-logger. Available levels: {loglevel_names()}",
+        )
+
+        parser.add_argument(
+            "--test_run",
+            action="store_true",
+            help="If set, the experiment will run a quick test with reduced epochs and time.",
         )
 
         attack_args = parser.add_argument_group("Base attack parameters")
@@ -190,9 +196,17 @@ class Experiment(ABC):
         stop_args.add_argument(
             "--max_epochs",
             type=int,
-            default=2000,
+            default=100,
             metavar="NUM",
             help="The maximum number of training epochs.",
+        )
+
+        stop_args.add_argument(
+            "--patience",
+            type=int,
+            default=10,
+            metavar="NUM",
+            help="Early stopping patience in number of evaluations.",
         )
 
         self.add_arguments(parser)
@@ -265,10 +279,16 @@ class Experiment(ABC):
         logger.info(f"Loading model: {args.model}")
         model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
         adv_model = self.create_adversarial_model(model, tokenizer)
-        logger.info(f"Model architecture: {adv_model.model}")
+        logger.info(f"\nModel architecture: {adv_model.model}\n")
 
         root_dir = f"logs/{args.model.split('/')[-1]}/{args.dataset}"
-        with MetricLogger(self.args().run_name, root_dir=root_dir, project="LLM-IML") as metric_logger:
+
+        with MetricLogger(
+            self.args().run_name,
+            root_dir=root_dir,
+            project="LLM-IML-Ablations",
+            disabled=args.test_run,
+        ) as metric_logger:
             logger.info("Initializing attack...")
 
             gen_config = GenConfig(
@@ -293,7 +313,7 @@ class Experiment(ABC):
                 model=args.model,
                 num_tokens=adv_model.num_tokens,
                 attack=type(univ_attack).__name__,
-                dataset=", ".join(args.dataset),
+                dataset=args.dataset,
                 evaluators=", ".join(args.evaluator),
             )
 
@@ -303,15 +323,16 @@ class Experiment(ABC):
                 metric_logger.log_code(expr_file)
 
             if cm_task := metric_logger.cm_task:
-                cm_task.register_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
-                cm_task.register_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
-                cm_task.register_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
+                cm_task.upload_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
+                cm_task.upload_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
+                cm_task.upload_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
 
             logger.info("Running attack...")
 
             stop = StopCriteria(
-                max_epochs=args.max_epochs,
-                max_time=args.max_time * 60,
+                max_epochs=args.max_epochs if not args.test_run else 1,
+                max_time=args.max_time * 60 if not args.test_run else 10,
+                patience=args.patience,
             )
 
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)

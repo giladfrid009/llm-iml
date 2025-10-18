@@ -92,8 +92,4 @@ def load_model(
     config.setdefault("torch_dtype", torch_dtype)
     config.setdefault("hf_token", hf_token)
 
-    logger.info("Model Config:")
-    for key, value in config.items():
-        logger.info(f"{key}: {value}")
-
     return load_hf_model(**config)

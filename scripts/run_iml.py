@@ -21,8 +21,6 @@ class IML_Experiment(Experiment):
         pass
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
-        # TODO: try less tokens
-        # TODO: try different initializations
         adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
         embeds = Initializer.random_normal(adv_model, std=0.1)  # High STD = Worse
         adv_model.set_embeddings(embeds)
@@ -38,10 +36,6 @@ class IML_Experiment(Experiment):
         gen_config,
         metric_logger,
     ) -> UnivAttack:
-        # TODO: try Adam - doesnt do much difference, maybe worse
-        # TODO: we can create an attack_builder func and try with inner_attack scheduling,
-        # i.e. scheduling the number of steps
-        # TODO: try with early_stopping=False
         inner_attack = SoftPrompt(
             adv_model,
             optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
@@ -50,19 +44,12 @@ class IML_Experiment(Experiment):
             early_stopping=True,
         )
 
-        # TODO: try different optimizers maybe FGSM and AdamW
-        # (AdamW probably significantly worse by previous experiments)
         optimizer = optim.Adam(
             adv_model.parameters(),
             lr=1e-2,
             weight_decay=0,
         )
 
-        # TODO: lm_head is the last layer so we basically optimize over the logits
-        # try also internal layer: i.e lm_head, capture_output=False:
-        # - on regular Llama2 performs worse
-        # - on GraySwanAI/Llama-3-8B-Instruct-RR performs 2x better
-        # TODO: try combination of output layer + internal layer
         activ_extractor = ActivationExtractor(
             adv_model.model,
             "lm_head",
@@ -72,9 +59,6 @@ class IML_Experiment(Experiment):
             capture_output=True,
         )
 
-        # TODO: try without dynamic labels and different amount
-        # TODO: try with skip_already_fooled=True - doesnt do much difference, maybe worse
-        # TODO: try with skip_failed_attacks=False (for ablations)
         return IML(
             adv_model=adv_model,
             inner_attack=inner_attack,

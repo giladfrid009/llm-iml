@@ -209,6 +209,10 @@ class PEZ(SoftPrompt):
                             pbar.n = pbar.total
                             pbar.close()
                             break
+                        
+                        # logits = logits[~finished_status]
+                        # target_ids = target_ids[~finished_status]
+                        # target_mask = target_mask[~finished_status]
 
                     loss = self.criterion(
                         logits=logits,

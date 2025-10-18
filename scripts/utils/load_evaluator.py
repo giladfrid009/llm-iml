@@ -85,34 +85,39 @@ def load_single_evaluator(name: str, serve_config: ServeConfig, **kwargs) -> Eva
     raise ValueError(f"Unsupported evaluator: {name}.")
 
 
+def _align_gpus(names: list[str], gpus: list[int]) -> list[int]:
+    CPU_EVALS = [
+        EvalName.KEYWORDMATCHING.value,
+    ]
+
+    available_gpus = gpus.copy()
+    aligned_gpus = []
+
+    for eval_name in names:
+        if eval_name in CPU_EVALS:
+            aligned_gpus.append(-1)
+
+        else:
+            if not available_gpus:
+                raise ValueError(
+                    f"Not enough GPUs ({gpus}) for the requested evaluators ({names}); "
+                    f"Please reduce the number of evaluators or add more GPUs."
+                )
+
+            gpu_id = available_gpus.pop(0)
+            aligned_gpus.append(gpu_id)
+
+    return aligned_gpus
+
+
 def load_evaluators(names: list[str], gpus: int | list[int] = 1) -> list[Evaluator]:
     if isinstance(gpus, int):
         gpus = [gpus]
 
+    # adds fictitious GPU (-1) for non-GPU evaluators
+    gpus = _align_gpus(names, gpus)
+
     evaluators = []
-
-    # special handling of evaluators not requiring a GPU
-    NON_GPU = [
-        EvalName.KEYWORDMATCHING.value,
-    ]
-
-    for name in names:
-        if name in NON_GPU:
-            evaluator = load_single_evaluator(name, ServeConfig(gpu_ids=[]))
-            evaluators.append(evaluator)
-
-    names = [n for n in names if n not in NON_GPU]
-
-    # now, truncate list of evaluators if there are more evaluators than GPUs
-    if len(names) > len(gpus):
-        names = names[: len(gpus)]
-
-        logger.warning(
-            f"Number of evaluators ({len(names)}) exceeds available GPUs; "
-            f"Only following evaluators will be loaded: {names}"
-        )
-
-    # for every remaining evaluator assign a matching GPU
     for name, gpu in zip(names, gpus):
         serve_config = ServeConfig(
             gpu_ids=[gpu],

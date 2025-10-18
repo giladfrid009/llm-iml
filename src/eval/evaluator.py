@@ -58,7 +58,7 @@ class Evaluator(ABC):
             responses (list[str]): List of model responses to evaluate.
 
         Returns:
-            dict[str, list[float]]: Evaluation metrics for each sample in the batch.
+            (dict[str, list[float]]): Evaluation metrics for each sample in the batch.
             Maps from metric name to list of metric values.
         """
         raise NotImplementedError("This method should be overridden by subclasses.")

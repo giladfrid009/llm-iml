@@ -146,12 +146,13 @@ def load_raw_dataset(name: str) -> DatasetDict:
     raise ValueError(f"Unsupported dataset: {name}")
 
 
-def load_dataset(name: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_dataset(name: str, shuffle: bool = True) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Loads a dataset by name and returns the training, validation, and test sets as pandas DataFrames.
 
     Args:
         names (list[str]): List of dataset names to load. Each name must be one of the supported datasets.
+        shuffle (bool): Whether to shuffle the dataset splits. Default is True.
 
     Returns:
         tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: A tuple containing the training, validation, and test datasets as pandas DataFrames.
@@ -175,6 +176,11 @@ def load_dataset(name: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if ds_test is None and ds_val is not None:
         ds_test = ds_val.shuffle(seed=3)
         logger.info(f"Dataset {name} has no test set, using validation set as test set.")
+
+    if shuffle:
+        ds_train = ds_train.shuffle()
+        ds_val = ds_val.shuffle()  # type: ignore
+        ds_test = ds_test.shuffle()  # type: ignore
 
     return (
         ds_train.to_pandas(),

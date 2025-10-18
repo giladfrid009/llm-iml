@@ -66,7 +66,7 @@ class UnivSoftPrompt(UnivAttack):
             return flat_losses.mean()
 
         # scatter losses back to the original shape and compute sample-mean
-        loss_matrix = torch.zeros_like(target_mask, dtype=logits.dtype)
+        loss_matrix = torch.zeros_like(target_mask, dtype=flat_losses.dtype)
         loss_matrix[target_mask] = flat_losses
         loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
         return loss
