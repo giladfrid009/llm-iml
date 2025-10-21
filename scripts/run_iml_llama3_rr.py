@@ -26,6 +26,7 @@ class IML_Experiment(Experiment):
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
         embeds = Initializer.random_normal(adv_model, std=0.1)  # High STD = Worse
+        # embeds = Initializer.from_covariance(adv_model)  # High STD = Worse
         adv_model.set_embeddings(embeds)
         return adv_model
 
@@ -76,7 +77,7 @@ class IML_Experiment(Experiment):
             # specialized args
             skip_already_fooled=False,
             skip_failed_attacks=True,
-            dynamic_labels=0,
+            dynamic_labels=20,
         )
 
 

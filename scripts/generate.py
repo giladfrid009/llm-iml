@@ -68,7 +68,7 @@ class Generator:
         parser.add_argument(
             "--batch_size",
             type=int,
-            default=25,
+            default=50,
             metavar="SIZE",
             help="The evaluation batch size.",
         )

@@ -47,26 +47,39 @@ class Initializer:
     @staticmethod
     def random_normal(
         adv_model: AdvModel,
-        mean: float | torch.Tensor = 0.0,
-        std: float | torch.Tensor = 1.0,
+        mean: float = 0.0,
+        std: float | None = None,
         batch_size: int = 1,
     ) -> torch.Tensor:
+        if std is None:
+            std = float(adv_model.model.config.initializer_range)
+            logger.info(f"Using default std from model config: {std}")
+
         embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
-        embeds = embeds.normal_() * std + mean
+        embeds = embeds.normal_(mean, std)
         return embeds
 
     @staticmethod
-    def from_mean(adv_model: AdvModel, std: float = 0.001, batch_size: int = 1) -> torch.Tensor:
+    def from_mean(
+        adv_model: AdvModel,
+        std: float | None = None,
+        batch_size: int = 1,
+    ) -> torch.Tensor:
         """
         Initialize adversarial embeddings using the mean of the original embeddings.
         The mean is computed per embedding dimension across all original embeddings.
         """
-        orig_weight = adv_model.orig_embedder.weight
+        if std is None:
+            std = float(adv_model.model.config.initializer_range)
+            logger.info(f"Using default std from model config: {std}")
+
+        orig_weight = adv_model.orig_embedder.weight.float()
         mean = torch.mean(orig_weight, dim=0, keepdim=True)
 
         embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
-        embeds = embeds.normal_() * std + mean
-        return embeds.detach()
+        embeds = embeds.normal_(std=std) + mean
+        embeds = embeds.detach().to(adv_model.adv_embedder.embed_dtype)
+        return embeds
 
     @staticmethod
     def from_mean_std(adv_model: AdvModel, batch_size: int = 1) -> torch.Tensor:
@@ -74,13 +87,43 @@ class Initializer:
         Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
         The mean and std are computed per embedding dimension across all original embeddings.
         """
-        orig_weight = adv_model.orig_embedder.weight
+        orig_weight = adv_model.orig_embedder.weight.float()
         mean = torch.mean(orig_weight, dim=0, keepdim=True)
         std = torch.std(orig_weight, dim=0, keepdim=True)
 
         embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds = embeds.normal_() * std + mean
-        return embeds.detach()
+        embeds = embeds.detach().to(adv_model.adv_embedder.embed_dtype)
+        return embeds
+
+    @staticmethod
+    def from_covariance(
+        adv_model: AdvModel,
+        batch_size: int = 1,
+    ) -> torch.Tensor:
+        """
+        Same initialization as in `transformers.modeling_utils.resize_token_embeddings`, when setting `mean_resizing=True`.
+
+        #### Transformers documentation:
+        The generated tokens' probabilities won't be affected by the added embeddings because initializing the new embeddings with the
+        old embeddings' mean will reduce the kl-divergence between the next token probability before and after adding the new embeddings.
+        Refer to this article for more information: https://nlp.stanford.edu/~johnhew/vocab-expansion.html
+        """
+        import torch.distributions.constraints as constraints
+        from torch.distributions.multivariate_normal import MultivariateNormal
+
+        orig_weights = adv_model.orig_embedder.weight.float()
+        mean_weights = torch.mean(orig_weights, dim=0)
+        centered_weights = orig_weights - mean_weights
+        covariance = torch.cov(centered_weights.T, correction=1)
+
+        if constraints.positive_definite.check(covariance).all():
+            dist = MultivariateNormal(mean_weights, covariance_matrix=covariance)
+            embeds = dist.sample(sample_shape=(batch_size, adv_model.num_tokens))
+            return embeds.to(adv_model.adv_embedder.embed_dtype)
+
+        logger.info("Covariance matrix is not PD. Falling back to mean initialization.")
+        return Initializer.from_mean_std(adv_model, batch_size=batch_size)
 
     @staticmethod
     def from_string(

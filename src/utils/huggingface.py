@@ -112,7 +112,7 @@ def load_hf_model(
         trust_remote_code=trust_remote_code,
         tokenizer_kwargs=tokenizer_kwargs,
     )
-    
+
     model.config.pad_token_id = tokenizer.pad_token_id
     if model.generation_config is not None:
         model.generation_config.pad_token_id = tokenizer.pad_token_id

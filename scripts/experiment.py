@@ -259,36 +259,34 @@ class Experiment(ABC):
             logger.error("No GPU available. Exiting.")
             sys.exit(1)
 
-        logger.info(f"Loading dataset: {args.dataset}")
-        ds_train, ds_val, ds_test = load_dataset(args.dataset)
-        dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True)
-        dl_eval = TableLoader(ds_val, batch_size=args.eval_batch, shuffle=False)
-        dl_test = TableLoader(ds_test, batch_size=args.eval_batch, shuffle=False)
-
-        logger.info(
-            f"Loaded datasets with sample counts: "
-            f"(train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)})."
-        )
-
-        logger.info(f"Loading evaluator: {args.evaluator}")
-        device_count = torch.cuda.device_count()
-        gpus = [] if device_count <= 1 else list(range(device_count))[1:]
-        logger.info(f"GPUs available for evaluators: {gpus}")
-        evaluators = load_evaluators(args.evaluator, gpus=gpus)
-
-        logger.info(f"Loading model: {args.model}")
-        model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
-        adv_model = self.create_adversarial_model(model, tokenizer)
-        logger.info(f"\nModel architecture: {adv_model.model}\n")
-
-        root_dir = f"logs/{args.model.split('/')[-1]}/{args.dataset}"
-
         with MetricLogger(
             self.args().run_name,
-            root_dir=root_dir,
+            root_dir=f"logs/{args.model.split('/')[-1]}/{args.dataset}",
             project="LLM-IML-Ablations",
             disabled=args.test_run,
         ) as metric_logger:
+            logger.info(f"Loading dataset: {args.dataset}")
+            ds_train, ds_val, ds_test = load_dataset(args.dataset)
+            dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True)
+            dl_eval = TableLoader(ds_val, batch_size=args.eval_batch, shuffle=False)
+            dl_test = TableLoader(ds_test, batch_size=args.eval_batch, shuffle=False)
+
+            logger.info(
+                f"Loaded datasets with sample counts: "
+                f"(train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)})."
+            )
+
+            logger.info(f"Loading evaluator: {args.evaluator}")
+            device_count = torch.cuda.device_count()
+            gpus = [] if device_count <= 1 else list(range(device_count))[1:]
+            logger.info(f"GPUs available for evaluators: {gpus}")
+            evaluators = load_evaluators(args.evaluator, gpus=gpus)
+
+            logger.info(f"Loading model: {args.model}")
+            model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
+            adv_model = self.create_adversarial_model(model, tokenizer)
+            logger.info(f"\nModel architecture: {adv_model.model}\n")
+
             logger.info("Initializing attack...")
 
             gen_config = GenConfig(
@@ -331,8 +329,9 @@ class Experiment(ABC):
 
             stop = StopCriteria(
                 max_epochs=args.max_epochs if not args.test_run else 1,
-                max_time=args.max_time * 60 if not args.test_run else 10,
+                max_time=args.max_time * 60 if not args.test_run else 5,
                 patience=args.patience,
+                max_evals=None if not args.test_run else 1,
             )
 
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)

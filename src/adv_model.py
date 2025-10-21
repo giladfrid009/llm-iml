@@ -14,6 +14,10 @@ from src import tokenize
 from src.utils.torch import extract_device
 from src.config import GenConfig
 from src.discretize import Discretize
+from src.utils.logging import create_logger
+
+
+logger = create_logger(__name__)
 
 
 class AdverEmbedding(nn.Module):
@@ -185,6 +189,11 @@ class AdvModel(nn.Module):
         if num_tokens != self.num_tokens and strict:
             raise ValueError(f"Number of adversarial tokens must be {self.num_tokens}, but got {num_tokens}.")
 
+        if torch.is_inference(adv_embeds):
+            with torch.enable_grad():
+                logger.warning("Adversarial embeddings are inference tensor. Cloning with grad enabled.")
+                adv_embeds = adv_embeds.clone().detach()
+
         self.adv_embeds = nn.Parameter(adv_embeds)
         self.num_tokens = num_tokens
 
@@ -213,8 +222,8 @@ class AdvModel(nn.Module):
         """
         Injects adversarial tokens to the last message in each conversation.
         A clone of the input conversations is returned.
-        
-        Note: if `None` is passed to any of the optional arguments, the corresponding 
+
+        Note: if `None` is passed to any of the optional arguments, the corresponding
         default attribute of `self` will be used.
 
         Args:
@@ -228,7 +237,7 @@ class AdvModel(nn.Module):
         """
         if num_tokens is None:
             num_tokens = self.num_tokens
-        
+
         if add_spaces is None:
             add_spaces = self.add_spaces
 

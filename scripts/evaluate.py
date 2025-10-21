@@ -60,13 +60,13 @@ def _read_df(path: pathlib.Path, **kwargs) -> pd.DataFrame:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        "--path",
+        "path",
         type=str,
         nargs="+",
         required=True,
-        help="Paths to evaluation data CSV file.",
+        help="Paths to evaluation data file.",
     )
 
     parser.add_argument(
