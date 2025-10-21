@@ -165,25 +165,25 @@ def load_dataset(name: str, shuffle: bool = True) -> tuple[pd.DataFrame, pd.Data
     ds_test = ds_dict["test"] if "test" in ds_dict else None
 
     if ds_val is None and ds_test is None:
-        ds_val = ds_train.shuffle(seed=0)
-        ds_test = ds_train.shuffle(seed=1)
+        ds_val = ds_train.shuffle(seed=0, keep_in_memory=True)
+        ds_test = ds_train.shuffle(seed=1, keep_in_memory=True)
         logger.info(f"Dataset {name} has no validation or test set, using training set for both.")
 
     if ds_val is None and ds_test is not None:
-        ds_val = ds_test.shuffle(seed=2)
+        ds_val = ds_test.shuffle(seed=2, keep_in_memory=True)
         logger.info(f"Dataset {name} has no validation set, using test set as validation set.")
 
     if ds_test is None and ds_val is not None:
-        ds_test = ds_val.shuffle(seed=3)
+        ds_test = ds_val.shuffle(seed=3, keep_in_memory=True)
         logger.info(f"Dataset {name} has no test set, using validation set as test set.")
 
     if shuffle:
-        ds_train = ds_train.shuffle()
-        ds_val = ds_val.shuffle()  # type: ignore
-        ds_test = ds_test.shuffle()  # type: ignore
+        ds_train = ds_train.shuffle(keep_in_memory=True)  # type: ignore
+        ds_val = ds_val.shuffle(keep_in_memory=True)  # type: ignore
+        ds_test = ds_test.shuffle(keep_in_memory=True)  # type: ignore
 
     return (
-        ds_train.to_pandas(),
-        ds_val.to_pandas(),  # type: ignore
-        ds_test.to_pandas(),  # type: ignore
+        ds_train.to_pandas().reset_index(drop=True),  # type: ignore
+        ds_val.to_pandas().reset_index(drop=True),  # type: ignore
+        ds_test.to_pandas().reset_index(drop=True),  # type: ignore
     )

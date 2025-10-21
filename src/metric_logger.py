@@ -26,6 +26,7 @@ class MetricLogger:
         self.cm_task: Task | None = None
 
         if not disabled:
+            Task.set_random_seed(None)  # NOTE: are you kidding me
             self.log_dir = self._create_directory(root_dir, *names)
             self.cm_task = Task.init(project_name=project, task_name=self.run_name)
 

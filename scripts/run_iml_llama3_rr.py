@@ -40,6 +40,8 @@ class IML_Experiment(Experiment):
         gen_config,
         metric_logger,
     ) -> UnivAttack:
+        # TODO: add noise argument which adds a small noise to the init vector
+        # perhaps will help to diversify exploration and escape local minima
         inner_attack = SoftPrompt(
             adv_model,
             optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
@@ -54,13 +56,19 @@ class IML_Experiment(Experiment):
             weight_decay=0,
         )
 
+        # activ_extractor = ActivationExtractor(
+        #     adv_model.model,
+        #     "model.layers.12",
+        #     "model.layers.17",
+        #     "model.layers.25",
+        #     "lm_head",
+        #     capture_output=False,
+        # )
+        
         activ_extractor = ActivationExtractor(
             adv_model.model,
-            "model.layers.12",
-            "model.layers.17",
-            "model.layers.25",
             "lm_head",
-            capture_output=False,
+            capture_output=True,
         )
 
         return IML(

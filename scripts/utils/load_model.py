@@ -38,8 +38,13 @@ SUPPORTED_MODELS = [
     "apple/OpenELM-1_1B-Instruct",
     "GraySwanAI/Llama-3-8B-Instruct-RR",
     "GraySwanAI/Mistral-7B-Instruct-RR",
+    # robust models
     "cais/zephyr_7b_r2d2",
     "ContinuousAT/Llama-2-7B-CAT",
+    "ContinuousAT/Phi-CAT",
+    "ContinuousAT/Phi-CAPO",
+    "ContinuousAT/Zephyr-CAT",
+    "LLM-LAT/robust-llama3-8b-instruct",
 ]
 
 
@@ -83,6 +88,15 @@ def load_model(
 
     elif model_name == "ContinuousAT/Llama-2-7B-CAT":
         config.update({"model_name": "meta-llama/Llama-2-7b-chat-hf", "adapter_name": "ContinuousAT/Llama-2-7B-CAT"})
+
+    elif model_name == "ContinuousAT/Phi-CAT":
+        config.update({"model_name": "microsoft/Phi-3-mini-4k-instruct", "adapter_name": "ContinuousAT/Phi-CAT"})
+
+    elif model_name == "ContinuousAT/Phi-CAPO":
+        config.update({"model_name": "microsoft/Phi-3-mini-4k-instruct", "adapter_name": "ContinuousAT/Phi-CAPO"})
+
+    elif model_name == "ContinuousAT/Zephyr-CAT":
+        config.update({"model_name": "HuggingFaceH4/zephyr-7b-beta", "adapter_name": "ContinuousAT/Zephyr-CAT"})
 
     elif model_name == "apple/OpenELM-1_1B-Instruct":
         config.update({"trust_remote_code": True})

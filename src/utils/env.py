@@ -16,12 +16,11 @@ def set_seed(seed: int) -> None:
     Args:
         seed (int): Seed to set.
     """
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-    numpy.random.seed(seed)
     random.seed(seed)
+    numpy.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def prepare_environment(dotenv_path: str | None = None):

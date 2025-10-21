@@ -62,15 +62,20 @@ def _read_df(path: pathlib.Path, **kwargs) -> pd.DataFrame:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        "path",
+        "data_path",
         type=str,
         nargs="+",
         required=True,
-        help="Paths to evaluation data file.",
+        metavar="PATH",
+        help=(
+            "Paths to evaluation data file or directory containing data files. "
+            "Supported formats: CSV, JSON, JSONL, Excel, TSV, Parquet, Feather, Pickle. "
+            "If a directory is provided, all files in the directory will be processed."
+        ),
     )
 
     parser.add_argument(
-        "--names",
+        "--evaluators",
         type=str,
         nargs="+",
         default=SUPPORTED_EVALUATORS,
@@ -82,6 +87,7 @@ def parse_args() -> argparse.Namespace:
         "--batch_size",
         type=int,
         default=100,
+        metavar="N",
         help="Batch size for data loading.",
     )
 
@@ -89,6 +95,7 @@ def parse_args() -> argparse.Namespace:
         "--gpu_id",
         type=int,
         default=0,
+        metavar="ID",
         help="GPU ID to use for evaluation.",
     )
 
@@ -166,11 +173,11 @@ def main(args: argparse.Namespace):
     width = _display_width()
 
     # read data
-    path_list, data_list = read_data(args.path)
+    path_list, data_list = read_data(args.data_path)
     loader_list = [TableLoader(df, batch_size=args.batch_size, shuffle=False) for df in data_list]
     all_results = {ds_name: {} for ds_name in path_list}
 
-    for eval_name in args.names:
+    for eval_name in args.evaluators:
         print()
         print("=".center(width, "="))
         print(f"Running evaluator: {eval_name}".center(width))
