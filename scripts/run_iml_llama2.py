@@ -21,13 +21,11 @@ class IML_Experiment(Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.set_defaults(
             model="meta-llama/Llama-2-7b-chat-hf",
-            eval_freq=1,
         )
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
         embeds = Initializer.random_normal(adv_model, std=0.1)  # High STD = Worse
-        # embeds = Initializer.from_covariance(adv_model)  # High STD = Worse
         adv_model.set_embeddings(embeds)
         return adv_model
 
@@ -57,9 +55,9 @@ class IML_Experiment(Experiment):
 
         activ_extractor = ActivationExtractor(
             adv_model.model,
-            "model.layers.12",
-            "model.layers.17",
-            "model.layers.25",
+            # "model.layers.12",
+            # "model.layers.17",
+            # "model.layers.25",
             "lm_head",
             capture_output=True,
         )

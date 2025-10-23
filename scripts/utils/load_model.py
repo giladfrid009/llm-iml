@@ -36,9 +36,9 @@ SUPPORTED_MODELS = [
     "google/gemma-2-2b-it",
     "google/gemma-3-1b-it",
     "apple/OpenELM-1_1B-Instruct",
+    # robust models
     "GraySwanAI/Llama-3-8B-Instruct-RR",
     "GraySwanAI/Mistral-7B-Instruct-RR",
-    # robust models
     "cais/zephyr_7b_r2d2",
     "ContinuousAT/Llama-2-7B-CAT",
     "ContinuousAT/Phi-CAT",

@@ -65,7 +65,6 @@ def parse_args() -> argparse.Namespace:
         "data_path",
         type=str,
         nargs="+",
-        required=True,
         metavar="PATH",
         help=(
             "Paths to evaluation data file or directory containing data files. "
@@ -78,9 +77,13 @@ def parse_args() -> argparse.Namespace:
         "--evaluators",
         type=str,
         nargs="+",
-        default=SUPPORTED_EVALUATORS,
-        help="List of evaluator names to run. If not provided, all evaluators will be run.",
         choices=SUPPORTED_EVALUATORS,
+        default=SUPPORTED_EVALUATORS,
+        metavar="EVALUATOR",
+        help=(
+            "List of evaluator names to run. If not provided, all evaluators will be run. "
+            f"Available evaluators: {SUPPORTED_EVALUATORS}"
+        ),
     )
 
     parser.add_argument(

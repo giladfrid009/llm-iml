@@ -71,7 +71,7 @@ class UnivSoftPrompt(UnivAttack):
         loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
         return loss
 
-    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int) -> float | None:
+    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int, step_num: int) -> float | None:
         self.optimizer.zero_grad()
 
         # construct input conversations

@@ -257,7 +257,7 @@ class UnivAttack:
                             break
 
                         # training step
-                        loss_value = self.optim_step(batch_data, epoch_num, batch_num)
+                        loss_value = self.optim_step(batch_data, epoch_num, batch_num, step)
                         stop_criteria.update(epoch_num, None)
                         if loss_value is not None:
                             self.metric_logger.report_scalar("loss", loss_value, step)
@@ -283,7 +283,7 @@ class UnivAttack:
         return self.adv_model
 
     @abstractmethod
-    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int) -> float | None:
+    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int, step_num: int) -> float | None:
         """
         Perform a single optimization step on the given batch of data.
 
@@ -291,6 +291,7 @@ class UnivAttack:
             data (dict[str, list[Any]]): Batch data containing input and target texts.
             epoch_num (int): Current epoch number.
             batch_num (int): Current batch number.
+            step_num (int): Current global step number.
 
         Returns:
             float | None: Loss value for the optimization step, or None if no loss is computed.

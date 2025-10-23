@@ -147,11 +147,12 @@ class IML(UnivAttack):
             skip_special_tokens=True,
         )
 
-    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int) -> float | None:
+    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int, step_num: int) -> float | None:
         # create new instance of inner attack for each epoch
         if epoch_num > 0 and batch_num == 0:
             self.inner_attack = self.make_attack(epoch_num)
 
+        metric_dict: dict[str, float] = {}
         self.optimizer.zero_grad()
 
         # construct input conversations
@@ -172,6 +173,9 @@ class IML(UnivAttack):
                     eval_result = self.judge_evaluator.eval_batch(input_texts, init_responses)
                     eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
                     fooled_mask = eval_metric >= 1.0
+
+                    eligible_count = fooled_mask.size(0) - fooled_mask.float().sum().item()
+                    metric_dict["IML/not_fooled_ratio"] = eligible_count / fooled_mask.size(0)
 
                     if fooled_mask.all():
                         return None
@@ -201,6 +205,9 @@ class IML(UnivAttack):
                     eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
                     success_mask = eval_metric >= 1.0
 
+                    num_success = success_mask.float().sum().item()
+                    metric_dict["IML/sample_attack_success_ratio"] = num_success / success_mask.size(0)
+
                     if not success_mask.any():
                         return None
 
@@ -223,6 +230,9 @@ class IML(UnivAttack):
 
                 # set target texts to generated responses
                 target_texts = self.truncate_tokens(sample_responses, self.dynamic_labels)
+
+            effective_count = len(input_convs)
+            metric_dict["IML/effective_batch_ratio"] = effective_count / len(data["prompt"])
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
@@ -260,5 +270,8 @@ class IML(UnivAttack):
         self.grad_scaler.scale(loss).backward()
         self.grad_scaler.step(self.optimizer)
         self.grad_scaler.update()
+
+        # log metrics
+        self.metric_logger.report_scalars(metric_dict, step_num)
 
         return loss.item()

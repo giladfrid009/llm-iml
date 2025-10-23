@@ -79,7 +79,7 @@ class Experiment(ABC):
         parser.add_argument(
             "--train_batch",
             type=int,
-            default=10,
+            default=50,
             metavar="SIZE",
             help="The training batch size.",
         )

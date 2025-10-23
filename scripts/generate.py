@@ -60,7 +60,7 @@ class Generator:
             "--dataset",
             type=str,
             choices=SUPPORTED_DATASETS,
-            default="harmbench-std",
+            default="advbench",
             metavar="DATASET",
             help=f"The datasets to use. Available datasets: {SUPPORTED_DATASETS}",
         )
@@ -90,6 +90,14 @@ class Generator:
             type=int,
             default=random.randint(0, 1000000),
             help="Random seed for reproducibility.",
+        )
+
+        parser.add_argument(
+            "--name_format",
+            type=str,
+            metavar="FMT",
+            default="{model}_{dataset}_{split}.csv",
+            help="Format string for naming the results files. Must include [{model}, {dataset}, {split}] placeholders.",
         )
 
         parser.add_argument(
@@ -180,14 +188,14 @@ class Generator:
         args = self.args()
         folder = pathlib.Path(args.embeds_path).parent / "generations"
 
-        if not folder.exists():
-            folder.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created generation directory at: {folder.as_posix()}")
+        model_name = args.model.split("/")[-1].lower()
+        dataset_name = args.dataset.lower()
+        file_name = args.name_format.format(model=model_name, dataset=dataset_name, split=split)
+        full_path: pathlib.Path = folder / file_name
 
-        model_name = args.model.split("/")[-1]
-        dataset_name = args.dataset
-        file_name = f"{model_name}_{dataset_name}_{split}.csv"
-        full_path = folder / file_name
+        if not full_path.parent.exists():
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created results directory at: {full_path.parent.as_posix()}")
 
         if full_path.exists():
             raise FileExistsError(f"Results file already exists: {full_path.as_posix()}")
