@@ -234,7 +234,8 @@ def main(args: argparse.Namespace):
 
     print()
     print("=".center(width, "="))
-    print()
+    print("Overall Results".center(width))
+    print("=".center(width, "="))
 
     for ds_name, results in all_results.items():
         print(f"File {ds_name}:")
