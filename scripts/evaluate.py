@@ -5,6 +5,7 @@ import argparse
 import random
 import torch
 import logging
+import pprint
 
 # set pythonpath to the main module directory
 module_dir = pathlib.Path(__file__).parent.resolve().parent
@@ -37,7 +38,7 @@ def _display_width() -> int:
         return 120
 
 
-def _read_df(path: pathlib.Path, **kwargs) -> pd.DataFrame:
+def _read_df(path: pathlib.Path, **kwargs) -> pd.DataFrame | None:
     suffix = path.suffix.lower()
     if suffix == ".csv":
         return pd.read_csv(path, **kwargs)
@@ -56,7 +57,7 @@ def _read_df(path: pathlib.Path, **kwargs) -> pd.DataFrame:
     if suffix in {".pkl", ".pickle"}:
         return pd.read_pickle(path, **kwargs)
 
-    raise ValueError(f"Unsupported file format: {path.suffix}")
+    return None
 
 
 def parse_args() -> argparse.Namespace:
@@ -118,6 +119,12 @@ def parse_args() -> argparse.Namespace:
         help=f"Logging level to python-logger. Available levels: {loglevel_names()}",
     )
 
+    parser.add_argument(
+        "--recurse",
+        action="store_true",
+        help="Recursively search directories for data files.",
+    )
+
     args = parser.parse_args()
 
     # print the parsed arguments
@@ -134,12 +141,17 @@ def read_data(paths: list[str]) -> tuple[list[str], list[pd.DataFrame]]:
     path_list = []
     data_list = []
 
+    user_dir = pathlib.Path.cwd()
     for path in paths:
-        path = pathlib.Path(path)
+        # make all paths relative to CWD
+        path = pathlib.Path(path).resolve()
+        path = path.relative_to(user_dir, walk_up=True)
 
         if path.is_dir():
-            logger.info(f"Loading all files from directory: {path}")
-            sub_paths, sub_data = read_data([p.as_posix() for p in path.iterdir() if p.is_file()])
+            sub_paths, sub_data = read_data([p.as_posix() for p in path.iterdir() if p.is_file() or args.recurse])
+            if len(sub_data) == 0:
+                continue
+
             logger.info(f"Loaded {len(sub_data)} files from directory: {path}")
             path_list.extend(sub_paths)
             data_list.extend(sub_data)
@@ -147,8 +159,11 @@ def read_data(paths: list[str]) -> tuple[list[str], list[pd.DataFrame]]:
 
         try:
             df = _read_df(path)
+            if df is None:
+                continue
+
         except Exception as e:
-            logger.error(f"Failed to read file {path}: {e}. Skipping...")
+            logger.error(f"Error reading file {path}: {e}. Skipping...")
             continue
 
         req_cols = {"prompt", "response"}
@@ -202,7 +217,7 @@ def main(args: argparse.Namespace):
             eval_results = {}
             for dl, ds_name in zip(loader_list, path_list):
                 print()
-                print(f"Evaluating on dataset: {ds_name}".center(width))
+                print(f"Evaluating: {ds_name}".center(width))
 
                 results = evaluator.evaluate(dl)
                 all_results[ds_name].update(results)
@@ -214,15 +229,16 @@ def main(args: argparse.Namespace):
 
         print()
         for k, v in eval_results.items():
-            print(f"Dataset {k}: {v}")
+            print(f"File {k}:")
+            pprint.pprint(v, width=width)
 
     print()
     print("=".center(width, "="))
     print()
-    print("All evaluators tested successfully.")
 
     for ds_name, results in all_results.items():
-        print(f"Results for dataset {ds_name}:\n{results}")
+        print(f"File {ds_name}:")
+        pprint.pprint(results, width=width)
         print()
 
     for ds_name, dl in zip(path_list, loader_list):
