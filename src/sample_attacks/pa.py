@@ -2,7 +2,7 @@ import torch
 from tqdm.auto import tqdm
 import copy
 import random
-from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
+from src.sample_attacks.base import SampleAttack, SampleOutput
 from src.adv_model import AdvModel
 from src.aliases import Conv
 from src.utils.logging import create_logger
@@ -18,7 +18,11 @@ logger = create_logger(__name__)
 # adaptive attacks artifacts: https://github.com/tml-epfl/llm-adaptive-attacks/tree/main/jailbreak_artifacts
 
 
-class PresetAttack(SampleAttack):
+class PA(SampleAttack):
+    """
+    Preset Attack: a simple preset attack that replaces input prompts with predefined adversarial prompts.
+    """
+
     def __init__(
         self,
         adv_model: AdvModel,

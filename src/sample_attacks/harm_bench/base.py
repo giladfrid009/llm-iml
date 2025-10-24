@@ -5,7 +5,7 @@ import copy
 
 from src.aliases import Conv
 from src.adv_model import AdvModel
-from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
+from src.sample_attacks.base import SampleAttack, SampleOutput
 
 
 class HarmBenchAttack(SampleAttack):

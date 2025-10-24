@@ -9,7 +9,7 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 from scripts.experiment import Experiment
-from src.sample_attacks import SoftPrompt
+from src.sample_attacks import SP
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
 from src.initialize import Initializer
@@ -27,8 +27,7 @@ class IML_Experiment(Experiment):
         adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
         embeds = Initializer.random_normal(adv_model, std=0.1)  # High STD = Worse
         # embeds = Initializer.random_normal(adv_model)  # High STD = Worse
-        # embeds = Initializer.from_covariance(adv_model)
-        embeds = Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !")
+        # embeds = Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !")
         adv_model.set_embeddings(embeds)
         return adv_model
 
@@ -44,10 +43,10 @@ class IML_Experiment(Experiment):
     ) -> UnivAttack:
         # TODO: add noise argument which adds a small noise to the init vector
         # perhaps will help to diversify exploration and escape local minima
-        inner_attack = SoftPrompt(
+        inner_attack = SP(
             adv_model,
-            optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
-            steps=25,
+            optim_factory=lambda params: optim.Adam(params, lr=1e-2),
+            steps=50,
             mixed_precision=False,
             early_stopping=True,
         )

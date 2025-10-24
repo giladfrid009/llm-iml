@@ -4,7 +4,7 @@ from tqdm.auto import tqdm
 import torch
 
 from src.adv_model import AdvModel
-from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
+from src.sample_attacks.base import SampleAttack, SampleOutput
 from src.initialize import Initializer
 from src.aliases import Conv
 
@@ -12,21 +12,39 @@ from transformers.tokenization_utils_base import BatchEncoding
 from transformers.cache_utils import DynamicCache
 
 
-class SoftPrompt(SampleAttack):
+class SP(SampleAttack):
+    """
+    Soft Prompt Threats Attack: optimizes continuous adversarial embeddings
+    [https://arxiv.org/pdf/2402.09063]
+    """
+
     def __init__(
         self,
         adv_model: AdvModel,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
         early_stopping: bool = False,
+        noise_scale: float = 0.0,
         mixed_precision: bool = False,
         verbose: bool = True,
     ):
+        """
+        Args:
+            adv_model (AdvModel): The adversarial model to attack.
+            optim_factory (Callable[Iterable[torch.Tensor], torch.optim.Optimizer]):
+                A factory function that creates an optimizer given the parameters to optimize.
+            steps (int): Number of optimization steps.
+            early_stopping (bool): Whether to stop optimizing a sample once it achieves target matching.
+            noise_scale (float): Standard deviation of Gaussian noise added to the initial embeddings.
+            mixed_precision (bool): Whether to use mixed precision training.
+            verbose (bool): Whether to display a progress bar.
+        """
         super().__init__(adv_model, verbose)
 
         self.steps = steps
         self.optim_factory = optim_factory
         self.early_stopping = early_stopping
+        self.noise_scale = noise_scale
         self.mixed_precision = mixed_precision
 
     def get_hparams(self) -> dict:
@@ -36,6 +54,7 @@ class SoftPrompt(SampleAttack):
             "steps": self.steps,
             "early_stopping": self.early_stopping,
             "mixed_precision": self.mixed_precision,
+            "noise_scale": self.noise_scale,
             "optim": dummy_optim.state_dict()["param_groups"][0],
             "optim/name": dummy_optim.__class__.__name__,
             "optim_factory": inspect.getsource(self.optim_factory),
@@ -53,6 +72,11 @@ class SoftPrompt(SampleAttack):
 
         init_embeds = init_embeds.contiguous()
         init_embeds.requires_grad_(True)
+
+        if self.noise_scale > 0.0:
+            noise = torch.randn_like(init_embeds) * self.noise_scale
+            init_embeds += noise
+
         return init_embeds
 
     @torch.no_grad()

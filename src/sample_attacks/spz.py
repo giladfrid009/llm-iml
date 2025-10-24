@@ -1,6 +1,6 @@
 from src.adv_model import AdvModel
-from src.sample_attacks.soft_prompt import SoftPrompt
-from src.sample_attacks.sample_attack import SampleOutput
+from src.sample_attacks.sp import SP
+from src.sample_attacks.base import SampleOutput
 from src.initialize import Initializer
 from src.aliases import Conv
 
@@ -28,9 +28,9 @@ def default_initializer(adv_model: AdvModel, num_inputs: int) -> torch.Tensor:
     return Initializer.random_normal(adv_model, std=0.1, batch_size=num_inputs)
 
 
-class SoftPromptZero(SoftPrompt):
+class SPZ(SP):
     """
-    SoftPrompt attack with custom adversarial token injection and initialization functions.
+    Soft Prompt-Zero attack with custom adversarial token injection and initialization functions.
     This variant always initializes new adversarial embeddings from scratch,
     ignoring any provided initial embeddings.
     """
@@ -49,7 +49,7 @@ class SoftPromptZero(SoftPrompt):
             optim_factory (Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer]): Returns an optimizer given the parameters to optimize.
             inject_func (Callable[[AdvModel, list[Conv]], list[Conv]]): Performs adversarial token injection to the conversations.
             init_func (Callable[[AdvModel, int], torch.Tensor]): Initializes new adversarial embeddings from scratch.
-            **kwargs: Additional arguments passed to the `SoftPrompt` constructor.
+            **kwargs: Additional arguments passed to the `sample_attacks.SP` constructor.
         """
         super().__init__(
             adv_model=adv_model,

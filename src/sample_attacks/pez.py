@@ -1,6 +1,6 @@
 from src.adv_model import AdvModel
-from src.sample_attacks.soft_prompt import SoftPrompt
-from src.sample_attacks.sample_attack import SampleOutput
+from src.sample_attacks.sp import SP
+from src.sample_attacks.base import SampleOutput
 from src.discretize import Discretize
 from src.initialize import Initializer
 from src.aliases import Conv
@@ -78,10 +78,14 @@ class SoftProject(nn.Module):
         return self._STE.apply(soft_embeds)  # type: ignore
 
 
-class PEZ(SoftPrompt):
+class PEZ(SP):
     """
-    PEZ attack implementation matching the one from Harm-Bench
-    (see https://github.com/centerforaisafety/HarmBench/blob/main/baselines/pez/pez.py).
+    Hard Prompts made EaZy - PEZ Attack
+    [https://arxiv.org/pdf/2302.03668]
+
+    #### Note:
+    The attack implementation matching the one from Harm-Bench
+    (https://github.com/centerforaisafety/HarmBench/blob/main/baselines/pez/pez.py).
     """
 
     def __init__(
@@ -91,7 +95,7 @@ class PEZ(SoftPrompt):
         steps: int = 100,
         early_stopping: bool = False,
         mixed_precision: bool = False,
-        return_embeds: bool = False,  # TODO: compare both True and False results; change to True after testing
+        return_embeds: bool = True,
         verbose: bool = True,
     ):
         super().__init__(
@@ -99,6 +103,7 @@ class PEZ(SoftPrompt):
             optim_factory=optim_factory,
             steps=steps,
             early_stopping=early_stopping,
+            noise_scale=0.0,
             mixed_precision=mixed_precision,
             verbose=verbose,
         )

@@ -9,7 +9,7 @@ from typing import Any
 import torch
 
 
-class UnivSoftPrompt(UnivAttack):
+class SoftPrompt(UnivAttack):
     def __init__(
         self,
         adv_model: AdvModel,
@@ -34,7 +34,7 @@ class UnivSoftPrompt(UnivAttack):
         self.optimizer = optimizer
 
         self.metric_logger.log_hparams(
-            "univ_soft_prompt",
+            "soft_prompt",
             optimizer=self.optimizer.__class__.__name__,
         )
         self.metric_logger.log_hparams(

@@ -9,7 +9,7 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 from scripts.experiment import Experiment
-from src.sample_attacks import SoftPrompt
+from src.sample_attacks import SP
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
 from src.initialize import Initializer
@@ -36,7 +36,7 @@ class IML_Experiment(Experiment):
         gen_config,
         metric_logger,
     ) -> UnivAttack:
-        inner_attack = SoftPrompt(
+        inner_attack = SP(
             adv_model,
             optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
             steps=25,

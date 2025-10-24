@@ -1,4 +1,4 @@
-from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.sample_attacks.harm_bench.base import SequentialHarmBenchAttack
 from src.sample_attacks.harm_bench.utils import get_template, check_refusal_completions
 from src.adv_model import AdvModel
 
@@ -56,7 +56,12 @@ def get_nonascii_toks(tokenizer, device="cpu"):
 
 
 # ============================== GCG CLASS DEFINITION ============================== #
-class AutoPrompt(SequentialHarmBenchAttack):
+class AP(SequentialHarmBenchAttack):
+    """
+    AutoPrompt Attack
+    [https://arxiv.org/pdf/2010.15980]
+    """
+
     def __init__(
         self,
         adv_model: AdvModel,
@@ -106,7 +111,7 @@ class AutoPrompt(SequentialHarmBenchAttack):
         template = get_template(self.tokenizer)
         self.template = template
         self.before_tc, self.after_tc = template.split("{instruction}")
-        
+
     def get_hparams(self) -> dict:
         return {
             "name": self.__class__.__name__,

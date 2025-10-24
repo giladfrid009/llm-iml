@@ -1,4 +1,4 @@
-from src.sample_attacks.sample_attack import SampleAttack, SampleOutput
+from src.sample_attacks.base import SampleAttack, SampleOutput
 from src.adv_model import AdvModel
 from src.aliases import Conv
 from src.utils.logging import create_logger
@@ -24,6 +24,11 @@ PROMPT_FORMAT = """### Query:{q} ### Prompt:"""
 
 
 class AmpleGCG(SampleAttack):
+    """
+    Ample-GCG and Ample-GCG+ Attack
+    [https://arxiv.org/pdf/2404.07921] and [https://arxiv.org/pdf/2410.22143]
+    """
+
     def __init__(
         self,
         adv_model: AdvModel,

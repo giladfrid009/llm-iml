@@ -8,7 +8,7 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 from scripts.experiment import Experiment
-from src.univ_attacks import UnivAttack, UnivSoftPrompt
+from src.univ_attacks import UnivAttack, SoftPrompt
 from src.fgsm_optim import FGSM
 from src.adv_model import AdvModel
 from src.initialize import Initializer
@@ -66,7 +66,7 @@ class SoftPrompt_Experiment(Experiment):
             lr=self.args().lr,
         )
 
-        return UnivSoftPrompt(
+        return SoftPrompt(
             adv_model=adv_model,
             optimizer=optimizer,
             evaluators=evaluators,

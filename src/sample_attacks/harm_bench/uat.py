@@ -1,4 +1,4 @@
-from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.sample_attacks.harm_bench.base import SequentialHarmBenchAttack
 from src.sample_attacks.harm_bench.utils import get_template
 from src.adv_model import AdvModel
 
@@ -54,6 +54,11 @@ def hotflip_attack(
 
 # ============================== GCG CLASS DEFINITION ============================== #
 class UAT(SequentialHarmBenchAttack):
+    """
+    Universal Adversarial Trigger Attack
+    [https://arxiv.org/pdf/1908.07125]
+    """
+
     def __init__(
         self,
         adv_model: AdvModel,

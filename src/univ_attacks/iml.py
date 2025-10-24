@@ -1,4 +1,4 @@
-from src.sample_attacks.sample_attack import SampleAttack
+from src.sample_attacks import SampleAttack
 from src.adv_model import AdvModel
 from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.eval.evaluator import Evaluator

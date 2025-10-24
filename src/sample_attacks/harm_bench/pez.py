@@ -1,5 +1,5 @@
 from src.sample_attacks.harm_bench.utils import get_template
-from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.sample_attacks.harm_bench.base import SequentialHarmBenchAttack
 from src.adv_model import AdvModel
 
 import torch
@@ -9,6 +9,11 @@ from torch.nn import CrossEntropyLoss
 
 # ============================== PEZ CLASS DEFINITION ============================== #
 class PEZ(SequentialHarmBenchAttack):
+    """
+    Hard Prompts made EaZy - PEZ Attack
+    [https://arxiv.org/pdf/2302.03668]
+    """
+
     def __init__(
         self,
         adv_model: AdvModel,
@@ -51,7 +56,7 @@ class PEZ(SequentialHarmBenchAttack):
         """
         # ========== Behavior and Target str ==========
         behavior += " "
-        
+
         # PEZ hyperparams
         num_generate = 1
         num_optim_tokens = self.num_optim_tokens

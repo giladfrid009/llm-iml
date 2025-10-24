@@ -1,4 +1,4 @@
-from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.sample_attacks.harm_bench.base import SequentialHarmBenchAttack
 from src.sample_attacks.harm_bench.utils import get_template, check_refusal_completions
 from src.adv_model import AdvModel
 
@@ -63,6 +63,11 @@ def get_nonascii_toks(tokenizer, device="cpu"):
 
 # ============================== GCG CLASS DEFINITION ============================== #
 class GCG(SequentialHarmBenchAttack):
+    """
+    Greedy Coordinate Gradient Attack
+    [https://arxiv.org/pdf/2307.15043]
+    """
+
     def __init__(
         self,
         adv_model: AdvModel,
@@ -144,7 +149,7 @@ class GCG(SequentialHarmBenchAttack):
         self.search_batch_size = (
             self.starting_search_batch_size if self.starting_search_batch_size else self.search_width
         )
-        
+
         # ========== Behavior and Target str ==========
         behavior += " "
 

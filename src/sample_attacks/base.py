@@ -18,6 +18,14 @@ class SampleOutput:
     conversations: list[Conv]
     adv_embeds: torch.Tensor | None = None
 
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self):
+        if self.adv_embeds is not None:
+            if len(self.conversations) != self.adv_embeds.size(0):
+                raise ValueError("The number of conversations must match the number of adversarial embeddings.")
+
     def masked_select(self, mask: torch.Tensor) -> SampleOutput:
         convs = [conv for conv, m in zip(self.conversations, mask) if m]
         adv_embeds = self.adv_embeds[mask] if self.adv_embeds is not None else None
@@ -30,6 +38,11 @@ class SampleAttack(ABC):
         adv_model: AdvModel,
         verbose: bool = True,
     ):
+        """
+        Args:
+            adv_model (AdvModel): The adversarial model to attack.
+            verbose (bool): Whether to display progress bar and verbose output during attack fitting.
+        """
         self.adv_model = adv_model
         self.verbose = verbose
 

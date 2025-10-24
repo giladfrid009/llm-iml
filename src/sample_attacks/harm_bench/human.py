@@ -1,13 +1,14 @@
-from src.sample_attacks.harm_bench.human_jailbreaks_utils.manual_jailbreaks import MANUAL_JAILBREAKS
-from src.sample_attacks.harm_bench.baseline import HarmBenchAttack
+from src.sample_attacks.harm_bench.human_utils.manual_jailbreaks import MANUAL_JAILBREAKS
+from src.sample_attacks.harm_bench.base import HarmBenchAttack
 from src.adv_model import AdvModel
 
 import random
 
 
-class HumanJailbreaks(HarmBenchAttack):
+class Human(HarmBenchAttack):
     """
-    Jailbreaks designed by humans
+    Human Jailbreaks - In the wild jailbreak presets
+    [https://arxiv.org/pdf/2308.03825]
     """
 
     def __init__(

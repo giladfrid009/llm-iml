@@ -1,4 +1,4 @@
-from src.sample_attacks.harm_bench.baseline import SequentialHarmBenchAttack
+from src.sample_attacks.harm_bench.base import SequentialHarmBenchAttack
 from src.sample_attacks.harm_bench.utils import get_template
 from src.adv_model import AdvModel
 
@@ -10,6 +10,11 @@ import numpy as np
 
 # ============================== GBDA CLASS DEFINITION ============================== #
 class GBDA(SequentialHarmBenchAttack):
+    """
+    Gradient-based Distributional Attack
+    [https://arxiv.org/pdf/2104.13733]
+    """
+
     def __init__(
         self,
         adv_model: AdvModel,
@@ -56,7 +61,7 @@ class GBDA(SequentialHarmBenchAttack):
         """
         # ========== Behavior and Target str ==========
         behavior += " "
-        
+
         # GBDA hyperparams
         num_generate = 1
         num_optim_tokens = self.num_optim_tokens

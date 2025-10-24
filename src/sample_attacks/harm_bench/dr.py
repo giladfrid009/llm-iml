@@ -1,8 +1,12 @@
-from src.sample_attacks.harm_bench.baseline import HarmBenchAttack
+from src.sample_attacks.harm_bench.base import HarmBenchAttack
 from src.adv_model import AdvModel
 
 
-class DirectRequest(HarmBenchAttack):
+class DR(HarmBenchAttack):
+    """
+    Direct Request: simply uses the behavior as the test case
+    """
+
     def __init__(self, adv_mode: AdvModel, verbose: bool = True):
         super().__init__(adv_mode, verbose)
 
