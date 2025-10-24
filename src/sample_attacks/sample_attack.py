@@ -53,7 +53,7 @@ class SampleAttack(ABC):
         Args:
             conversations (list[Conv]): List of conversations, where each conversation is a list of messages.
             target_texts (list[str]): List of target texts.
-            init_embeds (torch.Tensor | None): Initial embeddings to use for the attack.
+            init_embeds (torch.Tensor | None): Initial embeddings to use for the attack. Shape (batch_size, num_adv_tokens, hidden_size)
 
         Returns:
             SampleOutput: An object containing adversarial conversations, and optionally adversarial embeddings.

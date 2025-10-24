@@ -55,11 +55,11 @@ class IML_Experiment(Experiment):
 
         activ_extractor = ActivationExtractor(
             adv_model.model,
-            # "model.layers.12",
-            # "model.layers.17",
-            # "model.layers.25",
+            "model.layers.12",
+            "model.layers.17",
+            "model.layers.25",
             "lm_head",
-            capture_output=True,
+            capture_output=False,
         )
 
         return IML(

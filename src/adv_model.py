@@ -21,7 +21,7 @@ logger = create_logger(__name__)
 
 
 class AdverEmbedding(nn.Module):
-    def __init__(self, embedder: nn.Module):
+    def __init__(self, embedder: torch.nn.Embedding):
         super().__init__()
         self.embedder = embedder
         self.device = extract_device(embedder)
@@ -54,25 +54,44 @@ class AdverEmbedding(nn.Module):
         adv_embeds: torch.Tensor | None = None,
         adv_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        """
+        Args:
+            inputs (torch.Tensor): Input token IDs of shape (batch_size, sequence_length).
+            adv_embeds (torch.Tensor | None): Adversarial embeddings of shape (batch_size, num_adv_tokens, hidden_size).
+                If batch_size is 1, it will be broadcasted to match input batch size.
+            adv_mask (torch.Tensor | None): Boolean mask of shape (batch_size, sequence_length) indicating positions of adversarial tokens.
+
+        Returns:
+            torch.Tensor: Embedded inputs of shape (batch_size, sequence_length, hidden_size).
+        """
+        if not inputs.ndim == 2:
+            raise ValueError("`inputs` must be a 2D tensor (batch_size, sequence_length)")
+
         if (adv_embeds is None) != (adv_mask is None):
             raise ValueError("Both adv_embeds and adv_mask should be None or not None")
 
         if adv_mask is None or adv_embeds is None:
-            return self.embedder(inputs)
+            return self.embedder.forward(inputs)
 
-        if inputs.shape != adv_mask.shape:
-            raise ValueError(f"Shape mismatch: input {inputs.shape}, adv_mask {adv_mask.shape}")
+        B, N, H = adv_embeds.shape
+        B, S = inputs.shape
 
         if adv_embeds.size(0) == 1:
+            # project to batch size
             adv_embeds = adv_embeds.expand(inputs.size(0), *adv_embeds.shape[1:])
 
-        assert inputs.ndim + 1 == adv_embeds.ndim
-        assert inputs.size(0) == adv_embeds.size(0)
-        assert inputs.ndim == adv_mask.ndim
+        # verify shapes
+        assert inputs.shape == (B, S), "Inputs shape mismatch"
+        assert adv_mask.shape == (B, S), "Adversarial mask shape mismatch"
+        assert adv_embeds.shape == (B, N, H), "Adversarial embeddings shape mismatch"
 
-        embedded_clean = self.embedder(inputs[~adv_mask])
-        embedded = torch.zeros(*inputs.shape, self.embed_dim, dtype=self.embed_dtype, device=self.device)
-        embedded = embedded.masked_scatter(mask=~adv_mask.unsqueeze(-1), source=embedded_clean)
+        # verify that number of True in adv_mask matches adv_embeds size(1)
+        if not torch.all(adv_mask.sum(dim=1) == N):
+            raise RuntimeError(f"Number of adversarial tokens in adv_mask does not match num_adv_tokens ({N})")
+
+        # Zero out adversarial token ids before embedding and then patch with adversarial embeddings
+        clean_inputs = inputs.masked_fill(adv_mask, 0)
+        embedded = self.embedder.forward(clean_inputs)
         return embedded.masked_scatter(mask=adv_mask.unsqueeze(-1), source=adv_embeds)
 
 

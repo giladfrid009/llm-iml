@@ -1,6 +1,7 @@
 from src.adv_model import AdvModel
 from src.sample_attacks.soft_prompt import SoftPrompt
 from src.sample_attacks.sample_attack import SampleOutput
+from src.initialize import Initializer
 from src.aliases import Conv
 
 import inspect
@@ -24,13 +25,7 @@ def default_initializer(adv_model: AdvModel, num_inputs: int) -> torch.Tensor:
     """
     Random normal initialization with standard deviation of 0.1.
     """
-    embeddings = torch.randn(
-        size=(num_inputs, adv_model.num_tokens, adv_model.adv_embedder.embed_dim),
-        device=adv_model.device,
-        dtype=adv_model.adv_embedder.embed_dtype,
-    )
-
-    return embeddings * 0.1
+    return Initializer.random_normal(adv_model, std=0.1, batch_size=num_inputs)
 
 
 class SoftPromptZero(SoftPrompt):
@@ -86,7 +81,6 @@ class SoftPromptZero(SoftPrompt):
 
         # initialize new embeddings
         init_embeds = self.init_func(self.adv_model, len(conversations))
-        init_embeds.requires_grad_(True)
 
         return super().fit(
             inj_conversations,

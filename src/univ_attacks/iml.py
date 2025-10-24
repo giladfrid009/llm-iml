@@ -152,7 +152,6 @@ class IML(UnivAttack):
         if epoch_num > 0 and batch_num == 0:
             self.inner_attack = self.make_attack(epoch_num)
 
-        metric_dict: dict[str, float] = {}
         self.optimizer.zero_grad()
 
         # construct input conversations
@@ -174,10 +173,11 @@ class IML(UnivAttack):
                     eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
                     fooled_mask = eval_metric >= 1.0
 
-                    eligible_count = fooled_mask.size(0) - fooled_mask.float().sum().item()
-                    metric_dict["IML/not_fooled_ratio"] = eligible_count / fooled_mask.size(0)
+                    not_fooled_ratio = 1 - fooled_mask.float().mean().item()
+                    self.metric_logger.report_scalar("IML/not_fooled_ratio", not_fooled_ratio, step_num)
 
                     if fooled_mask.all():
+                        self.metric_logger.report_scalar("IML/effective_batch_ratio", 0.0, step_num)
                         return None
 
                     input_texts = [txt for txt, m in zip(input_texts, fooled_mask) if not m]
@@ -187,7 +187,7 @@ class IML(UnivAttack):
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
                 clear_memory()  # TODO: remove?
-                init_embeds = self.univ_embeds.expand(len(input_convs), -1, -1)
+                init_embeds = self.univ_embeds.repeat(len(input_convs), 1, 1)
                 clean_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
                 sample_result = self.inner_attack.fit(clean_convs, target_texts, init_embeds=init_embeds)
                 clear_memory()  # TODO: remove?
@@ -205,10 +205,11 @@ class IML(UnivAttack):
                     eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
                     success_mask = eval_metric >= 1.0
 
-                    num_success = success_mask.float().sum().item()
-                    metric_dict["IML/sample_attack_success_ratio"] = num_success / success_mask.size(0)
+                    sample_asr = success_mask.float().mean().item()
+                    self.metric_logger.report_scalar("IML/sample_attack_success_ratio", sample_asr, step_num)
 
                     if not success_mask.any():
+                        self.metric_logger.report_scalar("IML/effective_batch_ratio", 0.0, step_num)
                         return None
 
                     if self.dynamic_labels > 0:
@@ -231,8 +232,8 @@ class IML(UnivAttack):
                 # set target texts to generated responses
                 target_texts = self.truncate_tokens(sample_responses, self.dynamic_labels)
 
-            effective_count = len(input_convs)
-            metric_dict["IML/effective_batch_ratio"] = effective_count / len(data["prompt"])
+            batch_ratio = len(input_convs) / len(data["prompt"])
+            self.metric_logger.report_scalar("IML/effective_batch_ratio", batch_ratio, step_num)
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
@@ -270,8 +271,5 @@ class IML(UnivAttack):
         self.grad_scaler.scale(loss).backward()
         self.grad_scaler.step(self.optimizer)
         self.grad_scaler.update()
-
-        # log metrics
-        self.metric_logger.report_scalars(metric_dict, step_num)
 
         return loss.item()

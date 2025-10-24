@@ -116,12 +116,14 @@ class PEZ(SoftPrompt):
         )
         return hparams
 
-    def _initialize_embeddings(
+    def _create_embeddings(
         self,
         num_inputs: int,
         init_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        if init_embeds is None:
+        if init_embeds is not None:
+            init_embeds = init_embeds.clone().detach()
+        else:
             init_embeds = Initializer.from_random_ids(
                 self.adv_model,
                 allow_nonascii=True,
@@ -129,7 +131,7 @@ class PEZ(SoftPrompt):
                 batch_size=num_inputs,
             )
 
-        init_embeds = init_embeds.clone().detach()
+        init_embeds = init_embeds.contiguous()
         init_embeds.requires_grad_(True)
         return init_embeds
 
@@ -140,13 +142,13 @@ class PEZ(SoftPrompt):
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:
         conversations = copy.deepcopy(conversations)
-        
+
         # HB impl. adds space before adversarial tokens
         for conv in conversations:
             conv[-1]["content"] = conv[-1]["content"] + " "
 
         # initialize optimized embeddings
-        adv_embeds = self._initialize_embeddings(
+        adv_embeds = self._create_embeddings(
             num_inputs=len(conversations),
             init_embeds=init_embeds,
         )
@@ -209,7 +211,7 @@ class PEZ(SoftPrompt):
                             pbar.n = pbar.total
                             pbar.close()
                             break
-                        
+
                         # logits = logits[~finished_status]
                         # target_ids = target_ids[~finished_status]
                         # target_mask = target_mask[~finished_status]
@@ -226,7 +228,11 @@ class PEZ(SoftPrompt):
                 scaler.update()
                 sched.step()
 
-                pbar.set_postfix({"loss": loss.item()})
+                # update progress bar
+                postfix: dict = {"loss": loss.item()}
+                if self.early_stopping:
+                    postfix["remaining"] = f"{(~finished).sum().item()}/{len(conversations)}"
+                pbar.set_postfix(postfix)
 
         with torch.no_grad():
             # replace adv token placeholders with discrete tokens

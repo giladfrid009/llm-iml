@@ -41,15 +41,17 @@ class SoftPrompt(SampleAttack):
             "optim_factory": inspect.getsource(self.optim_factory),
         }
 
-    def _initialize_embeddings(
+    def _create_embeddings(
         self,
         num_inputs: int,
         init_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        if init_embeds is None:
+        if init_embeds is not None:
+            init_embeds = init_embeds.clone().detach()
+        else:
             init_embeds = Initializer.random_normal(self.adv_model, std=0.1, batch_size=num_inputs)
 
-        init_embeds = init_embeds.clone().detach()
+        init_embeds = init_embeds.contiguous()
         init_embeds.requires_grad_(True)
         return init_embeds
 
@@ -172,7 +174,7 @@ class SoftPrompt(SampleAttack):
         init_embeds: torch.Tensor | None = None,
     ) -> SampleOutput:
         # initialize optimized embeddings
-        adv_embeds = self._initialize_embeddings(
+        adv_embeds = self._create_embeddings(
             num_inputs=len(conversations),
             init_embeds=init_embeds,
         )
@@ -248,6 +250,10 @@ class SoftPrompt(SampleAttack):
                 scaler.step(optim)
                 scaler.update()
 
-                pbar.set_postfix({"loss": loss.item()})
+                # update progress bar
+                postfix: dict = {"loss": loss.item()}
+                if self.early_stopping:
+                    postfix["remaining"] = f"{(~finished).sum().item()}/{len(conversations)}"
+                pbar.set_postfix(postfix)
 
         return SampleOutput(conversations, adv_embeds.detach())

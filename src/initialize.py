@@ -73,8 +73,9 @@ class Initializer:
             std = float(adv_model.model.config.initializer_range)
             logger.info(f"Using default std from model config: {std}")
 
-        orig_weight = adv_model.orig_embedder.weight.float()
-        mean = torch.mean(orig_weight, dim=0, keepdim=True)
+        with torch.no_grad():
+            orig_weight = adv_model.orig_embedder.weight.float()
+            mean = torch.mean(orig_weight, dim=0, keepdim=True)
 
         embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds = embeds.normal_(std=std) + mean
@@ -87,9 +88,10 @@ class Initializer:
         Initialize adversarial embeddings using the mean and standard deviation of the original embeddings.
         The mean and std are computed per embedding dimension across all original embeddings.
         """
-        orig_weight = adv_model.orig_embedder.weight.float()
-        mean = torch.mean(orig_weight, dim=0, keepdim=True)
-        std = torch.std(orig_weight, dim=0, keepdim=True)
+        with torch.no_grad():
+            orig_weight = adv_model.orig_embedder.weight.float()
+            mean = torch.mean(orig_weight, dim=0, keepdim=True)
+            std = torch.std(orig_weight, dim=0, keepdim=True)
 
         embeds = Initializer.make_empty(adv_model, batch_size=batch_size)
         embeds = embeds.normal_() * std + mean
@@ -112,10 +114,11 @@ class Initializer:
         import torch.distributions.constraints as constraints
         from torch.distributions.multivariate_normal import MultivariateNormal
 
-        orig_weights = adv_model.orig_embedder.weight.float()
-        mean_weights = torch.mean(orig_weights, dim=0)
-        centered_weights = orig_weights - mean_weights
-        covariance = torch.cov(centered_weights.T, correction=1)
+        with torch.no_grad():
+            orig_weights = adv_model.orig_embedder.weight.float()
+            mean_weights = torch.mean(orig_weights, dim=0)
+            centered_weights = orig_weights - mean_weights
+            covariance = torch.cov(centered_weights.T, correction=1)
 
         if constraints.positive_definite.check(covariance).all():
             dist = MultivariateNormal(mean_weights, covariance_matrix=covariance)
@@ -195,7 +198,8 @@ class Initializer:
             pad_token_id: int = tokenizer.convert_tokens_to_ids(pad_word)  # type: ignore
             input_ids[attention_mask == 0] = pad_token_id
 
-        embeds = adv_model.orig_embedder.forward(input_ids)
+        with torch.no_grad():
+            embeds = adv_model.orig_embedder.forward(input_ids)
 
         if batch_size > 1:
             embeds = embeds.repeat(batch_size, 1, 1)
@@ -250,6 +254,7 @@ class Initializer:
             device=adv_model.device,
         )
 
-        rand_ids = allowed_ids[rand_indices]
-        embeds = adv_model.orig_embedder.forward(rand_ids)
-        return embeds.detach()
+        with torch.no_grad():
+            rand_ids = allowed_ids[rand_indices]
+            embeds = adv_model.orig_embedder.forward(rand_ids)
+            return embeds.detach()
