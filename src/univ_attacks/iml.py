@@ -12,7 +12,6 @@ from typing import Any, Callable
 import torch
 
 
-# NOTE: currently loss is over all target tokens and not a single token per sample
 def cosine_similarity_loss(
     univ_activ: torch.Tensor,
     sample_activ: torch.Tensor,
@@ -176,7 +175,7 @@ class IML(UnivAttack):
                     not_fooled_ratio = 1 - fooled_mask.float().mean().item()
                     self.metric_logger.report_scalar("IML/not_fooled_ratio", not_fooled_ratio, step_num)
 
-                    if fooled_mask.all():
+                    if fooled_mask.all():  # all samples already fooled
                         self.metric_logger.report_scalar("IML/effective_batch_ratio", 0.0, step_num)
                         return None
 
@@ -208,7 +207,7 @@ class IML(UnivAttack):
                     sample_asr = success_mask.float().mean().item()
                     self.metric_logger.report_scalar("IML/sample_attack_success_ratio", sample_asr, step_num)
 
-                    if not success_mask.any():
+                    if not success_mask.any():  # all attacks failed
                         self.metric_logger.report_scalar("IML/effective_batch_ratio", 0.0, step_num)
                         return None
 

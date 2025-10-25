@@ -26,8 +26,6 @@ class IML_Experiment(Experiment):
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
         embeds = Initializer.random_normal(adv_model, std=0.1)  # High STD = Worse
-        # embeds = Initializer.random_normal(adv_model)  # High STD = Worse
-        # embeds = Initializer.from_string(adv_model, "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !")
         adv_model.set_embeddings(embeds)
         return adv_model
 
@@ -41,12 +39,10 @@ class IML_Experiment(Experiment):
         gen_config,
         metric_logger,
     ) -> UnivAttack:
-        # TODO: add noise argument which adds a small noise to the init vector
-        # perhaps will help to diversify exploration and escape local minima
         inner_attack = SP(
             adv_model,
-            optim_factory=lambda params: optim.Adam(params, lr=1e-2),
-            steps=50,
+            optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
+            steps=25,
             mixed_precision=False,
             early_stopping=True,
         )
@@ -80,7 +76,7 @@ class IML_Experiment(Experiment):
             # specialized args
             skip_already_fooled=False,
             skip_failed_attacks=True,
-            dynamic_labels=20,
+            dynamic_labels=5,
         )
 
 

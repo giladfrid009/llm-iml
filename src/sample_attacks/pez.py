@@ -136,8 +136,7 @@ class PEZ(SP):
                 batch_size=num_inputs,
             )
 
-        init_embeds = init_embeds.contiguous()
-        init_embeds.requires_grad_(True)
+        init_embeds = init_embeds.contiguous().requires_grad_(True)
         return init_embeds
 
     def fit(
@@ -194,7 +193,7 @@ class PEZ(SP):
                     # forward pass
                     optim_embeds = self.soft_project.forward(optim_embeds)
 
-                    adv_content = self.adv_model.forward(
+                    result = self.adv_model.forward(
                         input_ids=step_encodings.input_ids,
                         attention_mask=step_encodings.attention_mask,
                         adv_mask=step_encodings.adv_mask,
@@ -202,29 +201,24 @@ class PEZ(SP):
                         adv_embeds=optim_embeds,
                     )
 
-                    # align predicted logits and target_ids
-                    logits: torch.Tensor = adv_content.logits[:, :-1]  # remove new token
-                    target_ids = step_encodings.input_ids[:, 1:]  # remove BOS token
-                    target_mask = step_encodings.target_mask[:, 1:]  # remove BOS token
-
                     # update early stopping based on predictions
                     if self.early_stopping:
-                        finished_status = self._check_early_stopping(logits, target_ids, target_mask)
+                        finished_status = self._check_early_stopping(
+                            logits=result.logits,
+                            input_ids=step_encodings.input_ids,
+                            target_mask=step_encodings.target_mask,
+                        )
+
                         finished[~finished] = finished_status
-                        if finished.all():
-                            # break early
+                        if finished.all():  # break early
                             pbar.n = pbar.total
                             pbar.close()
                             break
 
-                        # logits = logits[~finished_status]
-                        # target_ids = target_ids[~finished_status]
-                        # target_mask = target_mask[~finished_status]
-
                     loss = self.criterion(
-                        logits=logits,
-                        target_ids=target_ids,
-                        target_mask=target_mask,
+                        logits=result.logits,
+                        input_ids=step_encodings.input_ids,
+                        target_mask=step_encodings.target_mask,
                     )
 
                 # backward pass and optimization step

@@ -70,13 +70,11 @@ class SP(SampleAttack):
         else:
             init_embeds = Initializer.random_normal(self.adv_model, std=0.1, batch_size=num_inputs)
 
-        init_embeds = init_embeds.contiguous()
-        init_embeds.requires_grad_(True)
-
         if self.noise_scale > 0.0:
             noise = torch.randn_like(init_embeds) * self.noise_scale
-            init_embeds += noise
+            init_embeds = init_embeds + noise
 
+        init_embeds = init_embeds.contiguous().requires_grad_(True)
         return init_embeds
 
     @torch.no_grad()
@@ -151,20 +149,26 @@ class SP(SampleAttack):
     def _check_early_stopping(
         self,
         logits: torch.Tensor,
-        target_ids: torch.Tensor,
+        input_ids: torch.Tensor,
         target_mask: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Check which samples have achieved perfect target matching.
+        Check which samples have achieved target matching.
 
         Args:
-            logits: Predicted logits
-            target_ids: Target token IDs
-            target_mask: Target mask
+            logits (torch.Tensor): Predicted logits, shape (batch_size, seq_len, vocab_size)
+            input_ids (torch.Tensor): IDs of the tokenized input, shape (batch_size, seq_len)
+            target_mask (torch.Tensor): Mask indicating target tokens in the input, shape (batch_size, seq_len)
 
         Returns:
-            Boolean tensor indicating which samples are finished
+            torch.Tensor: A boolean tensor of shape (batch_size,) indicating which samples
+                have achieved perfect target matching.
         """
+        # align predicted logits and target_ids
+        logits = logits[:, :-1]  # remove new token
+        target_ids = input_ids[:, 1:]  # remove BOS token
+        target_mask = target_mask[:, 1:]  # remove BOS token
+
         match_mask = logits.argmax(dim=-1) == target_ids
         match_mask.masked_fill_(~target_mask, True)  # Ignore non-target tokens
         return match_mask.all(dim=-1).flatten()
@@ -172,12 +176,25 @@ class SP(SampleAttack):
     def criterion(
         self,
         logits: torch.Tensor,
-        target_ids: torch.Tensor,
+        input_ids: torch.Tensor,
         target_mask: torch.Tensor,
     ) -> torch.Tensor:
         """
-        CE loss for the logits and target_ids, masked by target_mask.
+        CE loss over target tokens.
+
+        Args:
+            logits (torch.Tensor): Predicted logits, shape (batch_size, seq_len, vocab_size)
+            input_ids (torch.Tensor): IDs of the tokenized input, shape (batch_size, seq_len)
+            target_mask (torch.Tensor): Mask indicating target tokens in the input, shape (batch_size, seq_len)
+
+        Returns:
+            torch.Tensor: Scalar tensor representing the loss.
         """
+        # align predicted logits and target_ids
+        logits = logits[:, :-1]  # remove new token
+        target_ids = input_ids[:, 1:]  # remove BOS token
+        target_mask = target_mask[:, 1:]  # remove BOS token
+
         # extract only targets
         logits = logits[target_mask].reshape(-1, logits.size(-1))
         target_ids = target_ids[target_mask].flatten()
@@ -244,29 +261,24 @@ class SP(SampleAttack):
                         adv_embeds=optim_embeds,
                     )
 
-                    # align predicted logits and target_ids
-                    logits: torch.Tensor = result.logits[:, :-1]  # remove new token
-                    target_ids = step_encodings.input_ids[:, 1:]  # remove BOS token
-                    target_mask = step_encodings.target_mask[:, 1:]  # remove BOS token
-
                     # update early stopping based on predictions
                     if self.early_stopping:
-                        finished_status = self._check_early_stopping(logits, target_ids, target_mask)
+                        finished_status = self._check_early_stopping(
+                            logits=result.logits,
+                            input_ids=step_encodings.input_ids,
+                            target_mask=step_encodings.target_mask,
+                        )
+
                         finished[~finished] = finished_status
-                        if finished.all():
-                            # break early
+                        if finished.all():  # break early
                             pbar.n = pbar.total
                             pbar.close()
                             break
 
-                        # logits = logits[~finished_status]
-                        # target_ids = target_ids[~finished_status]
-                        # target_mask = target_mask[~finished_status]
-
                     loss = self.criterion(
-                        logits=logits,
-                        target_ids=target_ids,
-                        target_mask=target_mask,
+                        logits=result.logits,
+                        input_ids=step_encodings.input_ids,
+                        target_mask=step_encodings.target_mask,
                     )
 
                 # backward pass and optimization step
