@@ -37,10 +37,8 @@ class LogisticModel(torch.nn.Module):
     @classmethod
     def fit(
         cls,
-        x_train: torch.Tensor,
-        y_train: torch.Tensor,
-        x_eval: torch.Tensor,
-        y_eval: torch.Tensor,
+        train_data: tuple[torch.Tensor, torch.Tensor],
+        eval_data: tuple[torch.Tensor, torch.Tensor],
         max_iter: int = 10000,
     ) -> LogisticModel:
         """
@@ -49,15 +47,18 @@ class LogisticModel(torch.nn.Module):
         *Note:* the evaluation set is used to compute the accuracy of the model.
 
         Args:
-            x_train (torch.Tensor): Training samples of shape (num_train, hidden_size).
-            y_train (torch.Tensor): Training labels of shape (num_train,).
-            x_eval (torch.Tensor): Evaluation samples of shape (num_eval, hidden_size).
-            y_eval (torch.Tensor): Evaluation labels of shape (num_eval,).
+            train_data (tuple[torch.Tensor, torch.Tensor]): A tuple of training samples and labels (X, y).
+                Shape of samples: (num_samples, hidden_size); shape of labels: (num_samples,).
+            eval_data (tuple[torch.Tensor, torch.Tensor]): A tuple of evaluation samples and labels (X, y).
+                Shape of samples: (num_samples, hidden_size); shape of labels: (num_samples,).
             max_iter (int): Maximum number of iterations for the logistic regression solver.
 
         Returns:
             LogisticModel: A fitted instance of the model.
         """
+        x_train, y_train = train_data
+        x_eval, y_eval = eval_data
+
         solver = LogisticRegression(solver="saga", max_iter=max_iter)
         solver.fit(x_train.numpy(force=True), y_train.numpy(force=True))
         w = torch.tensor(torch.tensor(solver.coef_)).squeeze()
@@ -170,19 +171,12 @@ class LogisticTrainer:
             unit="layer",
         ):
             # prepare data
-            x_train = activs_train[layer_name]
-            x_eval = activs_eval[layer_name]
-            y_train = torch.tensor(dl_train.df["label"], dtype=torch.int32)
-            y_eval = torch.tensor(dl_eval.df["label"], dtype=torch.int32)
+            train_data = (activs_train[layer_name], torch.tensor(dl_train.df["label"], dtype=torch.int32))
+            eval_data = (activs_eval[layer_name], torch.tensor(dl_eval.df["label"], dtype=torch.int32))
 
             # fit model
-            classifiers[layer_name] = LogisticModel.fit(
-                x_train=x_train,
-                y_train=y_train,
-                x_eval=x_eval,
-                y_eval=y_eval,
-                **kwargs,
-            )
+            clf = LogisticModel.fit(train_data=train_data, eval_data=eval_data, **kwargs)
+            classifiers[layer_name] = clf
 
         return classifiers
 
