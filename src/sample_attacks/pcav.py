@@ -157,6 +157,9 @@ class LogisticTrainer:
         Returns:
             dict[str, LogisticModel]: A dictionary mapping layer names to fitted refusal classifiers.
         """
+        dl_train.validate(["prompt", "label"])
+        dl_eval.validate(["prompt", "label"])
+
         if dl_train.shuffle or dl_eval.shuffle:
             raise ValueError("DataLoaders for training/evaluation should not be shuffled.")
 
@@ -171,11 +174,14 @@ class LogisticTrainer:
             unit="layer",
         ):
             # prepare data
-            train_data = (activs_train[layer_name], torch.tensor(dl_train.df["label"], dtype=torch.int32))
-            eval_data = (activs_eval[layer_name], torch.tensor(dl_eval.df["label"], dtype=torch.int32))
+            train_x = activs_train[layer_name]
+            train_y = torch.tensor(dl_train.df["label"], dtype=torch.int32)
+
+            eval_x = activs_eval[layer_name]
+            eval_y = torch.tensor(dl_eval.df["label"], dtype=torch.int32)
 
             # fit model
-            clf = LogisticModel.fit(train_data=train_data, eval_data=eval_data, **kwargs)
+            clf = LogisticModel.fit(train_data=(train_x, train_y), eval_data=(eval_x, eval_y), **kwargs)
             classifiers[layer_name] = clf
 
         return classifiers
