@@ -46,6 +46,7 @@ def cosine_similarity_loss(
     flat_losses = 1 - torch.cosine_similarity(univ_targets, sample_targets, dim=-1)
 
     if not sample_mean:
+        # TODO: i think the return shapes are incorrect here
         return flat_losses.mean()
 
     # scatter losses back to the original shape and compute sample-mean
@@ -257,6 +258,7 @@ class IML(UnivAttack):
                 univ_activs = self.activ_extractor.get_activations()
 
             # compute loss
+            # TODO: test with sample_mean=True
             criterion = ActivationLoss(loss_fn=cosine_similarity_loss)
             loss = criterion.forward(
                 univ_activs,

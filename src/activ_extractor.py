@@ -192,18 +192,19 @@ class ActivationExtractor:
         self.close()
 
 
-def sum_aggregator(losses: Tensor) -> Tensor:
+def sum_mean_aggregator(losses: Tensor) -> Tensor:
     """
-    Default aggregator function that sums losses across layers.
+    Default aggregator function that sums losses across layers
+    for each sample and then averages over samples.
     """
-    return torch.sum(losses, dim=-1)
+    return torch.sum(losses, dim=-1).mean()
 
 
 class ActivationLoss(torch.nn.Module):
     def __init__(
         self,
         loss_fn: Callable[..., torch.Tensor],
-        aggr_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        aggr_fn: Callable[[torch.Tensor], torch.Tensor] = sum_mean_aggregator,
     ):
         """
         A loss module for aggregating per-layer activation losses into one final scalar.
@@ -221,27 +222,37 @@ class ActivationLoss(torch.nn.Module):
                   and return a Tensor of shape ``(batch_size,)``,
                   representing the per-sample loss for that layer.
 
-            aggr_fn (Callable[[torch.Tensor], torch.Tensor], optional):
-                A function that aggregates the losses across all layers for each sample.
-                - Its input is a Tensor of shape ``(batch_size, num_layers)``. Element
-                  ``losses[i, j]`` corresponds to the loss of the i-th sample at the j-th
-                  layer.
-                - Its output must be a Tensor of shape ``(batch_size,)``, representing
-                  the aggregated per-sample loss across all layers.
-                - Defaults to summing losses of all layers for each sample.
+            aggr_fn (Callable[[torch.Tensor], torch.Tensor]):
+                A function that aggregates the losses across all layers and samples.
+                - Its input is a Tensor of shape ``(batch_size, num_layers)``.
+                - Its output must be a Tensor of shape ``(1,)``, representing
+                  the aggregated overall loss.
+                - Defaults to summing losses of all layers for each sample,
+                  then averaging over samples.
         """
         super().__init__()
-
-        if aggr_fn is None:
-            aggr_fn = sum_aggregator
-
         self.loss_fn = loss_fn
         self.aggr_fn = aggr_fn
 
-    def forward(self, *args: dict[str, torch.Tensor], **kwargs) -> torch.Tensor:
-        keys = args[0].keys()
-        sample = next(iter(args[0].values()))
-        losses = torch.empty(size=(sample.size(0), len(keys)), device=sample.device)
-        for i, key in enumerate(keys):
-            losses[:, i] = self.loss_fn(*[arg[key] for arg in args], **kwargs)
-        return self.aggr_fn(losses).mean()
+    def forward(self, *args: dict[str, Any], **kwargs) -> torch.Tensor:
+        """
+        Args:
+            *args: One or more dictionaries of layer activations and/or other data.
+                Each dictionary must have the same set of keys (layer names).
+            **kwargs: Additional keyword arguments to pass to the loss function.
+
+        Returns:
+            torch.Tensor: The aggregated loss as a scalar tensor of shape (1,).
+        """
+        keys = list(args[0].keys())
+
+        key0 = keys[0]
+        loss = self.loss_fn(*[arg[key0] for arg in args], **kwargs)
+        losses = torch.zeros((loss.size(0), len(keys)), device=loss.device, dtype=loss.dtype)
+        losses[:, 0] = loss
+
+        for i, key in enumerate(keys, start=1):
+            loss = self.loss_fn(*[arg[key] for arg in args], **kwargs)
+            losses[:, i] = loss
+
+        return self.aggr_fn(losses)

@@ -34,6 +34,7 @@ dependencies = [
     "datasets>=4.1.1",
     "peft>=0.17.1",
     "openai>=1.90.0",
+    "scikit-learn>=1.7.2",
 ]
 
 [tool.uv.sources]
