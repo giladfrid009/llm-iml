@@ -30,8 +30,8 @@ class LogisticModel(torch.nn.Module):
         assert w.dim() == 1  # (hidden_size,)
         assert b.dim() == 0  # scalar bias
 
-        self.w = w
-        self.b = b
+        self.w = torch.nn.Parameter(w, requires_grad=False)
+        self.b = torch.nn.Parameter(b, requires_grad=False)
         self.acc = acc
 
     @classmethod
@@ -59,10 +59,15 @@ class LogisticModel(torch.nn.Module):
         x_train, y_train = train_data
         x_eval, y_eval = eval_data
 
+        x_train = x_train.float().cpu()
+        x_eval = x_eval.float().cpu()
+        y_train = y_train.int().cpu()
+        y_eval = y_eval.int().cpu()
+
         solver = LogisticRegression(solver="saga", max_iter=max_iter)
         solver.fit(x_train.numpy(force=True), y_train.numpy(force=True))
-        w = torch.tensor(torch.tensor(solver.coef_)).squeeze()
-        b = torch.tensor(torch.tensor(solver.intercept_)).squeeze()
+        w = torch.tensor(solver.coef_).squeeze()
+        b = torch.tensor(solver.intercept_).squeeze()
         acc = solver.score(x_eval.numpy(force=True), y_eval.numpy(force=True))
         return cls(w, b, acc=float(acc))
 
@@ -74,6 +79,7 @@ class LogisticModel(torch.nn.Module):
         return torch.sigmoid(logits)
 
     def logits(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.to(self.w.dtype)
         return torch.matmul(x, self.w) + self.b
 
 
@@ -102,7 +108,6 @@ class LogisticTrainer:
         self.verbose = verbose
         self.extractor = ActivationExtractor(adv_model.model, *layers, capture_output=True)
 
-    @torch.inference_mode()
     def extract_activations(
         self,
         dl: TableLoader,
@@ -121,25 +126,27 @@ class LogisticTrainer:
 
         activs_dict: dict[str, list[torch.Tensor]] = {layer: [] for layer in self.extractor.layer_names}
 
-        for batch in tqdm(dl, disable=not self.verbose, desc="Extracting Activations"):
+        for batch in tqdm(dl, disable=not self.verbose, desc="Extracting Activations", leave=False):
             conversations = [[{"role": "user", "content": text}] for text in batch["prompt"]]
             encodings = self.adv_model.tokenize(conversations)
 
-            with torch.autocast(device_type=self.adv_model.device.type, enabled=self.mixed_precision):
+            with (
+                torch.autocast(device_type=self.adv_model.device.type, enabled=self.mixed_precision),
+                torch.inference_mode(),
+            ):
                 with self.extractor.capture():
                     self.adv_model.forward(encodings.input_ids, encodings.attention_mask, adv_mask=None)
 
-                batch_activs = self.extractor.get_activations()
-                for layer, acts in batch_activs.items():
-                    last_acts = acts[:, -1].cpu().clone().detach()  # (B, H)
-                    activs_dict[layer].append(last_acts)
+            batch_activs = self.extractor.get_activations()
+            for layer, acts in batch_activs.items():
+                last_acts = acts[:, -1].cpu().clone().detach()  # (B, H)
+                activs_dict[layer].append(last_acts)
 
         activs_final: dict[str, torch.Tensor] = {}
         for layer, acts_list in activs_dict.items():
             activs_final[layer] = torch.cat(acts_list, dim=0)
         return activs_final
 
-    @torch.inference_mode()
     def fit(
         self,
         dl_train: TableLoader,
@@ -163,26 +170,32 @@ class LogisticTrainer:
         if dl_train.shuffle or dl_eval.shuffle:
             raise ValueError("DataLoaders for training/evaluation should not be shuffled.")
 
-        classifiers = {}
+        classifiers: dict[str, LogisticModel] = {}
         activs_train = self.extract_activations(dl_train)
         activs_eval = self.extract_activations(dl_eval)
 
         for layer_name in tqdm(
             self.extractor.layer_names,
             disable=not self.verbose,
-            desc="Training Logistic Regression Models",
+            desc="Training Logistic-Regression Models",
             unit="layer",
+            leave=False,
         ):
             # prepare data
             train_x = activs_train[layer_name]
-            train_y = torch.tensor(dl_train.df["label"], dtype=torch.int32)
+            train_y = torch.tensor(dl_train.df["label"].to_numpy(dtype="int32"))
 
             eval_x = activs_eval[layer_name]
-            eval_y = torch.tensor(dl_eval.df["label"], dtype=torch.int32)
+            eval_y = torch.tensor(dl_eval.df["label"].to_numpy(dtype="int32"))
 
             # fit model
             clf = LogisticModel.fit(train_data=(train_x, train_y), eval_data=(eval_x, eval_y), **kwargs)
             classifiers[layer_name] = clf
+
+        if self.verbose:
+            print("Trained Classifiers:")
+            for layer_name, clf in classifiers.items():
+                print(f"  Layer: {layer_name}, Accuracy: {clf.acc * 100:.2f}%")
 
         return classifiers
 
@@ -317,7 +330,7 @@ class PCAV(SampleAttack):
 
                     activs = self.extractor.get_activations()
                     criterion = ActivationLoss(loss_fn=refusal_loss, aggr_fn=torch.sum)
-                    loss = criterion.forward(activs)
+                    loss = criterion.forward(activs, self.classifiers, target_value=0)
 
                 # backward pass and optimization step
                 scaler.scale(loss).backward()

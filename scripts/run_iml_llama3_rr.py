@@ -76,7 +76,7 @@ class IML_Experiment(Experiment):
             # specialized args
             skip_already_fooled=False,
             skip_failed_attacks=True,
-            dynamic_labels=5,
+            dynamic_labels=40,
         )
 
 

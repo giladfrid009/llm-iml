@@ -251,7 +251,7 @@ class ActivationLoss(torch.nn.Module):
         losses = torch.zeros((loss.size(0), len(keys)), device=loss.device, dtype=loss.dtype)
         losses[:, 0] = loss
 
-        for i, key in enumerate(keys, start=1):
+        for i, key in enumerate(keys[1:], start=1):
             loss = self.loss_fn(*[arg[key] for arg in args], **kwargs)
             losses[:, i] = loss
 
