@@ -12,6 +12,10 @@ from src.sample_attacks.base import SampleAttack, SampleOutput
 from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.initialize import Initializer
 from src.aliases import Conv
+from src.utils.logging import create_logger
+
+
+logger = create_logger(__name__)
 
 
 class LogisticModel(torch.nn.Module):
@@ -169,6 +173,9 @@ class LogisticTrainer:
 
         if dl_train.shuffle or dl_eval.shuffle:
             raise ValueError("DataLoaders for training/evaluation should not be shuffled.")
+
+        logger.info(f"dl_train info: {dl_train.get_hparams()}")
+        logger.info(f"dl_eval info: {dl_eval.get_hparams()}")
 
         classifiers: dict[str, LogisticModel] = {}
         activs_train = self.extract_activations(dl_train)
