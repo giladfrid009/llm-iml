@@ -6,6 +6,7 @@ import torch
 from torch.nn import functional as F
 from sklearn.linear_model import LogisticRegression
 
+from src.data import TableLoader
 from src.adv_model import AdvModel
 from src.sample_attacks.base import SampleAttack, SampleOutput
 from src.activ_extractor import ActivationExtractor, ActivationLoss
@@ -13,9 +14,9 @@ from src.initialize import Initializer
 from src.aliases import Conv
 
 
-class RefusalClassifier(torch.nn.Module):
+class LogisticModel(torch.nn.Module):
     """
-    A logistic regression refusal classifier operating on model activations.
+    A logistic regression model operating on model activations.
     """
 
     def __init__(self, w: torch.Tensor, b: torch.Tensor, acc: float = 1.0):
@@ -41,11 +42,11 @@ class RefusalClassifier(torch.nn.Module):
         x_eval: torch.Tensor,
         y_eval: torch.Tensor,
         max_iter: int = 10000,
-    ) -> RefusalClassifier:
+    ) -> LogisticModel:
         """
-        Fit a logistic regression refusal classifier.
+        Fit a logistic regression model using scikit-learn.
 
-        *Note:* the evaluation set is used to compute the accuracy of the classifier.
+        *Note:* the evaluation set is used to compute the accuracy of the model.
 
         Args:
             x_train (torch.Tensor): Training samples of shape (num_train, hidden_size).
@@ -55,14 +56,10 @@ class RefusalClassifier(torch.nn.Module):
             max_iter (int): Maximum number of iterations for the logistic regression solver.
 
         Returns:
-            RefusalClassifier: A fitted refusal classifier.
-
+            LogisticModel: A fitted instance of the model.
         """
-        # fit logistic regression
         solver = LogisticRegression(solver="saga", max_iter=max_iter)
         solver.fit(x_train.numpy(force=True), y_train.numpy(force=True))
-
-        # extract weights, bias, and accuracy
         w = torch.tensor(torch.tensor(solver.coef_)).squeeze()
         b = torch.tensor(torch.tensor(solver.intercept_)).squeeze()
         acc = solver.score(x_eval.numpy(force=True), y_eval.numpy(force=True))
@@ -72,59 +69,154 @@ class RefusalClassifier(torch.nn.Module):
         return self.logits(x)
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x (torch.Tensor): Input tensor of shape (batch_size, hidden_size).
-
-        Returns:
-            torch.Tensor: Refusal probability tensor of shape (batch_size,).
-        """
         logits = self.logits(x)
         return torch.sigmoid(logits)
 
     def logits(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x (torch.Tensor): Input tensor of shape (batch_size, hidden_size).
-
-        Returns:
-            torch.Tensor: Logits tensor of shape (batch_size,).
-        """
         return torch.matmul(x, self.w) + self.b
 
 
-def refusal_loss(
-    activs: torch.Tensor,
-    clf: RefusalClassifier,
-) -> torch.Tensor:
+class LogisticTrainer:
     """
-    Compute the binary cross-entropy loss for refusal classification.
-    The loss encourages the model to produce activations that are classified as non-refusal (label 0).
+    Trainer for logistic regression models.
+    Extracts last token activations from specified layers and fits logistic regression models to classify refusals.
+    """
+
+    def __init__(
+        self,
+        adv_model: AdvModel,
+        layers: list[str],
+        mixed_precision: bool = False,
+        verbose: bool = True,
+    ):
+        """
+        Args:
+            adv_model (AdvModel): The adversarial model.
+            layers (list[str]): List of layer names to extract activations from.
+            mixed_precision (bool): Whether to use mixed precision training.
+            verbose (bool): Whether to display progress bars.
+        """
+        self.adv_model = adv_model
+        self.mixed_precision = mixed_precision
+        self.verbose = verbose
+        self.extractor = ActivationExtractor(adv_model.model, *layers, capture_output=True)
+
+    @torch.inference_mode()
+    def extract_activations(
+        self,
+        dl: TableLoader,
+    ) -> dict[str, torch.Tensor]:
+        """
+        Extracts last token activations from the given DataLoader.
+
+        Args:
+            dl (TableLoader): DataLoader providing batches of data.
+
+        Returns:
+            dict[str, torch.Tensor]: A dictionary mapping layer names to last token activation tensors of shape (num_samples, hidden_size).
+        """
+        if dl.shuffle:
+            raise ValueError("DataLoader for extracting activations should not be shuffled.")
+
+        activs_dict: dict[str, list[torch.Tensor]] = {layer: [] for layer in self.extractor.layer_names}
+
+        for batch in tqdm(dl, disable=not self.verbose, desc="Extracting Activations"):
+            conversations = [[{"role": "user", "content": text}] for text in batch["prompt"]]
+            encodings = self.adv_model.tokenize(conversations)
+
+            with torch.autocast(device_type=self.adv_model.device.type, enabled=self.mixed_precision):
+                with self.extractor.capture():
+                    self.adv_model.forward(encodings.input_ids, encodings.attention_mask, adv_mask=None)
+
+                batch_activs = self.extractor.get_activations()
+                for layer, acts in batch_activs.items():
+                    last_acts = acts[:, -1].cpu().clone().detach()  # (B, H)
+                    activs_dict[layer].append(last_acts)
+
+        activs_final: dict[str, torch.Tensor] = {}
+        for layer, acts_list in activs_dict.items():
+            activs_final[layer] = torch.cat(acts_list, dim=0)
+        return activs_final
+
+    @torch.inference_mode()
+    def fit(
+        self,
+        dl_train: TableLoader,
+        dl_eval: TableLoader,
+        **kwargs,
+    ) -> dict[str, LogisticModel]:
+        """
+        Fit refusal classifiers for each specified layer.
+
+        Args:
+            dl_train (TableLoader): DataLoader for training data.
+            dl_eval (TableLoader): DataLoader for evaluation data.
+            **kwargs: Additional keyword arguments passed to `LogisticModel.fit()`.
+
+        Returns:
+            dict[str, LogisticModel]: A dictionary mapping layer names to fitted refusal classifiers.
+        """
+        if dl_train.shuffle or dl_eval.shuffle:
+            raise ValueError("DataLoaders for training/evaluation should not be shuffled.")
+
+        classifiers = {}
+        activs_train = self.extract_activations(dl_train)
+        activs_eval = self.extract_activations(dl_eval)
+
+        for layer_name in tqdm(
+            self.extractor.layer_names,
+            disable=not self.verbose,
+            desc="Training Logistic Regression Models",
+            unit="layer",
+        ):
+            # prepare data
+            x_train = activs_train[layer_name]
+            x_eval = activs_eval[layer_name]
+            y_train = torch.tensor(dl_train.df["label"], dtype=torch.int32)
+            y_eval = torch.tensor(dl_eval.df["label"], dtype=torch.int32)
+
+            # fit model
+            classifiers[layer_name] = LogisticModel.fit(
+                x_train=x_train,
+                y_train=y_train,
+                x_eval=x_eval,
+                y_eval=y_eval,
+                **kwargs,
+            )
+
+        return classifiers
+
+
+def refusal_loss(activs: torch.Tensor, clf: LogisticModel, target_value: int = 0) -> torch.Tensor:
+    """
+    Compute the BCE loss for refusal classification.
+    The loss encourages the logistic model to produce activations that are classified as the target value.
 
     Args:
-        activs (torch.Tensor): The activations from a specific layer, of shape (batch_size, sequence_length, hidden_size).
-        clf (RefusalClassifier): The refusal classifier.
+        activs (torch.Tensor): Activations tensor of shape (batch_size, seq_len, hidden_size).
+        clf (LogisticModel): The logistic regression classifier.
+        target_value (int): The target class (0 or 1).
 
     Returns:
-        torch.Tensor: The binary cross-entropy loss for every sample, of shape (batch_size,).
+        torch.Tensor: The computed loss tensor of shape (batch_size,).
     """
     last_activ = activs[:, -1]  # (B, H)
     logits = clf.logits(last_activ)  # (B,)
-    target = torch.zeros_like(logits)
+    target = torch.tensor(target_value, dtype=logits.dtype, device=logits.device).expand_as(logits)
     loss = F.binary_cross_entropy_with_logits(logits, target, reduction="none")
     return loss
 
 
 class PCAV(SampleAttack):
     """
-    Perturb Concept Activation Vectors (PCAV) Attack.
+    Perturb Concept Activation Vectors (P-CAV) Attack.
     Inspired from SCAV [https://arxiv.org/pdf/2404.12038]
     """
 
     def __init__(
         self,
         adv_model: AdvModel,
-        classifiers: dict[str, RefusalClassifier],
+        classifiers: dict[str, LogisticModel],
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
         min_acc: float = 0.9,
@@ -137,9 +229,9 @@ class PCAV(SampleAttack):
             adv_model (AdvModel): The adversarial model to attack.
             optim_factory (Callable[Iterable[torch.Tensor], torch.optim.Optimizer]):
                 A factory function that creates an optimizer given the parameters to optimize.
-            classifiers (dict[str, RefusalClassifier]): A dictionary mapping layer names to refusal classifiers.
+            classifiers (dict[str, LogisticModel]): A dictionary mapping layer names to logistic models.
             steps (int): Number of optimization steps.
-            min_acc (float): Minimum accuracy of the refusal classifiers to be used.
+            min_acc (float): Minimum accuracy of the logistic models to be used.
             noise_scale (float): Standard deviation of Gaussian noise added to the initial embeddings.
             mixed_precision (bool): Whether to use mixed precision training.
             verbose (bool): Whether to display a progress bar.

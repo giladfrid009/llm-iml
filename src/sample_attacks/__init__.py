@@ -4,6 +4,7 @@ from src.sample_attacks.spz import SPZ
 from src.sample_attacks.pez import PEZ
 from src.sample_attacks.ample_gcg import AmpleGCG
 from src.sample_attacks.pa import PA
+from src.sample_attacks.pcav import PCAV, LogisticTrainer
 
 from src.sample_attacks.harm_bench import AP
 from src.sample_attacks.harm_bench import DR
@@ -17,6 +18,8 @@ __all__ = [
     "SampleOutput",
     "SP",
     "SPZ",
+    "PCAV",
+    "LogisticTrainer",
     "AmpleGCG",
     "PA",
     "AP",
