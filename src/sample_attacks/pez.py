@@ -226,10 +226,8 @@ class PEZ(SP):
                 sched.step()
 
                 # update progress bar
-                postfix: dict = {"loss": loss.item()}
-                if self.early_stopping:
-                    postfix["remaining"] = f"{(~finished).sum().item()}/{len(conversations)}"
-                pbar.set_postfix(postfix)
+                remaining = f"{(~finished).sum().item()}/{len(conversations)}"
+                pbar.set_postfix(loss=loss.item(), remaining=remaining)
 
         with torch.no_grad():
             # replace adv token placeholders with discrete tokens

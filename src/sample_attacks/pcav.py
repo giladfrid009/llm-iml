@@ -501,9 +501,7 @@ class PCAV(SampleAttack):
                 scaler.update()
 
                 # update progress bar
-                postfix: dict = {"loss": loss.item()}
-                if self.target_prob > 0.0:
-                    postfix["remaining"] = f"{(~finished).sum().item()}/{len(conversations)}"
-                pbar.set_postfix(postfix)
+                remaining = f"{(~finished).sum().item()}/{len(conversations)}"
+                pbar.set_postfix(loss=loss.item(), remaining=remaining)
 
         return SampleOutput(conversations, adv_embeds.detach())
