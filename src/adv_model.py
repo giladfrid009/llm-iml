@@ -324,7 +324,7 @@ class AdvModel(nn.Module):
                 - `input_ids` (torch.IntTensor): Token IDs of the entire tokenized texts.
                 - `attention_mask` (torch.BoolTensor): Attention mask of the entire tokenized texts.
                 - `adv_mask` (torch.BoolTensor): Mask for the adversarial tokens.
-                - `const_idx` (torch.IntTensor): Only if `target_texts != None`. Index values for the constant tokens for KV-cache.
+                - `const_idx` (torch.IntTensor): First index of the adversarial tokens in each conversation, used for KV-caching.
                 - `target_mask` (torch.BoolTensor): Only if `target_texts != None`. Mask for the target tokens
         """
         if target_texts is not None:

@@ -14,6 +14,9 @@ from src.initialize import Initializer
 from src.aliases import Conv
 from src.utils.logging import create_logger
 
+from transformers.tokenization_utils_base import BatchEncoding
+from transformers.cache_utils import DynamicCache
+
 
 logger = create_logger(__name__)
 
@@ -60,29 +63,49 @@ class LogisticModel(torch.nn.Module):
         Returns:
             LogisticModel: A fitted instance of the model.
         """
+        # prepare data
         x_train, y_train = train_data
         x_eval, y_eval = eval_data
-
         x_train = x_train.float().cpu()
         x_eval = x_eval.float().cpu()
         y_train = y_train.int().cpu()
         y_eval = y_eval.int().cpu()
 
+        # fit logistic regression
         solver = LogisticRegression(solver="saga", max_iter=max_iter)
         solver.fit(x_train.numpy(force=True), y_train.numpy(force=True))
+
+        # create model
         w = torch.tensor(solver.coef_).squeeze()
         b = torch.tensor(solver.intercept_).squeeze()
-        acc = solver.score(x_eval.numpy(force=True), y_eval.numpy(force=True))
-        return cls(w, b, acc=float(acc))
+        clf = cls(w, b)
+
+        # compute accuracy
+        acc = (clf.predict(x_eval) == y_eval).float().mean().item()
+        clf.acc = acc
+
+        return clf
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.logits(x)
 
-    def predict(self, x: torch.Tensor) -> torch.Tensor:
+    def proba(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the probability of the positive class.
+        """
         logits = self.logits(x)
         return torch.sigmoid(logits)
 
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Predict class labels (0 or 1) based on the input activations.
+        """
+        return self.proba(x).round()
+
     def logits(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the logits for the positive class.
+        """
         x = x.to(self.w.dtype)
         return torch.matmul(x, self.w) + self.b
 
@@ -112,10 +135,7 @@ class LogisticTrainer:
         self.verbose = verbose
         self.extractor = ActivationExtractor(adv_model.model, *layers, capture_output=True)
 
-    def extract_activations(
-        self,
-        dl: TableLoader,
-    ) -> dict[str, torch.Tensor]:
+    def extract_activations(self, dl: TableLoader) -> dict[str, torch.Tensor]:
         """
         Extracts last token activations from the given DataLoader.
 
@@ -240,6 +260,8 @@ class PCAV(SampleAttack):
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
         min_acc: float = 0.9,
+        target_prob: float = 0.1,
+        *,
         noise_scale: float = 0.0,
         mixed_precision: bool = False,
         verbose: bool = True,
@@ -252,6 +274,7 @@ class PCAV(SampleAttack):
             classifiers (dict[str, LogisticModel]): A dictionary mapping layer names to logistic models.
             steps (int): Number of optimization steps.
             min_acc (float): Minimum accuracy of the logistic models to be used.
+            target_prob (float): Target probability threshold for early stopping.
             noise_scale (float): Standard deviation of Gaussian noise added to the initial embeddings.
             mixed_precision (bool): Whether to use mixed precision training.
             verbose (bool): Whether to display a progress bar.
@@ -264,6 +287,7 @@ class PCAV(SampleAttack):
         self.mixed_precision = mixed_precision
 
         self.min_acc = min_acc
+        self.target_prob = target_prob
         self.classifiers = {name: clf.to(self.device) for name, clf in classifiers.items() if clf.acc >= min_acc}
         self.extractor = ActivationExtractor(adv_model.model, *list(self.classifiers.keys()))
 
@@ -277,6 +301,7 @@ class PCAV(SampleAttack):
             "steps": self.steps,
             "layers": list(self.classifiers.keys()),
             "min_acc": self.min_acc,
+            "target_prob": self.target_prob,
             "mixed_precision": self.mixed_precision,
             "noise_scale": self.noise_scale,
             "optim": dummy_optim.state_dict()["param_groups"][0],
@@ -301,6 +326,102 @@ class PCAV(SampleAttack):
         init_embeds = init_embeds.contiguous().requires_grad_(True)
         return init_embeds
 
+    @torch.no_grad()
+    def _compute_cache(self, encodings: BatchEncoding) -> BatchEncoding:
+        """
+        Compute the kv-cache for the constant part of the input.
+
+        Args:
+            encodings (BatchEncoding): encodings containing input tokens and masks,
+                as returned from `self.adv_model.tokenize()`.
+
+        Returns:
+            BatchEncoding: encodings containing the kv-cache for the constant part of the input,
+                as well as the remaining input tokens and masks. The remaining input tokens
+                and masks are only the variable (non-cached) part of the input.
+        """
+
+        kv_idx = encodings.const_idx.min().item()
+
+        kv_result = self.adv_model.forward(
+            encodings.input_ids[:, :kv_idx],
+            encodings.attention_mask[:, :kv_idx],
+            adv_mask=None,
+            adv_embeds=None,
+            use_cache=True,
+        )
+
+        kv_cache = kv_result.past_key_values
+        if isinstance(kv_cache, tuple):  # convert legacy cache format
+            kv_cache = DynamicCache.from_legacy_cache(kv_cache)
+
+        new_data = {
+            "input_ids": encodings.input_ids[:, kv_idx:],
+            "attention_mask": encodings.attention_mask,  # we need the full attention mask
+            "adv_mask": encodings.adv_mask[:, kv_idx:],
+            "kv_cache": kv_cache,
+        }
+
+        if "target_mask" in encodings:
+            new_data["target_mask"] = encodings.target_mask[:, kv_idx:]
+
+        return BatchEncoding(new_data)
+
+    def _masked_select(
+        self,
+        encodings: BatchEncoding,
+        mask: torch.Tensor,
+    ) -> BatchEncoding:
+        """
+        Selects elements from the encodings based on the provided mask.
+        Mask is applied to the batch dimension of all tensor elements in the encodings.
+        """
+        new_data = {}
+        for key, value in encodings.data.items():
+            if isinstance(value, torch.Tensor):
+                new_data[key] = value[mask]
+
+            elif key == "kv_cache" and value is None:
+                new_data[key] = None
+
+            elif key == "kv_cache" and isinstance(value, DynamicCache):
+                indices = mask.nonzero(as_tuple=True)[0]
+                cache = value.batch_select_indices(indices)
+                new_data[key] = cache
+
+            else:
+                raise TypeError(f"Unsupported type {type(value)} for key {key} in encodings")
+
+        return BatchEncoding(new_data)
+
+    @torch.inference_mode()
+    def _check_early_stopping(self, activs: dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Check which samples have met the early stopping criteria based on the classifiers' predictions.
+        If all classifiers predict non-refusal (probability <= target_prob) for a sample,
+        that sample is considered finished.
+
+        Args:
+            activs (dict[str, torch.Tensor]): A dictionary mapping layer names to activation tensors of
+                shape (batch_size, seq_len, hidden_size).
+
+        Returns:
+            torch.Tensor: A boolean tensor of shape (batch_size,) indicating which
+                samples have met the early stopping criteria.
+        """
+        finished_status = torch.ones(
+            activs[next(iter(activs))].size(0),
+            dtype=torch.bool,
+            device=self.device,
+        )
+
+        for layer_name, clf in self.classifiers.items():
+            probs = clf.proba(activs[layer_name][:, -1])  # (B,)
+            status = probs <= self.target_prob
+            finished_status = finished_status & status
+
+        return finished_status
+
     def fit(
         self,
         conversations: list[Conv],
@@ -316,27 +437,65 @@ class PCAV(SampleAttack):
         # create optimizer and scaler
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory([adv_embeds])
+        criterion = ActivationLoss(loss_fn=refusal_loss, aggr_fn=torch.sum)
 
         # tokenize
         conversations = self.adv_model.inject_tokens(conversations)
         encodings = self.adv_model.tokenize(conversations)
 
+        # compute kv-cache
+        # TODO: kv-cache breaks something :( its likely same issue persists in other
+        # per-sample attacks as well.
+        # with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+        #     encodings = self._compute_cache(encodings)
+        #     kv_cache: DynamicCache = encodings.kv_cache
+        #     cache_length = kv_cache.get_seq_length()
+
+        # early stopping state
+        finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
+        optim_embeds = adv_embeds
+
         with tqdm(range(self.steps), disable=not self.verbose, leave=False, desc="Attack") as pbar:
             for step in pbar:
                 optim.zero_grad()
+
+                # NOTE: need to crop kv-cache since forward modifies it in-place
+                step_encodings = encodings.copy()
+                # step_encodings["kv_cache"] = kv_cache.crop(cache_length)
+
+                # select only unfinished samples if early stopping is enabled
+                if self.target_prob > 0.0:
+                    step_encodings = self._masked_select(step_encodings, ~finished)
+                    optim_embeds = adv_embeds[~finished]
 
                 with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                     # forward pass
                     with self.extractor.capture():
                         self.adv_model.forward(
-                            input_ids=encodings.input_ids,
-                            attention_mask=encodings.attention_mask,
-                            adv_mask=encodings.adv_mask,
-                            adv_embeds=adv_embeds,
+                            input_ids=step_encodings.input_ids,
+                            attention_mask=step_encodings.attention_mask,
+                            adv_mask=step_encodings.adv_mask,
+                            # past_key_values=step_encodings.kv_cache,
+                            adv_embeds=optim_embeds,
                         )
 
-                    activs = self.extractor.get_activations()
-                    criterion = ActivationLoss(loss_fn=refusal_loss, aggr_fn=torch.sum)
+                        activs = self.extractor.get_activations()
+
+                    # update early stopping
+                    if self.target_prob > 0.0:
+                        finished_status = self._check_early_stopping(activs)
+
+                        finished[~finished] = finished_status
+                        if finished.all():  # break early
+                            pbar.n = pbar.total
+                            pbar.close()
+                            break
+
+                        if finished_status.all():
+                            break  # all remaining samples are finished
+
+                        activs = {layer: acts[~finished_status] for layer, acts in activs.items()}
+
                     loss = criterion.forward(activs, self.classifiers, target_value=0)
 
                 # backward pass and optimization step
@@ -345,6 +504,9 @@ class PCAV(SampleAttack):
                 scaler.update()
 
                 # update progress bar
-                pbar.set_postfix(loss=loss.item())
+                postfix: dict = {"loss": loss.item()}
+                if self.target_prob > 0.0:
+                    postfix["remaining"] = f"{(~finished).sum().item()}/{len(conversations)}"
+                pbar.set_postfix(postfix)
 
         return SampleOutput(conversations, adv_embeds.detach())

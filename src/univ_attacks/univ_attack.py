@@ -266,10 +266,10 @@ class UnivAttack:
 
                         # evaluation step
                         if should_stop or (step > 0 and step % round(self.eval_freq * len(dl_train)) == 0):
-                            clear_memory()  # TODO: remove?
+                            clear_memory()
                             metrics = self.evaluate(self.evaluators, dl_eval, update_best=True)
                             stop_criteria.update(epoch_num, metrics[self.eval_metric])
-                            clear_memory()  # TODO: remove?
+                            clear_memory()
 
                             self.save_checkpoint()
                             self.metric_logger.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step)

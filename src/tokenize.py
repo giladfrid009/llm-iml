@@ -178,6 +178,7 @@ def chat(
             - `input_ids` (torch.IntTensor): Token IDs of the entire tokenized texts.
             - `attention_mask` (torch.BoolTensor): Attention mask of the entire tokenized texts.
             - `adv_mask` (torch.BoolTensor): Mask for the adversarial tokens.
+            - `const_idx` (torch.LongTensor): The index of the first adversarial token in each conversation.
     """
     tokenizer.padding_side = "left"
 
@@ -197,11 +198,15 @@ def chat(
     attn_mask = encodings.attention_mask
     adv_mask = input_ids == adv_token_id
 
+    const_idx = torch.argmax(adv_mask.int(), dim=1)
+    const_idx[~adv_mask.any(dim=1)] = input_ids.size(1)
+
     return BatchEncoding(
         {
             "input_ids": input_ids,
             "attention_mask": attn_mask,
             "adv_mask": adv_mask,
+            "const_idx": const_idx,
         }
     )
 

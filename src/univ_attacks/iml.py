@@ -5,7 +5,6 @@ from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack
 from src.metric_logger import MetricLogger
-from src.utils.torch import clear_memory
 
 import inspect
 from typing import Any, Callable
@@ -28,6 +27,9 @@ def cosine_similarity_loss(
         sample_mean (bool): Averaging method of the loss
             - If True, first average over all target tokens for each sample, then average over samples.
             - If False, overall loss is average over all target tokens across all samples.
+
+    Returns:
+        torch.Tensor: Computed loss for each sample, of shape (batch_size,).
     """
     univ_mask = univ_mask.bool()
     sample_mask = sample_mask.bool()
@@ -46,8 +48,8 @@ def cosine_similarity_loss(
     flat_losses = 1 - torch.cosine_similarity(univ_targets, sample_targets, dim=-1)
 
     if not sample_mean:
-        # TODO: i think the return shapes are incorrect here
-        return flat_losses.mean()
+        scalar_loss = flat_losses.mean()
+        return scalar_loss.expand(sample_mask.size(0))  # expand to batch size
 
     # scatter losses back to the original shape and compute sample-mean
     sample_losses = torch.zeros_like(sample_mask, dtype=flat_losses.dtype)
@@ -186,11 +188,9 @@ class IML(UnivAttack):
 
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
-                clear_memory()  # TODO: remove?
                 init_embeds = self.univ_embeds.repeat(len(input_convs), 1, 1)
                 clean_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
                 sample_result = self.inner_attack.fit(clean_convs, target_texts, init_embeds=init_embeds)
-                clear_memory()  # TODO: remove?
 
             # skip failed per-sample attacks
             if self.skip_failed_attacks:
