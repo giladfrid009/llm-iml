@@ -1,3 +1,8 @@
+import inspect
+from typing import Callable, Iterable
+from tqdm.auto import tqdm
+import copy
+
 from src.adv_model import AdvModel
 from src.sample_attacks.sp import SP
 from src.sample_attacks.base import SampleOutput
@@ -5,13 +10,8 @@ from src.discretize import Discretize
 from src.initialize import Initializer
 from src.aliases import Conv
 
-import inspect
-from typing import Callable, Iterable
-from tqdm.auto import tqdm
 import torch
-import copy
 from torch import nn
-from transformers.cache_utils import DynamicCache
 
 
 def default_optimizer(params: Iterable[torch.Tensor]) -> torch.optim.Optimizer:
@@ -169,8 +169,6 @@ class PEZ(SP):
         # compute kv-cache
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
             encodings = self._compute_cache(encodings)
-            kv_cache: DynamicCache = encodings.kv_cache
-            cache_length = kv_cache.get_seq_length()
 
         # early stopping state
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
@@ -180,9 +178,9 @@ class PEZ(SP):
             for step in pbar:
                 optim.zero_grad()
 
-                # NOTE: need to crop kv-cache since forward modifies it in-place
+                # NOTE: need to copy kv-cache since forward modifies it in-place
                 step_encodings = encodings.copy()
-                step_encodings["kv_cache"] = kv_cache.crop(cache_length)
+                step_encodings["kv_cache"] = copy.deepcopy(encodings.kv_cache)
 
                 # select only unfinished samples if early stopping is enabled
                 if self.early_stopping:

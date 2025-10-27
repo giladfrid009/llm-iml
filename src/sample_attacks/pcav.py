@@ -2,9 +2,7 @@ from __future__ import annotations
 import inspect
 from typing import Callable, Iterable
 from tqdm.auto import tqdm
-import torch
-from torch.nn import functional as F
-from sklearn.linear_model import LogisticRegression
+import copy
 
 from src.data import TableLoader
 from src.adv_model import AdvModel
@@ -14,6 +12,9 @@ from src.initialize import Initializer
 from src.aliases import Conv
 from src.utils.logging import create_logger
 
+import torch
+from torch.nn import functional as F
+from sklearn.linear_model import LogisticRegression
 from transformers.tokenization_utils_base import BatchEncoding
 from transformers.cache_utils import DynamicCache
 
@@ -444,12 +445,8 @@ class PCAV(SampleAttack):
         encodings = self.adv_model.tokenize(conversations)
 
         # compute kv-cache
-        # TODO: kv-cache breaks something :( its likely same issue persists in other
-        # per-sample attacks as well.
-        # with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-        #     encodings = self._compute_cache(encodings)
-        #     kv_cache: DynamicCache = encodings.kv_cache
-        #     cache_length = kv_cache.get_seq_length()
+        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+            encodings = self._compute_cache(encodings)
 
         # early stopping state
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
@@ -459,9 +456,9 @@ class PCAV(SampleAttack):
             for step in pbar:
                 optim.zero_grad()
 
-                # NOTE: need to crop kv-cache since forward modifies it in-place
+                # NOTE: need to copy kv-cache since forward modifies it in-place
                 step_encodings = encodings.copy()
-                # step_encodings["kv_cache"] = kv_cache.crop(cache_length)
+                step_encodings["kv_cache"] = copy.deepcopy(encodings.kv_cache)
 
                 # select only unfinished samples if early stopping is enabled
                 if self.target_prob > 0.0:
@@ -475,7 +472,7 @@ class PCAV(SampleAttack):
                             input_ids=step_encodings.input_ids,
                             attention_mask=step_encodings.attention_mask,
                             adv_mask=step_encodings.adv_mask,
-                            # past_key_values=step_encodings.kv_cache,
+                            past_key_values=step_encodings.kv_cache,
                             adv_embeds=optim_embeds,
                         )
 

@@ -2,6 +2,7 @@ import torch
 from tqdm.auto import tqdm
 import copy
 import random
+
 from src.sample_attacks.base import SampleAttack, SampleOutput
 from src.adv_model import AdvModel
 from src.aliases import Conv
