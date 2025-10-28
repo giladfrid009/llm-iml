@@ -26,6 +26,10 @@ logger = create_logger(__name__)
 # allenai/wildguardmix
 # PKU-Alignment/BeaverTails
 
+# NOTE: we can use Nvidia cuML instead of sklearn for GPU acceleration if needed
+# https://github.com/rapidsai/cuml
+# uv add "cuml-cu12==25.10.*"
+
 
 class LogisticModel(torch.nn.Module):
     """
@@ -125,21 +129,28 @@ class LogisticTrainer:
     def __init__(
         self,
         adv_model: AdvModel,
-        layers: list[str],
+        activ_extractor: ActivationExtractor,
         mixed_precision: bool = False,
         verbose: bool = True,
     ):
         """
         Args:
-            adv_model (AdvModel): The adversarial model.
-            layers (list[str]): List of layer names to extract activations from.
+            adv_model (AdvModel): The attack target model.
+            activ_extractor (ActivationExtractor): Extractor for capturing activations from specified layers.
             mixed_precision (bool): Whether to use mixed precision training.
             verbose (bool): Whether to display progress bars.
         """
         self.adv_model = adv_model
+        self.extractor = activ_extractor
         self.mixed_precision = mixed_precision
         self.verbose = verbose
-        self.extractor = ActivationExtractor(adv_model.model, *layers, capture_output=True)
+
+    def get_hparams(self) -> dict:
+        return {
+            "activ_extractor": self.extractor.get_hparams(),
+            "mixed_precision": self.mixed_precision,
+            "verbose": self.verbose,
+        }
 
     def extract_activations(self, dl: TableLoader) -> dict[str, torch.Tensor]:
         """
@@ -192,7 +203,7 @@ class LogisticTrainer:
             **kwargs: Additional keyword arguments passed to `LogisticModel.fit()`.
 
         Returns:
-            dict[str, LogisticModel]: A dictionary mapping layer names to fitted refusal classifiers.
+            (dict[str, LogisticModel]): A dictionary mapping layer names to fitted refusal classifiers.
         """
         dl_train.validate(["prompt", "label"])
         dl_eval.validate(["prompt", "label"])
@@ -226,9 +237,9 @@ class LogisticTrainer:
             classifiers[layer_name] = clf
 
         if self.verbose:
-            print("Trained Classifiers:")
+            logger.info("Trained CAV Classifiers:")
             for layer_name, clf in classifiers.items():
-                print(f"  Layer: {layer_name}, Accuracy: {clf.acc * 100:.2f}%")
+                logger.info(f"Layer: {layer_name}, Features: {clf.w.size(0)}, Accuracy: {clf.acc}")
 
         return classifiers
 
@@ -263,11 +274,11 @@ class PCAV(SampleAttack):
         self,
         adv_model: AdvModel,
         classifiers: dict[str, LogisticModel],
+        activ_extractor: ActivationExtractor,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
         min_acc: float = 0.9,
         target_prob: float = 0.1,
-        *,
         noise_scale: float = 0.0,
         mixed_precision: bool = False,
         verbose: bool = True,
@@ -278,6 +289,7 @@ class PCAV(SampleAttack):
             optim_factory (Callable[Iterable[torch.Tensor], torch.optim.Optimizer]):
                 A factory function that creates an optimizer given the parameters to optimize.
             classifiers (dict[str, LogisticModel]): A dictionary mapping layer names to logistic models.
+            activ_extractor (ActivationExtractor): Extractor for capturing activations.
             steps (int): Number of optimization steps.
             min_acc (float): Minimum accuracy of the logistic models to be used.
             target_prob (float): Target probability threshold for early stopping.
@@ -287,25 +299,51 @@ class PCAV(SampleAttack):
         """
         super().__init__(adv_model, verbose)
 
-        self.steps = steps
+        cls_layers = set(classifiers.keys())
+        act_layers = set(activ_extractor.layer_names)
+
+        if not cls_layers.issubset(act_layers):
+            missing = cls_layers - act_layers
+            raise ValueError(f"Activation extractor is missing layers required by classifiers: {missing}")
+
+        elif not act_layers.issubset(cls_layers):
+            extra = act_layers - cls_layers
+            logger.warning(f"Activation extractor has extra layers not used by classifiers: {extra}")
+
+        # filter classifiers with low accuracy
+        classifiers = {name: clf for name, clf in classifiers.items() if clf.acc >= min_acc}
+        classifiers = {name: clf.to(self.device) for name, clf in classifiers.items()}
+
+        if len(classifiers) == 0:
+            raise ValueError(f"No classifiers with accuracy >= {min_acc}")
+
+        # create activation extractor only for layers with classifiers
+        activ_extractor = ActivationExtractor(
+            activ_extractor.model,
+            *[l for l in activ_extractor.layer_names if l in classifiers.keys()],
+            exact_match=activ_extractor.exact_match,
+            capture_output=activ_extractor.capture_output,
+        )
+
         self.optim_factory = optim_factory
+        self.classifiers = classifiers
+        self.extractor = activ_extractor
+        self.steps = steps
+        self.min_acc = min_acc
+        self.target_prob = target_prob
         self.noise_scale = noise_scale
         self.mixed_precision = mixed_precision
 
-        self.min_acc = min_acc
-        self.target_prob = target_prob
-        self.classifiers = {name: clf.to(self.device) for name, clf in classifiers.items() if clf.acc >= min_acc}
-        self.extractor = ActivationExtractor(adv_model.model, *list(self.classifiers.keys()))
-
-        if len(self.classifiers) == 0:
-            raise ValueError(f"No classifiers with accuracy >= {min_acc}")
+    @property
+    def layers(self) -> list[str]:
+        return list(self.classifiers.keys())
 
     def get_hparams(self) -> dict:
         dummy_optim = self.optim_factory([torch.zeros(1)])
         return {
             "name": self.__class__.__name__,
             "steps": self.steps,
-            "layers": list(self.classifiers.keys()),
+            "layers": self.layers,
             "min_acc": self.min_acc,
             "target_prob": self.target_prob,
             "mixed_precision": self.mixed_precision,
@@ -313,6 +351,7 @@ class PCAV(SampleAttack):
             "optim": dummy_optim.state_dict()["param_groups"][0],
             "optim/name": dummy_optim.__class__.__name__,
             "optim_factory": inspect.getsource(self.optim_factory),
+            "extractor": self.extractor.get_hparams(),
         }
 
     def _create_embeddings(

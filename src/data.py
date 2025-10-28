@@ -3,7 +3,6 @@ from typing import Any, Generator
 import pandas as pd
 
 
-# TODO: move to polars
 class TableLoader:
     """
     Iterate over a DataFrame in row-wise batches.
