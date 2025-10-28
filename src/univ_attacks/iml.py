@@ -259,7 +259,7 @@ class IML(UnivAttack):
 
             # compute loss
             # TODO: test with sample_mean=True
-            criterion = ActivationLoss(loss_fn=cosine_similarity_loss)
+            criterion = ActivationLoss(loss_fn=cosine_similarity_loss, reduction="sum-mean")
             loss = criterion.forward(
                 univ_activs,
                 sample_activs,

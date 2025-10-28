@@ -192,19 +192,11 @@ class ActivationExtractor:
         self.close()
 
 
-def sum_mean_aggregator(losses: Tensor) -> Tensor:
-    """
-    Default aggregator function that sums losses across layers
-    for each sample and then averages over samples.
-    """
-    return torch.sum(losses, dim=-1).mean()
-
-
 class ActivationLoss(torch.nn.Module):
     def __init__(
         self,
         loss_fn: Callable[..., torch.Tensor],
-        aggr_fn: Callable[[torch.Tensor], torch.Tensor] = sum_mean_aggregator,
+        reduction: str = "sum-mean",
     ):
         """
         A loss module for aggregating per-layer activation losses into one final scalar.
@@ -219,20 +211,22 @@ class ActivationLoss(torch.nn.Module):
                 dictionaries. It is called once per layer.
                 - It must accept one or more Tensors (corresponding to the same layer key
                   across multiple input dictionaries) and optionally additional kwargs,
-                  and return a Tensor of shape ``(batch_size,)``,
+                  and return a Tensor of shape `(batch_size,)`,
                   representing the per-sample loss for that layer.
 
-            aggr_fn (Callable[[torch.Tensor], torch.Tensor]):
-                A function that aggregates the losses across all layers and samples.
-                - Its input is a Tensor of shape ``(batch_size, num_layers)``.
-                - Its output must be a Tensor of shape ``(1,)``, representing
-                  the aggregated overall loss.
-                - Defaults to summing losses of all layers for each sample,
-                  then averaging over samples.
+            reduction (str):
+                A reduction function which aggregates per-layer losses into a single scalar.
+                A tensor of shape `(batch_size, num_layers)` is reduced to a single scalar.
+                Supported values are:
+                - "sum-mean": Sum over layers, then mean over batch (default).
+                - "mean-sum": Mean over layers, then sum over batch.
+                - "sum": Sum over all elements.
+                - "mean": Mean over all elements.
+                - "none": No reduction; returns the full per-layer loss tensor of shape `(batch_size, num_layers)`.
         """
         super().__init__()
         self.loss_fn = loss_fn
-        self.aggr_fn = aggr_fn
+        self.reduction = reduction
 
     def forward(self, *args: dict[str, Any], **kwargs) -> torch.Tensor:
         """
@@ -255,4 +249,18 @@ class ActivationLoss(torch.nn.Module):
             loss = self.loss_fn(*[arg[key] for arg in args], **kwargs)
             losses[:, i] = loss
 
-        return self.aggr_fn(losses)
+        return self.call_reduction(losses)
+
+    def call_reduction(self, losses: Tensor) -> Tensor:
+        if self.reduction == "sum-mean":
+            return losses.sum(dim=-1).mean()
+        if self.reduction == "mean-sum":
+            return losses.mean(dim=-1).sum()
+        if self.reduction == "sum" or self.reduction == "sum-sum":
+            return losses.sum()
+        if self.reduction == "mean" or self.reduction == "mean-mean":
+            return losses.mean()
+        if self.reduction == "none":
+            return losses
+
+        raise ValueError(f"Unknown reduction method: {self.reduction}")

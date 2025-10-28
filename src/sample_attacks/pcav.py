@@ -22,6 +22,11 @@ from transformers.cache_utils import DynamicCache
 logger = create_logger(__name__)
 
 
+# POTENTIAL DATASETS:
+# allenai/wildguardmix
+# PKU-Alignment/BeaverTails
+
+
 class LogisticModel(torch.nn.Module):
     """
     A logistic regression model operating on model activations.
@@ -438,7 +443,7 @@ class PCAV(SampleAttack):
         # create optimizer and scaler
         scaler = torch.GradScaler(enabled=self.mixed_precision)
         optim = self.optim_factory([adv_embeds])
-        criterion = ActivationLoss(loss_fn=refusal_loss, aggr_fn=torch.sum)
+        criterion = ActivationLoss(loss_fn=refusal_loss, reduction="sum")
 
         # tokenize
         conversations = self.adv_model.inject_tokens(conversations)
