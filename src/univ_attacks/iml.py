@@ -258,14 +258,13 @@ class IML(UnivAttack):
                 univ_activs = self.activ_extractor.get_activations()
 
             # compute loss
-            # TODO: test with sample_mean=True
             criterion = ActivationLoss(loss_fn=cosine_similarity_loss, reduction="sum-mean")
             loss = criterion.forward(
                 univ_activs,
                 sample_activs,
                 univ_mask=univ_encodings.target_mask,
                 sample_mask=sample_encodings.target_mask,
-                sample_mean=False,
+                sample_mean=False,  # NOTE: when sample_mean=True it performs worse
             )
 
         # grad step

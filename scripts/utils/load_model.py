@@ -48,12 +48,6 @@ SUPPORTED_MODELS = [
 ]
 
 
-def print_supported_models():
-    print("Supported Models:")
-    for model in SUPPORTED_MODELS:
-        print(f"- {model}")
-
-
 def load_model(
     model_name: str,
     torch_dtype: torch.dtype | str = "auto",

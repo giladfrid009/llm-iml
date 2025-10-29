@@ -71,7 +71,7 @@ class IML_Experiment(Experiment):
             mixed_precision=mixed_precision,
             metric_logger=metric_logger,
             # specialized args
-            skip_already_fooled=False,
+            skip_already_fooled=True,
             skip_failed_attacks=True,
             dynamic_labels=20,
         )
