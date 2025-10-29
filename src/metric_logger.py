@@ -1,6 +1,9 @@
 import pathlib
 from clearml import Task
 from typing import Any
+import numpy as np
+import PIL.Image
+import torch
 from src.utils.logging import create_logger
 
 logger = create_logger(__name__)
@@ -58,7 +61,7 @@ class MetricLogger:
             self.cm_task.close()
             self.cm_task = None  # type: ignore
 
-    def log_hparams(self, category: str = "", *args: dict[str, Any], **kwargs):
+    def report_hparams(self, category: str = "", *args: dict[str, Any], **kwargs):
         """
         Logs hyperparameters under the key: `category/<param_name>`.
         If a parameter is a dictionary, it is flattened.
@@ -69,7 +72,7 @@ class MetricLogger:
             **kwargs: Keyword arguments of hyperparameters to log.
         """
         if self.cm_task is None or self.disabled:
-            logger.debug("MetricLogger is disabled. Skipping log_hparams.")
+            logger.debug("MetricLogger is disabled. Skipping.")
             return
 
         def flatten_dict(d: dict, parent_key: str = "", sep: str = "/") -> dict:
@@ -88,9 +91,9 @@ class MetricLogger:
 
         self.cm_task.update_parameters(hparams)
 
-    def log_code(self, file_path: str):
+    def upload_code(self, file_path: str):
         if self.cm_task is None or self.disabled:
-            logger.debug("MetricLogger is disabled. Skipping log_code.")
+            logger.debug("MetricLogger is disabled. Skipping.")
             return
 
         if not pathlib.Path(file_path).is_file():
@@ -109,9 +112,12 @@ class MetricLogger:
         if not upload_result:
             logger.warning(f"Failed to log code file '{file_path}'.")
 
-    def add_tags(self, **tags):
+    def set_tags(self, **tags):
+        """
+        Sets tags for the current experiment.
+        """
         if self.cm_task is None or self.disabled:
-            logger.debug("MetricLogger is disabled. Skipping add_tags.")
+            logger.debug("MetricLogger is disabled. Skipping.")
             return
 
         if len(tags) == 0:
@@ -122,7 +128,7 @@ class MetricLogger:
         formatted = [f"{tag}: {text}" for tag, text in tags.items()]
         self.cm_task.add_tags(formatted)
 
-    def log_metrics(self, metrics: dict[str, int | float]):
+    def report_globals(self, metrics: dict[str, int | float]):
         """
         Logs a dictionary of final, global run metrics.
         For example, used to log final evaluation metrics.
@@ -131,15 +137,22 @@ class MetricLogger:
             metrics (dict[str, int | float]): The metrics to log.
         """
         if self.cm_task is None or self.disabled:
-            logger.debug("MetricLogger is disabled. Skipping log_metrics.")
+            logger.debug("MetricLogger is disabled. Skipping.")
             return
 
         for k, v in metrics.items():
             self.cm_task.logger.report_single_value(k, v)
 
     def report_scalars(self, scalers: dict[str, int | float], step: int):
+        """
+        Logs multiple scalar values.
+
+        Args:
+            scalers (dict[str, int | float]): The scalar values to log.
+            step (int): The step number.
+        """
         if self.cm_task is None or self.disabled:
-            logger.debug("MetricLogger is disabled. Skipping report_scalars.")
+            logger.debug("MetricLogger is disabled. Skipping.")
             return
 
         for key, value in scalers.items():
@@ -155,7 +168,7 @@ class MetricLogger:
             step (int): The step number.
         """
         if self.cm_task is None or self.disabled:
-            logger.debug("MetricLogger is disabled. Skipping report_scalar.")
+            logger.debug("MetricLogger is disabled. Skipping.")
             return
 
         if "/" in tag:
@@ -169,3 +182,31 @@ class MetricLogger:
 
         cm_logger = self.cm_task.get_logger()
         cm_logger.report_scalar(title=title, series=series, value=float(value), iteration=step)
+
+    def report_image(self, tag: str, image: torch.Tensor | np.ndarray | PIL.Image.Image, step: int):
+        """
+        Logs an image.
+
+        Args:
+            tag (str): The name of the image.
+            image (torch.Tensor | np.ndarray | PIL.Image.Image): The image to log, RGB format.
+            step (int): The step number.
+        """
+        if self.cm_task is None or self.disabled:
+            logger.debug("MetricLogger is disabled. Skipping.")
+            return
+
+        if "/" in tag:
+            split = tag.split("/", maxsplit=1)
+            title, series = split[0], split[1]
+        else:
+            title = series = tag
+
+        title = title.title()
+        series = series.title()
+
+        if isinstance(image, torch.Tensor):
+            image = image.numpy(force=True)
+
+        cm_logger = self.cm_task.get_logger()
+        cm_logger.report_image(title=title, series=series, image=image, iteration=step, max_image_history=-1)

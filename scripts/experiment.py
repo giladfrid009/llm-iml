@@ -307,7 +307,7 @@ class Experiment(ABC):
                 metric_logger=metric_logger,
             )
 
-            metric_logger.add_tags(
+            metric_logger.set_tags(
                 model=args.model,
                 num_tokens=adv_model.num_tokens,
                 attack=type(univ_attack).__name__,
@@ -316,9 +316,9 @@ class Experiment(ABC):
             )
 
             if main_file := getattr(sys.modules.get("__main__"), "__file__", None):
-                metric_logger.log_code(main_file)
+                metric_logger.upload_code(main_file)
             if expr_file := getattr(sys.modules.get(__name__), "__file__", None):
-                metric_logger.log_code(expr_file)
+                metric_logger.upload_code(expr_file)
 
             if cm_task := metric_logger.cm_task:
                 cm_task.upload_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
@@ -338,7 +338,7 @@ class Experiment(ABC):
 
             logger.info("Running test evaluation...")
             metrics = univ_attack.evaluate(evaluators, dl_test)
-            metric_logger.log_metrics(metrics)
+            metric_logger.report_globals(metrics)
             if cm_task := metric_logger.cm_task:
                 cm_task.upload_artifact(name="test_result", artifact_object=dl_eval.df)
 

@@ -79,7 +79,7 @@ class UnivAttack:
 
         self.metric_logger = metric_logger
 
-        self.metric_logger.log_hparams(
+        self.metric_logger.report_hparams(
             "univ_attack",
             model_name=adv_model.model.name_or_path,
             num_tokens=self.num_tokens,
@@ -90,19 +90,19 @@ class UnivAttack:
             log_dir=self.metric_logger.root_dir,
         )
 
-        self.metric_logger.log_hparams(
+        self.metric_logger.report_hparams(
             "hf_model",
             model_config=adv_model.model.config.to_dict(),
             generation_config=adv_model.model.generation_config.to_dict(),  # type: ignore
             name=adv_model.model.name_or_path,
         )
 
-        self.metric_logger.log_hparams("logger", self.metric_logger.get_hparams())
-        self.metric_logger.log_hparams("adv_model", adv_model.get_hparams())
-        self.metric_logger.log_hparams("gen_config", self.gen_config.get_hparams())
-        self.metric_logger.log_hparams("grad_scaler", self.grad_scaler.state_dict())
+        self.metric_logger.report_hparams("logger", self.metric_logger.get_hparams())
+        self.metric_logger.report_hparams("adv_model", adv_model.get_hparams())
+        self.metric_logger.report_hparams("gen_config", self.gen_config.get_hparams())
+        self.metric_logger.report_hparams("grad_scaler", self.grad_scaler.state_dict())
         for ev in self.evaluators:
-            self.metric_logger.log_hparams(f"evaluators/{ev.name}", ev.get_hparams())
+            self.metric_logger.report_hparams(f"evaluators/{ev.name}", ev.get_hparams())
 
     @property
     def univ_embeds(self) -> torch.Tensor:
@@ -232,9 +232,9 @@ class UnivAttack:
         should_stop = stop_criteria.should_stop()
 
         # log relevant stats
-        self.metric_logger.log_hparams("stop", stop_criteria.get_hparams())
-        self.metric_logger.log_hparams("data/train", dl_train.get_hparams())
-        self.metric_logger.log_hparams("data/eval", dl_eval.get_hparams())
+        self.metric_logger.report_hparams("stop", stop_criteria.get_hparams())
+        self.metric_logger.report_hparams("data/train", dl_train.get_hparams())
+        self.metric_logger.report_hparams("data/eval", dl_eval.get_hparams())
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
             # initial evaluation
