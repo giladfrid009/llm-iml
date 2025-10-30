@@ -58,6 +58,7 @@ class StrongReject(Evaluator):
             sampling_params (SamplingParams | None): Sampling parameters for generation. If None, defaults to guided decoding.
             verbose (bool): Whether to suppress output messages during evaluation.
         """
+        super().__init__(verbose)
 
         model_name = "google/gemma-2b"
         lora_name = "qylu4156/strongreject-15k-v1"
@@ -66,12 +67,6 @@ class StrongReject(Evaluator):
             raise ValueError(
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
-
-        metric_names = ["StrongReject/Raw"]
-        for thresh in BINARY_THRESH:
-            metric_names.append(f"StrongReject/Thresh@{thresh}")
-
-        super().__init__(name="StrongReject", metric_names=metric_names, verbose=verbose)
 
         lora_path = huggingface_hub.snapshot_download(lora_name)
 
@@ -94,6 +89,18 @@ class StrongReject(Evaluator):
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
 
+    @property
+    def name(self) -> str:
+        return "StrongReject"
+
+    @property
+    def metric_names(self) -> list[str]:
+        names = ["StrongReject/Raw"]
+        for thresh in self.binary_thresh:
+            names.append(f"StrongReject/Thresh@{thresh}")
+        return names
+
+    @property
     def default_metric(self) -> str:
         return "StrongReject/Thresh@0.5"
 

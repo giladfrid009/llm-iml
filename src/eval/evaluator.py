@@ -7,19 +7,38 @@ import inspect
 
 
 class Evaluator(ABC):
-    def __init__(self, name: str, metric_names: list[str], verbose: bool = True):
+    def __init__(self, verbose: bool = True):
         """
         A base class for evaluators that processes batches of data and computes evaluation metrics.
 
         Args:
-            name (str): Name of the evaluation method.
-            metric_names (list[str]): List of metric names produced by the evaluator.
             verbose (bool): If True, enables verbose output during evaluation.
         """
-        self.name = name
-        self.metric_names = metric_names
         self.verbose = verbose
 
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """
+        Returns the name of the evaluator.
+
+        Returns:
+            str: Name of the evaluator.
+        """
+        raise NotImplementedError("This method should be overridden by subclasses.")
+
+    @property
+    @abstractmethod
+    def metric_names(self) -> list[str]:
+        """
+        Returns the list of metric names produced by the evaluator.
+
+        Returns:
+            list[str]: List of metric names.
+        """
+        raise NotImplementedError("This method should be overridden by subclasses.")
+
+    @property
     def default_metric(self) -> str:
         """
         Returns the default metric name for this evaluator.
@@ -113,24 +132,29 @@ class MultiEvaluator(Evaluator):
                 Receives a dictionary mapping metric names to their values and returns a single float value.
             verbose (bool): Whether to suppress verbose outputs and tqdm progress during evaluation.
         """
-
-        name = f"MultiEval({','.join([ev.name for ev in evaluators])})"
+        super().__init__(verbose)
 
         for ev in evaluators:
             ev.verbose = verbose
 
-        metric_names = [name]
-        for ev in evaluators:
-            metric_names.extend(ev.metric_names)
-
-        super().__init__(name=name, metric_names=metric_names, verbose=verbose)
-
         self.evaluators = evaluators
         self.combine_fn = combine_fn
 
+    @property
+    def name(self) -> str:
+        return f"MultiEval({','.join([ev.name for ev in self.evaluators])})"
+
+    @property
+    def metric_names(self) -> list[str]:
+        names = [self.name]
+        for ev in self.evaluators:
+            names.extend(ev.metric_names)
+        return names
+
+    @property
     def default_metric(self) -> str:
         return self.name
-    
+
     def get_hparams(self) -> dict:
         hparams: dict[str, Any] = {
             "inner_evaluators": str([ev.name for ev in self.evaluators]),

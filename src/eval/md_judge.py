@@ -33,14 +33,14 @@ class MDJudge(Evaluator):
         sampling_params: SamplingParams | None = None,
         verbose: bool = True,
     ):
+        super().__init__(verbose)
+
         model_name = "OpenSafetyLab/MD-Judge-v0_2-internlm2_7b"
 
         if llm_config is not None and llm_config.model_name != model_name:
             raise ValueError(
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
-
-        super().__init__(name="MD-Judge", metric_names=["MD-Judge/Harmful", "MD-Judge/Score"], verbose=verbose)
 
         if llm_config is None:
             llm_config = LLMConfig(model_name=model_name, dtype="bfloat16", trust_remote_code=True)
@@ -58,6 +58,15 @@ class MDJudge(Evaluator):
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
 
+    @property
+    def name(self) -> str:
+        return "MD-Judge"
+
+    @property
+    def metric_names(self) -> list[str]:
+        return ["MD-Judge/Harmful", "MD-Judge/Score"]
+
+    @property
     def default_metric(self) -> str:
         return "MD-Judge/Harmful"
 

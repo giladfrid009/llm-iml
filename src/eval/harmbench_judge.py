@@ -45,14 +45,14 @@ class HarmBenchJudge(Evaluator):
         sampling_params: SamplingParams | None = None,
         verbose: bool = True,
     ):
+        super().__init__(verbose)
+
         model_name = "cais/HarmBench-Llama-2-13b-cls"
 
         if llm_config is not None and llm_config.model_name != model_name:
             raise ValueError(
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
-
-        super().__init__(name="HarmBench", metric_names=["HarmBench"], verbose=verbose)
 
         if llm_config is None:
             llm_config = LLMConfig(model_name=model_name, dtype="bfloat16")
@@ -70,6 +70,14 @@ class HarmBenchJudge(Evaluator):
 
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
+
+    @property
+    def name(self) -> str:
+        return "HarmBench"
+
+    @property
+    def metric_names(self) -> list[str]:
+        return [self.name]
 
     def get_hparams(self) -> dict:
         return {

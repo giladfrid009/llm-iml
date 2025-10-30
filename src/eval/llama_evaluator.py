@@ -53,6 +53,8 @@ class LlamaEvaluator(Evaluator):
         sampling_params: SamplingParams | None = None,
         verbose: bool = True,
     ):
+        super().__init__(verbose)
+        
         if model_name not in SUPPORTED_MODELS:
             raise ValueError(f"Unsupported model: {model_name}. Supported models are: {SUPPORTED_MODELS}")
 
@@ -60,9 +62,6 @@ class LlamaEvaluator(Evaluator):
             raise ValueError(
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
-
-        metric_name = f"LlamaEval/{model_name.split('/')[-1]}"
-        super().__init__(name="LlamaEval", metric_names=[metric_name], verbose=verbose)
 
         if llm_config is None:
             if model_name == "meta-llama/Llama-2-7b-chat-hf":
@@ -85,6 +84,14 @@ class LlamaEvaluator(Evaluator):
 
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
+
+    @property
+    def name(self) -> str:
+        return "LlamaEval"
+
+    @property
+    def metric_names(self) -> list[str]:
+        return [f"LlamaEval/{self.llm_config.model_name.split('/')[-1]}"]
 
     def get_hparams(self) -> dict:
         return {

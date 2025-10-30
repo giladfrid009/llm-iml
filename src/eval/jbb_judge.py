@@ -42,15 +42,14 @@ class JBBJudge(Evaluator):
         sampling_params: SamplingParams | None = None,
         verbose: bool = True,
     ):
+        super().__init__(verbose)
+        
         model_name = "meta-llama/Llama-3-70b-chat-hf"
 
         if llm_config is not None and llm_config.model_name != model_name:
             raise ValueError(
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
-
-        name = "JBB-Judge"
-        super().__init__(name=name, metric_names=[name], verbose=verbose)
 
         if llm_config is None:
             llm_config = LLMConfig(model_name=model_name, dtype="bfloat16")
@@ -64,6 +63,14 @@ class JBBJudge(Evaluator):
 
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
+
+    @property
+    def name(self) -> str:
+        return "JBB-Judge"
+
+    @property
+    def metric_names(self) -> list[str]:
+        return [self.name]
 
     def get_hparams(self) -> dict:
         return {

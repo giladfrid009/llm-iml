@@ -107,9 +107,6 @@ class IML(UnivAttack):
             dynamic_labels=self.dynamic_labels,
         )
 
-        if self.attack_builder_func is not None:
-            self.metric_logger.report_hparams("iml", attack_builder=inspect.getsource(self.attack_builder_func))
-
         self.metric_logger.report_hparams("activ_extractor", activ_extractor.get_hparams())
         self.metric_logger.report_hparams("inner_attack", self.inner_attack.get_hparams())
         self.metric_logger.report_hparams(

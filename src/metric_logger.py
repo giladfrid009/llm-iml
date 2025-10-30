@@ -158,7 +158,7 @@ class MetricLogger:
         for key, value in scalers.items():
             self.report_scalar(key, value, step)
 
-    def report_scalar(self, tag: str, value: int | float, step: int):
+    def report_scalar(self, tag: str, value: int | float | None, step: int):
         """
         Logs a scalar value.
 
@@ -178,7 +178,9 @@ class MetricLogger:
             title = series = tag
 
         title = title.title()
-        series = series.title()
+
+        if value is None:
+            value = float("nan")
 
         cm_logger = self.cm_task.get_logger()
         cm_logger.report_scalar(title=title, series=series, value=float(value), iteration=step)

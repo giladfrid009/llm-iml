@@ -29,12 +29,19 @@ class KeywordMatching(Evaluator):
         refusals_dict: dict[str, list[str]] = ALL_REFUSALS,
         verbose: bool = False,
     ):
+        super().__init__(verbose)
+
         refusals_dict = {f"Matching/{k}": normalize(v) for k, v in refusals_dict.items()}
-        metric_names = list(refusals_dict.keys())
         self.refusals_dict = refusals_dict
 
-        super().__init__(name="Matching", metric_names=metric_names, verbose=verbose)
-    
+    @property
+    def name(self) -> str:
+        return "Matching"
+
+    @property
+    def metric_names(self) -> list[str]:
+        return list(self.refusals_dict.keys())
+
     def get_hparams(self) -> dict:
         return {
             "refusals_dict": self.refusals_dict,

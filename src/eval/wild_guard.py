@@ -41,16 +41,14 @@ class WildGuard(Evaluator):
         sampling_params: SamplingParams | None = None,
         verbose: bool = True,
     ):
+        super().__init__(verbose)
+
         model_name = "allenai/wildguard"
 
         if llm_config is not None and llm_config.model_name != model_name:
             raise ValueError(
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
-
-        metric_names = ["WildGuard/Prompt-Harmful", "WildGuard/Response-Refusal", "WildGuard/Response-Harmful"]
-
-        super().__init__(name="WildGuard", metric_names=metric_names, verbose=verbose)
 
         if llm_config is None:
             llm_config = LLMConfig(
@@ -73,6 +71,19 @@ class WildGuard(Evaluator):
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
 
+    @property
+    def name(self) -> str:
+        return "WildGuard"
+
+    @property
+    def metric_names(self) -> list[str]:
+        return [
+            "WildGuard/Prompt-Harmful",
+            "WildGuard/Response-Refusal",
+            "WildGuard/Response-Harmful",
+        ]
+
+    @property
     def default_metric(self) -> str:
         return "WildGuard/Prompt-Harmful"
 

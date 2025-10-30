@@ -40,6 +40,8 @@ class LlamaGuard(Evaluator):
         sampling_params: SamplingParams | None = None,
         verbose: bool = True,
     ):
+        super().__init__(verbose)
+
         if model_name not in SUPPORTED_MODELS:
             raise ValueError(f"Unsupported model: {model_name}. Supported models are: {SUPPORTED_MODELS}")
 
@@ -47,9 +49,6 @@ class LlamaGuard(Evaluator):
             raise ValueError(
                 f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
             )
-
-        metric_name = f"LlamaGuard/{model_name.split('/')[-1]}"
-        super().__init__(name="LlamaGuard", metric_names=[metric_name], verbose=verbose)
 
         if llm_config is None:
             max_model_len = 4096 if model_name == "meta-llama/Llama-Guard-4-12B" else None
@@ -64,6 +63,14 @@ class LlamaGuard(Evaluator):
 
         self.model = VLLMService(self.llm_config, self.serve_config)
         self.model.start()
+
+    @property
+    def name(self) -> str:
+        return "LlamaGuard"
+
+    @property
+    def metric_names(self) -> list[str]:
+        return [f"LlamaGuard/{self.llm_config.model_name.split('/')[-1]}"]
 
     def get_hparams(self) -> dict:
         return {

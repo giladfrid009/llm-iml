@@ -40,7 +40,7 @@ class UnivAttack:
             metric_logger (MetricLogger | None): Metric logger for logging experiment data and metrics.
         """
         if eval_metric is None:
-            eval_metric = evaluators[0].default_metric()
+            eval_metric = evaluators[0].default_metric
             logger.info(f"Auto-selected main eval_metric: {eval_metric}")
 
         if not any(eval_metric in ev.metric_names for ev in evaluators):

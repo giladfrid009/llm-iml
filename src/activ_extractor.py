@@ -209,6 +209,7 @@ class ActivationLoss(torch.nn.Module):
             loss_fn (Callable[..., torch.Tensor, **kwargs]):
                 A function that computes the loss for a given layer across input activation
                 dictionaries. It is called once per layer.
+                - Signature: `loss_fn(*args: torch.Tensor | Any, **kwargs) -> torch.Tensor`
                 - It must accept one or more Tensors (corresponding to the same layer key
                   across multiple input dictionaries) and optionally additional kwargs,
                   and return a Tensor of shape `(batch_size,)`,

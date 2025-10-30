@@ -33,14 +33,9 @@ class BeaverCost(Evaluator):
             torch_compile (bool): Whether to compile the model using `torch.compile`. Defaults to False.
             verbose (bool): Whether to suppress output messages during evaluation..
         """
+        super().__init__(verbose)
 
         model_name = "PKU-Alignment/beaver-7b-v1.0-cost"
-        metric_names = ["Beaver/Raw"]
-        for thresh in binary_thresh or []:
-            metric_names.append(f"Beaver/Thresh@{thresh}")
-
-        super().__init__(name="Beaver", metric_names=metric_names, verbose=verbose)
-
         self.binary_thresh = binary_thresh
 
         self.model: LlamaForScore = AutoModelForScore.from_pretrained(
@@ -58,6 +53,17 @@ class BeaverCost(Evaluator):
             )
 
         self.tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    @property
+    def name(self) -> str:
+        return "Beaver"
+
+    @property
+    def metric_names(self) -> list[str]:
+        metrics = ["Beaver/Raw"]
+        for thresh in self.binary_thresh or []:
+            metrics.append(f"Beaver/Thresh@{thresh}")
+        return metrics
 
     def get_hparams(self) -> dict:
         return {
