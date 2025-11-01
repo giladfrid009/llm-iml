@@ -114,7 +114,7 @@ class AP(SequentialHarmBenchAttack):
 
     def get_hparams(self) -> dict:
         return {
-            "name": self.__class__.__name__,
+            "name": type(self).__name__,
             "num_steps": self.num_steps,
             "adv_string_init": self.adv_string_init,
             "allow_non_ascii": self.allow_non_ascii,

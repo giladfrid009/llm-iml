@@ -11,7 +11,7 @@ class DR(HarmBenchAttack):
         super().__init__(adv_mode, verbose)
 
     def get_hparams(self) -> dict:
-        return {"name": self.__class__.__name__}
+        return {"name": type(self).__name__}
 
     def generate_test_cases(self, behaviors: list[str], targets: list[str]) -> list[str]:
         return behaviors

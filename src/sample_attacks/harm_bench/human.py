@@ -25,7 +25,7 @@ class Human(HarmBenchAttack):
 
     def get_hparams(self) -> dict:
         return {
-            "name": self.__class__.__name__,
+            "name": type(self).__name__,
             "seed": self.seed,
         }
 

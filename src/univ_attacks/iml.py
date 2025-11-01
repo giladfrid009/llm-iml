@@ -99,9 +99,9 @@ class IML(UnivAttack):
 
         self.metric_logger.report_hparams(
             "iml",
-            inner_attack=self.inner_attack.__class__.__name__,
+            inner_attack=type(self.inner_attack).__name__,
             attack_builder=inspect.getsource(self.attack_builder_func) if self.attack_builder_func else None,
-            optimizer=self.optimizer.__class__.__name__,
+            optimizer=type(self.optimizer).__name__,
             skip_already_fooled=self.skip_already_fooled,
             skip_failed_attacks=self.skip_failed_attacks,
             dynamic_labels=self.dynamic_labels,
@@ -112,7 +112,7 @@ class IML(UnivAttack):
         self.metric_logger.report_hparams(
             "optim",
             optimizer.state_dict()["param_groups"][0],
-            name=self.optimizer.__class__.__name__,
+            name=type(self.optimizer).__name__,
         )
 
     @property

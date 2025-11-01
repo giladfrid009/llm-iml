@@ -35,12 +35,12 @@ class SoftPrompt(UnivAttack):
 
         self.metric_logger.report_hparams(
             "soft_prompt",
-            optimizer=self.optimizer.__class__.__name__,
+            optimizer=type(self.optimizer).__name__,
         )
         self.metric_logger.report_hparams(
             "optim",
             optimizer.state_dict()["param_groups"][0],
-            name=self.optimizer.__class__.__name__,
+            name=type(self.optimizer).__name__,
         )
 
     def criterion(

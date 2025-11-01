@@ -43,7 +43,7 @@ class GBDA(SequentialHarmBenchAttack):
 
     def get_hparams(self) -> dict:
         return {
-            "name": self.__class__.__name__,
+            "name": type(self).__name__,
             "num_optim_tokens": self.num_optim_tokens,
             "num_steps": self.num_steps,
             "lr": self.lr,

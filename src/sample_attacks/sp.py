@@ -51,13 +51,13 @@ class SP(SampleAttack):
     def get_hparams(self) -> dict:
         dummy_optim = self.optim_factory([torch.zeros(1)])
         return {
-            "name": self.__class__.__name__,
+            "name": type(self).__name__,
             "steps": self.steps,
             "early_stopping": self.early_stopping,
             "mixed_precision": self.mixed_precision,
             "noise_scale": self.noise_scale,
             "optim": dummy_optim.state_dict()["param_groups"][0],
-            "optim/name": dummy_optim.__class__.__name__,
+            "optim/name": type(dummy_optim).__name__,
             "optim_factory": inspect.getsource(self.optim_factory),
         }
 
