@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from collections import OrderedDict
 
 
 class Discretize:
@@ -7,8 +8,9 @@ class Discretize:
     Discretization functions for projecting soft embeddings to hard token ids.
     """
     
-    # Cache for normalized vocabulary matrices to avoid repeated normalization
-    _normalized_vocab_cache: dict[int, torch.Tensor] = {}
+    # LRU cache for normalized vocabulary matrices to avoid repeated normalization
+    _normalized_vocab_cache: OrderedDict[int, torch.Tensor] = OrderedDict()
+    _cache_max_size: int = 10
 
     @staticmethod
     def cosine_similarity(
@@ -31,15 +33,16 @@ class Discretize:
         # L2-normalize query embeddings
         q = F.normalize(soft_embeds, p=2, dim=-1)  # [b, n, d]
         
-        # Cache normalized vocabulary to avoid repeated normalization
-        # Use id() as cache key for this specific tensor
+        # LRU cache for normalized vocabulary to avoid repeated normalization
         vocab_id = id(vocab_matrix)
         if vocab_id not in Discretize._normalized_vocab_cache:
             Discretize._normalized_vocab_cache[vocab_id] = F.normalize(vocab_matrix, p=2, dim=-1)
-            # Limit cache size to prevent memory issues
-            if len(Discretize._normalized_vocab_cache) > 10:
-                # Remove oldest entry (first item)
-                Discretize._normalized_vocab_cache.pop(next(iter(Discretize._normalized_vocab_cache)))
+            # LRU eviction: remove oldest entry when cache is full
+            if len(Discretize._normalized_vocab_cache) > Discretize._cache_max_size:
+                Discretize._normalized_vocab_cache.popitem(last=False)
+        else:
+            # Move to end (most recently used)
+            Discretize._normalized_vocab_cache.move_to_end(vocab_id)
         
         w = Discretize._normalized_vocab_cache[vocab_id]  # [v, d]
 

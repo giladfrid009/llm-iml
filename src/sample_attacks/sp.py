@@ -204,18 +204,24 @@ class SP(SampleAttack):
         flat_losses = torch.nn.functional.cross_entropy(logits, target_ids, reduction="none")
 
         # compute per-sample mean loss efficiently using segment operations
-        # Count targets per sample and compute cumulative sum for indexing
+        # Use torch.split for vectorized segmentation when all counts are positive
         target_counts = target_mask.sum(dim=-1)
-        loss_per_sample = torch.zeros(target_mask.size(0), dtype=flat_losses.dtype, device=flat_losses.device)
+        target_counts_list = target_counts.tolist()
         
-        # Compute sample-wise loss by segmenting flat_losses
-        idx = 0
-        for i, count in enumerate(target_counts):
-            if count > 0:
-                loss_per_sample[i] = flat_losses[idx:idx+count].mean()
-                idx += count
-        
-        return loss_per_sample.sum()
+        if all(c > 0 for c in target_counts_list):
+            # All samples have targets, use efficient split and stack
+            segments = torch.split(flat_losses, target_counts_list)
+            loss_per_sample = torch.stack([seg.mean() for seg in segments])
+            return loss_per_sample.sum()
+        else:
+            # Fallback for edge cases where some samples have no targets
+            loss_per_sample = torch.zeros(target_mask.size(0), dtype=flat_losses.dtype, device=flat_losses.device)
+            idx = 0
+            for i, count in enumerate(target_counts_list):
+                if count > 0:
+                    loss_per_sample[i] = flat_losses[idx:idx+count].mean()
+                    idx += count
+            return loss_per_sample.sum()
 
     def fit(
         self,

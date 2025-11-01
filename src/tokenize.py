@@ -113,14 +113,18 @@ def chat_with_cache(
     max_len = max(len(conv) for conv in input_tokens)
     pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
     
-    # Create padded tensor for efficient searching
-    tokens_tensor = torch.full((len(input_tokens), max_len), pad_token_id, dtype=torch.long)
-    for i, conv in enumerate(input_tokens):
-        tokens_tensor[i, :len(conv)] = torch.tensor(conv, dtype=torch.long)
+    # Use pad_sequence for efficient batching instead of manual loop
+    tokens_list = [torch.tensor(conv, dtype=torch.long) for conv in input_tokens]
+    tokens_tensor = torch.nn.utils.rnn.pad_sequence(
+        tokens_list, 
+        batch_first=True, 
+        padding_value=pad_token_id
+    )
     
     # Find first occurrence of adv_token_id in each sequence
     adv_mask_temp = tokens_tensor == adv_token_id
     # Get index of first True in each row, or max_len if not found
+    max_len = tokens_tensor.size(1)
     const_idx = torch.where(adv_mask_temp.any(dim=1), adv_mask_temp.int().argmax(dim=1), torch.tensor(max_len))
     const_idx = const_idx.tolist()
 

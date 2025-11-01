@@ -51,16 +51,21 @@ def cosine_similarity_loss(
         scalar_loss = flat_losses.mean()
         return scalar_loss.expand(sample_mask.size(0))  # expand to batch size
 
-    # Compute per-sample mean loss efficiently without scatter operations
-    # Use cumulative counting to segment losses by sample
-    target_counts = sample_mask.sum(dim=-1)
-    loss_per_sample = torch.zeros(sample_mask.size(0), dtype=flat_losses.dtype, device=flat_losses.device)
-    
-    idx = 0
-    for i, count in enumerate(target_counts):
-        if count > 0:
-            loss_per_sample[i] = flat_losses[idx:idx+count].mean()
-            idx += count
+    # Compute per-sample mean loss efficiently using torch.split for vectorization
+    # Split flat losses by target counts
+    target_counts_list = target_counts.tolist()
+    if all(c > 0 for c in target_counts_list):
+        # All samples have targets, use efficient split
+        segments = torch.split(flat_losses, target_counts_list)
+        loss_per_sample = torch.stack([seg.mean() for seg in segments])
+    else:
+        # Some samples have no targets, handle individually
+        loss_per_sample = torch.zeros(sample_mask.size(0), dtype=flat_losses.dtype, device=flat_losses.device)
+        idx = 0
+        for i, count in enumerate(target_counts_list):
+            if count > 0:
+                loss_per_sample[i] = flat_losses[idx:idx+count].mean()
+                idx += count
     
     return loss_per_sample
 
