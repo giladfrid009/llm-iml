@@ -179,9 +179,11 @@ class IML(UnivAttack):
                         self.metric_logger.report_scalar("IML/effective_batch_ratio", 0.0, step_num)
                         return None
 
-                    input_texts = [txt for txt, m in zip(input_texts, fooled_mask) if not m]
-                    input_convs = [conv for conv, m in zip(input_convs, fooled_mask) if not m]
-                    target_texts = [tgt for tgt, m in zip(target_texts, fooled_mask) if not m]
+                    # Use tensor-based filtering for efficiency
+                    not_fooled_indices = (~fooled_mask).nonzero(as_tuple=True)[0].cpu().tolist()
+                    input_texts = [input_texts[i] for i in not_fooled_indices]
+                    input_convs = [input_convs[i] for i in not_fooled_indices]
+                    target_texts = [target_texts[i] for i in not_fooled_indices]
 
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
@@ -213,8 +215,10 @@ class IML(UnivAttack):
                         # set target texts to generated sample responses
                         target_texts = self.truncate_tokens(sample_responses, self.dynamic_labels)
 
-                    input_convs = [conv for conv, m in zip(input_convs, success_mask) if m]
-                    target_texts = [tgt for tgt, m in zip(target_texts, success_mask) if m]
+                    # Use tensor-based filtering for efficiency
+                    success_indices = success_mask.nonzero(as_tuple=True)[0].cpu().tolist()
+                    input_convs = [input_convs[i] for i in success_indices]
+                    target_texts = [target_texts[i] for i in success_indices]
                     sample_result = sample_result.masked_select(success_mask)
 
             elif self.dynamic_labels > 0 and (not self.skip_failed_attacks):

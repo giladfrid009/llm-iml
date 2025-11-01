@@ -62,11 +62,18 @@ class ActivationExtractor:
             "layer_names": str(self.layer_names),
         }
 
-    def get_activations(self) -> dict[str, Tensor]:
-        """Returns the current captured layer activations."""
+    def get_activations(self, clone: bool = True) -> dict[str, Tensor]:
+        """
+        Returns the current captured layer activations.
+        
+        Args:
+            clone: If True, returns cloned tensors. If False, returns references (faster but use with care).
+        """
         if len(self._activations) == 0:
             logger.warning("No activations captured yet. Did you forget to call `capture()`?")
-        return {k: v.clone() for k, v in self._activations.items()}
+        if clone:
+            return {k: v.clone() for k, v in self._activations.items()}
+        return self._activations
 
     @contextmanager
     def capture(self):

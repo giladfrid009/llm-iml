@@ -2,7 +2,34 @@ import torch
 from src.adv_model import AdvModel
 from src.utils.logging import create_logger
 
+from contextlib import contextmanager
+
+
 logger = create_logger(__name__)
+
+
+@contextmanager
+def _tokenizer_settings(tokenizer, padding_side=None, truncation_side=None):
+    """
+    Context manager to temporarily change tokenizer settings and restore them afterwards.
+    
+    Args:
+        tokenizer: The tokenizer to modify
+        padding_side: Temporary padding side (left/right) or None to keep current
+        truncation_side: Temporary truncation side (left/right) or None to keep current
+    """
+    orig_padding_side = tokenizer.padding_side
+    orig_truncation_side = tokenizer.truncation_side
+    
+    try:
+        if padding_side is not None:
+            tokenizer.padding_side = padding_side
+        if truncation_side is not None:
+            tokenizer.truncation_side = truncation_side
+        yield tokenizer
+    finally:
+        tokenizer.padding_side = orig_padding_side
+        tokenizer.truncation_side = orig_truncation_side
 
 
 class Initializer:
@@ -169,27 +196,18 @@ class Initializer:
             input_ids = encodings.input_ids
 
         else:
-            # We need to set some tokenizer settings manually
-            orig_padding_side = tokenizer.padding_side
-            orig_truncation_side = tokenizer.truncation_side
-            tokenizer.truncation_side = "right"
-            tokenizer.padding_side = "right"
-
-            # Tokenize with strict padding and truncation
-            strict_encodings = tokenizer(
-                text=text,
-                add_special_tokens=False,
-                padding="max_length",
-                truncation=True,
-                padding_side="right",
-                max_length=adv_model.num_tokens,
-                return_tensors="pt",
-                return_attention_mask=True,
-            ).to(adv_model.device)
-
-            # Restore original tokenizer settings
-            tokenizer.padding_side = orig_padding_side
-            tokenizer.truncation_side = orig_truncation_side
+            # Tokenize with strict padding and truncation using context manager
+            with _tokenizer_settings(tokenizer, padding_side="right", truncation_side="right"):
+                strict_encodings = tokenizer(
+                    text=text,
+                    add_special_tokens=False,
+                    padding="max_length",
+                    truncation=True,
+                    padding_side="right",
+                    max_length=adv_model.num_tokens,
+                    return_tensors="pt",
+                    return_attention_mask=True,
+                ).to(adv_model.device)
 
             input_ids = strict_encodings.input_ids
             attention_mask = strict_encodings.attention_mask

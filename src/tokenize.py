@@ -30,16 +30,11 @@ def chat_with_targets(
             - `const_idx` (torch.LongTensor): The index of the first adversarial token in each conversation.
             - `target_mask` (torch.BoolTensor): A mask indicating the positions of the target tokens in the full input.
     """
-    convs_partial = copy.deepcopy(conversations)
-    for conv in convs_partial:
-        conv.append({"role": "assistant", "content": ""})
-
+    # Optimize: Create modified conversations in-place, avoiding deep copy
+    convs_partial = [conv + [{"role": "assistant", "content": ""}] for conv in conversations]
     encodings_partial = chat_with_cache(tokenizer, convs_partial, adv_token)
 
-    convs_full = copy.deepcopy(conversations)
-    for conv, tgt in zip(convs_full, target_texts):
-        conv.append({"role": "assistant", "content": tgt})
-
+    convs_full = [conv + [{"role": "assistant", "content": tgt}] for conv, tgt in zip(conversations, target_texts)]
     encodings_full = chat_with_cache(tokenizer, convs_full, adv_token)
 
     ids_full: torch.Tensor = encodings_full.input_ids
@@ -113,12 +108,21 @@ def chat_with_cache(
 
     adv_token_id: int = tokenizer.convert_tokens_to_ids(adv_token)  # type: ignore
 
-    # find the index of the first adversarial token
-    # should be the same for both full and partial conversations
-    const_idx = []
-    for conv in input_tokens:
-        adv_idx = conv.index(adv_token_id)
-        const_idx.append(adv_idx)
+    # find the index of the first adversarial token efficiently
+    # Convert to tensor for vectorized operations
+    max_len = max(len(conv) for conv in input_tokens)
+    pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    
+    # Create padded tensor for efficient searching
+    tokens_tensor = torch.full((len(input_tokens), max_len), pad_token_id, dtype=torch.long)
+    for i, conv in enumerate(input_tokens):
+        tokens_tensor[i, :len(conv)] = torch.tensor(conv, dtype=torch.long)
+    
+    # Find first occurrence of adv_token_id in each sequence
+    adv_mask_temp = tokens_tensor == adv_token_id
+    # Get index of first True in each row, or max_len if not found
+    const_idx = torch.where(adv_mask_temp.any(dim=1), adv_mask_temp.int().argmax(dim=1), torch.tensor(max_len))
+    const_idx = const_idx.tolist()
 
     # split convs before and after the constant index
     tokens_const = [conv[:idx] for conv, idx in zip(input_tokens, const_idx)]

@@ -32,21 +32,17 @@ class AdverEmbedding(nn.Module):
 
     @property
     def embed_dim(self) -> int:
-        if self._embed_dim is not None:
-            return self._embed_dim
-        test_input = torch.zeros(1, 1, dtype=torch.long, device=self.device)
-        dim = self.embedder(test_input).size(-1)
-        self._embed_dim = dim
-        return dim
+        if self._embed_dim is None:
+            test_input = torch.zeros(1, 1, dtype=torch.long, device=self.device)
+            self._embed_dim = self.embedder(test_input).size(-1)
+        return self._embed_dim
 
     @property
     def embed_dtype(self) -> torch.dtype:
-        if self._embed_dtype is not None:
-            return self._embed_dtype
-        test_input = torch.zeros(1, 1, dtype=torch.long, device=self.device)
-        dtype = self.embedder(test_input).dtype
-        self._embed_dtype = dtype
-        return dtype
+        if self._embed_dtype is None:
+            test_input = torch.zeros(1, 1, dtype=torch.long, device=self.device)
+            self._embed_dtype = self.embedder(test_input).dtype
+        return self._embed_dtype
 
     def forward(
         self,

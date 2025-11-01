@@ -203,11 +203,19 @@ class SP(SampleAttack):
         # compute token-wise loss
         flat_losses = torch.nn.functional.cross_entropy(logits, target_ids, reduction="none")
 
-        # scatter losses back to the original shape and compute sample-mean
-        loss_matrix = torch.zeros_like(target_mask, dtype=flat_losses.dtype)
-        loss_matrix[target_mask] = flat_losses
-        loss = torch.sum(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
-        return loss
+        # compute per-sample mean loss efficiently using segment operations
+        # Count targets per sample and compute cumulative sum for indexing
+        target_counts = target_mask.sum(dim=-1)
+        loss_per_sample = torch.zeros(target_mask.size(0), dtype=flat_losses.dtype, device=flat_losses.device)
+        
+        # Compute sample-wise loss by segmenting flat_losses
+        idx = 0
+        for i, count in enumerate(target_counts):
+            if count > 0:
+                loss_per_sample[i] = flat_losses[idx:idx+count].mean()
+                idx += count
+        
+        return loss_per_sample.sum()
 
     def fit(
         self,
@@ -241,9 +249,12 @@ class SP(SampleAttack):
             for step in pbar:
                 optim.zero_grad()
 
-                # NOTE: need to copy kv-cache since forward modifies it in-place
+                # NOTE: Clone KV-cache efficiently - only copy structure, not deep copy tensors
+                # Forward pass will create a new cache if use_cache=True, so we can reuse the original
                 step_encodings = encodings.copy()
-                step_encodings["kv_cache"] = copy.deepcopy(encodings.kv_cache)
+                if encodings.kv_cache is not None:
+                    # Create shallow copy of cache structure to avoid modifying original
+                    step_encodings["kv_cache"] = encodings.kv_cache.crop(0)
 
                 # select only unfinished samples if early stopping is enabled
                 if self.early_stopping:
