@@ -6,6 +6,9 @@ class Discretize:
     """
     Discretization functions for projecting soft embeddings to hard token ids.
     """
+    
+    # Cache for normalized vocabulary matrices to avoid repeated normalization
+    _normalized_vocab_cache: dict[int, torch.Tensor] = {}
 
     @staticmethod
     def cosine_similarity(
@@ -25,9 +28,20 @@ class Discretize:
             ids (torch.Tensor): Nearest neighbor of each soft embedding in the vocabulary, shape [b, n]
         """
 
-        # L2-normalize
+        # L2-normalize query embeddings
         q = F.normalize(soft_embeds, p=2, dim=-1)  # [b, n, d]
-        w = F.normalize(vocab_matrix, p=2, dim=-1)  # [v, d]
+        
+        # Cache normalized vocabulary to avoid repeated normalization
+        # Use id() as cache key for this specific tensor
+        vocab_id = id(vocab_matrix)
+        if vocab_id not in Discretize._normalized_vocab_cache:
+            Discretize._normalized_vocab_cache[vocab_id] = F.normalize(vocab_matrix, p=2, dim=-1)
+            # Limit cache size to prevent memory issues
+            if len(Discretize._normalized_vocab_cache) > 10:
+                # Remove oldest entry (first item)
+                Discretize._normalized_vocab_cache.pop(next(iter(Discretize._normalized_vocab_cache)))
+        
+        w = Discretize._normalized_vocab_cache[vocab_id]  # [v, d]
 
         # cosine sim == dot product for unit vectors
         sims = torch.matmul(q, w.T)  # [b, n, v]

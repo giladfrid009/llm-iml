@@ -247,15 +247,19 @@ class ActivationLoss(torch.nn.Module):
             torch.Tensor: The aggregated loss as a scalar tensor of shape (1,).
         """
         keys = list(args[0].keys())
-
+        
+        # Optimize: Compute first loss to determine shape, then pre-allocate
         key0 = keys[0]
         loss = self.loss_fn(*[arg[key0] for arg in args], **kwargs)
-        losses = torch.zeros((loss.size(0), len(keys)), device=loss.device, dtype=loss.dtype)
+        
+        # Pre-allocate losses tensor with correct shape
+        num_layers = len(keys)
+        losses = torch.empty((loss.size(0), num_layers), device=loss.device, dtype=loss.dtype)
         losses[:, 0] = loss
 
+        # Compute remaining layer losses
         for i, key in enumerate(keys[1:], start=1):
-            loss = self.loss_fn(*[arg[key] for arg in args], **kwargs)
-            losses[:, i] = loss
+            losses[:, i] = self.loss_fn(*[arg[key] for arg in args], **kwargs)
 
         return self.call_reduction(losses)
 
