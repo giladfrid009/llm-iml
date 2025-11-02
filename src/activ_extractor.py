@@ -62,11 +62,15 @@ class ActivationExtractor:
             "layer_names": str(self.layer_names),
         }
 
-    def get_activations(self) -> dict[str, Tensor]:
+    def get_activations(self, clone: bool = False) -> dict[str, Tensor]:
         """Returns the current captured layer activations."""
         if len(self._activations) == 0:
             logger.warning("No activations captured yet. Did you forget to call `capture()`?")
-        return {k: v.clone() for k, v in self._activations.items()}
+            return {}
+
+        if clone:
+            return {k: v.clone() for k, v in self._activations.items()}
+        return self._activations.copy()
 
     @contextmanager
     def capture(self):
@@ -252,14 +256,14 @@ class ActivationLoss(torch.nn.Module):
 
         return self.call_reduction(losses)
 
-    def call_reduction(self, losses: Tensor) -> Tensor:
+    def call_reduction(self, losses: Tensor) -> Tensor:        
         if self.reduction == "sum-mean":
             return losses.sum(dim=-1).mean()
         if self.reduction == "mean-sum":
             return losses.mean(dim=-1).sum()
-        if self.reduction == "sum" or self.reduction == "sum-sum":
+        if self.reduction == "sum":
             return losses.sum()
-        if self.reduction == "mean" or self.reduction == "mean-mean":
+        if self.reduction == "mean":
             return losses.mean()
         if self.reduction == "none":
             return losses

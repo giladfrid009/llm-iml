@@ -258,3 +258,32 @@ class Initializer:
             rand_ids = allowed_ids[rand_indices]
             embeds = adv_model.orig_embedder.forward(rand_ids)
             return embeds.detach()
+
+    @staticmethod
+    def load(
+        adv_model: AdvModel,
+        path: str,
+        strict: bool = True,
+        batch_size: int = 1,
+    ) -> torch.Tensor:
+        embeds: torch.Tensor = torch.load(path, map_location=adv_model.adv_embedder.device, weights_only=True)
+
+        if embeds.ndim != 3:
+            raise ValueError(f"Loaded embeddings must be a 3D tensor, got shape: {embeds.shape}.")
+
+        B, N, H = batch_size, adv_model.num_tokens, adv_model.adv_embedder.embed_dim
+        eB, eN, eH = embeds.size(0), embeds.size(1), embeds.size(2)
+
+        if eH != H:
+            raise ValueError(f"Loaded embeddings hidden dimension mismatch with adv_embedder.embed_dim ({eH} != {H}).")
+
+        if eB != B:
+            raise ValueError(f"Loaded embeddings batch size mismatch with requested batch size ({eB} != {B}).")
+
+        if strict and eN != N:
+            raise ValueError(f"Loaded embeddings length mismatch with adv_model.num_tokens ({eN} != {N}).")
+
+        elif not strict and eN != N:
+            logger.info(f"Loaded embeddings length mismatch with adv_model.num_tokens ({eN} != {N}).")
+
+        return embeds.to(adv_model.adv_embedder.embed_dtype)
