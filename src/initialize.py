@@ -1,6 +1,11 @@
+from tqdm.auto import tqdm
 import torch
+
+from src.sample_attacks import SampleAttack
+from src.data import TableLoader
 from src.adv_model import AdvModel
 from src.utils.logging import create_logger
+
 
 logger = create_logger(__name__)
 
@@ -287,3 +292,122 @@ class Initializer:
             logger.info(f"Loaded embeddings length mismatch with adv_model.num_tokens ({eN} != {N}).")
 
         return embeds.to(adv_model.adv_embedder.embed_dtype)
+
+    @staticmethod
+    def CRI(
+        adv_model: AdvModel,
+        candidates: list[torch.Tensor],
+        test_prompts: list[str],
+        test_targets: list[str],
+    ) -> torch.Tensor:
+        """
+        Initialize adversarial embeddings using Compliance Refusal Initialization (CRI) method.
+        The candidate which minimizes the loss on the provided test prompts and targets is selected.
+        Reference: [https://arxiv.org/pdf/2502.09755].
+
+        Args:
+            adv_model (AdvModel): The adversarial model to initialize.
+            candidates (list[torch.Tensor]): A list of candidate adversarial embeddings to evaluate.
+            test_prompts (list[str]): A list of test prompts to evaluate the candidates.
+            test_targets (list[str]): A list of target responses corresponding to the test prompts.
+
+        Returns:
+            torch.Tensor: The best candidate adversarial embeddings.
+        """
+        if len(candidates) == 0:
+            raise ValueError("candidates list must contain at least one tensor.")
+
+        conversations = [[{"role": "user", "content": prompt}] for prompt in test_prompts]
+        conversations = adv_model.inject_tokens(conversations)
+        encodings = adv_model.tokenize(conversations, test_targets)
+        criterion = torch.nn.CrossEntropyLoss()
+
+        lowest_loss = float("inf")
+        best_embeds = candidates[0]
+
+        with tqdm(candidates, desc="Evaluating candidates", total=len(candidates)) as pbar:
+            for candidate_embeds in pbar:
+                with torch.inference_mode():
+                    result = adv_model.forward(
+                        input_ids=encodings.input_ids,
+                        attention_mask=encodings.attention_mask,
+                        adv_mask=encodings.adv_mask,
+                        adv_embeds=candidate_embeds,
+                    )
+
+                # align predicted logits and target_ids
+                logits = result.logits[:, :-1]  # remove new token
+                input_ids = encodings.input_ids[:, 1:]  # remove BOS token
+                target_mask = encodings.target_mask[:, 1:]  # remove BOS token
+
+                # extract only targets
+                target_logits = logits[target_mask].view(-1, logits.size(-1))
+                target_ids = input_ids[target_mask].view(-1)
+
+                # compute token-wise loss
+                loss = criterion.forward(target_logits, target_ids).item()
+
+                if loss < lowest_loss:
+                    lowest_loss = loss
+                    best_embeds = candidate_embeds
+
+                pbar.set_postfix(loss=loss, best_loss=lowest_loss)
+
+        return best_embeds  # type: ignore
+
+    @staticmethod
+    def sampleCRI(
+        adv_model: AdvModel,
+        sample_attack: SampleAttack,
+        dl_candidates: TableLoader,
+        num_candidates: int = 100,
+    ) -> torch.Tensor:
+        """
+        Initialize adversarial embeddings using Sample-Attack based Compliance Refusal Initialization (CRI) method.
+        Candidates for CRI are generated using the provided Sample-Attack instance and the given dataloader.
+        The candidate which minimizes the loss on a random batch from the dataloader is selected.
+
+        Args:
+            adv_model (AdvModel): The adversarial model to initialize.
+            sample_attack (SampleAttack): The Sample-Attack instance used to generate candidates.
+            dl_candidates (TableLoader): A dataloader providing data for generating candidates.
+            num_candidates (int): The number of candidates to generate and evaluate.
+        """
+
+        assert sample_attack.adv_model == adv_model, "SampleAttack's adv_model must match the provided adv_model."
+
+        # make sure the dataloader is shuffled
+        dl_candidates = dl_candidates.copy(shuffle=True)
+
+        # a random batch is used for testing candidates
+        batch0 = next(iter(dl_candidates))
+        test_prompts = batch0["prompt"]
+        test_targets = batch0["target"]
+
+        candidate_list = []
+
+        with tqdm(total=num_candidates, desc="Sampling candidates", leave=False) as pbar:
+            while True:
+                for batch in dl_candidates:
+                    convs = [[{"role": "user", "content": prm}] for prm in batch["prompt"]]
+                    sample_results = sample_attack.fit(convs, target_texts=batch["target"])
+
+                    if sample_results.adv_embeds is None:
+                        raise ValueError(f"{type(sample_attack).__name__} did not produce adversarial embeddings.")
+
+                    # split along batch dimension
+                    embeds = torch.unbind(sample_results.adv_embeds, dim=0)
+                    embeds = [c.unsqueeze(0) for c in embeds]
+
+                    # update candidate list
+                    candidate_list.extend(embeds)
+                    pbar.update(len(convs))
+
+                    # if we have enough candidates, select the best one using CRI
+                    if len(candidate_list) >= num_candidates:
+                        return Initializer.CRI(
+                            adv_model,
+                            candidates=candidate_list,
+                            test_prompts=test_prompts,
+                            test_targets=test_targets,
+                        )

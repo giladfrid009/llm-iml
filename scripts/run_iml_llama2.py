@@ -17,6 +17,10 @@ from src.activ_extractor import ActivationExtractor
 from src.fgsm_optim import FGSM
 
 
+from src.data import TableLoader
+from scripts.utils.load_dataset import load_dataset
+
+
 class IML_Experiment(Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.set_defaults(
@@ -25,7 +29,19 @@ class IML_Experiment(Experiment):
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
-        embeds = Initializer.random_normal(adv_model, std=0.1)
+
+        sample_attack = SP(
+            adv_model,
+            optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
+            steps=25,
+            early_stopping=True,
+        )
+
+        _, ds_val, _ = load_dataset("advbench")
+        dl_val = TableLoader(ds_val, batch_size=50)
+        embeds = Initializer.sampleCRI(adv_model, sample_attack, dl_val, num_candidates=200)
+        
+        # embeds = Initializer.random_normal(adv_model, std=0.1)
         adv_model.set_embeddings(embeds)
         return adv_model
 
@@ -43,7 +59,6 @@ class IML_Experiment(Experiment):
             adv_model,
             optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
             steps=15,
-            mixed_precision=False,
             early_stopping=True,
         )
 
