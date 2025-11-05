@@ -496,6 +496,8 @@ class PCAV(SampleAttack):
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
         optim_embeds = adv_embeds
 
+        LOGS = {"loss": [], "remaining": []}
+
         with tqdm(range(self.steps), disable=not self.verbose, leave=False, desc="Attack") as pbar:
             for step in pbar:
                 optim.zero_grad()
@@ -532,9 +534,6 @@ class PCAV(SampleAttack):
                             pbar.close()
                             break
 
-                        if finished_status.all():
-                            break  # all remaining samples are finished
-
                         activs = {layer: acts[~finished_status] for layer, acts in activs.items()}
 
                     loss = criterion.forward(activs, self.classifiers, target_value=0)
@@ -545,7 +544,11 @@ class PCAV(SampleAttack):
                 scaler.update()
 
                 # update progress bar
-                remaining = f"{(~finished).sum().item()}/{len(conversations)}"
+                num_remaining = (~finished).sum().item()
+                remaining = f"{num_remaining}/{len(conversations)}"
                 pbar.set_postfix(loss=loss.item(), remaining=remaining)
 
-        return SampleOutput(conversations, adv_embeds.detach())
+                LOGS["loss"].append(loss.item() / num_remaining)
+                LOGS["remaining"].append(num_remaining)
+
+        return SampleOutput(conversations, adv_embeds.detach(), logs=LOGS)

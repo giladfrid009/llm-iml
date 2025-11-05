@@ -39,7 +39,7 @@ class IML_Experiment(Experiment):
 
         _, ds_val, _ = load_dataset("advbench")
         dl_val = TableLoader(ds_val, batch_size=50)
-        embeds = Initializer.sampleCRI(adv_model, sample_attack, dl_val, num_candidates=200)
+        embeds = Initializer.sampleCRI(adv_model, sample_attack, dl_val, num_candidates=500)
         
         # embeds = Initializer.random_normal(adv_model, std=0.1)
         adv_model.set_embeddings(embeds)

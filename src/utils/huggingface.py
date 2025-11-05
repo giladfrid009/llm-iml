@@ -1,8 +1,12 @@
 import torch
 import os
 from src.utils.torch import clear_memory
+from src.utils.logging import create_logger
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer, PreTrainedModel  # type: ignore
-from huggingface_hub import login, HfFolder
+import huggingface_hub
+
+
+logger = create_logger(__name__)
 
 
 def hf_login(hf_token: str | None = None) -> str | None:
@@ -20,11 +24,13 @@ def hf_login(hf_token: str | None = None) -> str | None:
         hf_token = os.getenv("HF_TOKEN")
 
     if hf_token is None:
-        hf_token = HfFolder.get_token()
+        hf_token = huggingface_hub.get_token()
 
     if hf_token is not None:
-        login(token=hf_token)
-        HfFolder.save_token(hf_token)
+        huggingface_hub.login(token=hf_token)
+
+    else:
+        logger.warning("No Hugging Face token provided or found. Skipping login to Hugging Face Hub.")
 
     return hf_token
 

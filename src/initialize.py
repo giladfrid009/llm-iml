@@ -359,7 +359,7 @@ class Initializer:
     def sampleCRI(
         adv_model: AdvModel,
         sample_attack: SampleAttack,
-        dl_candidates: TableLoader,
+        dataloader: TableLoader,
         num_candidates: int = 100,
     ) -> torch.Tensor:
         """
@@ -370,25 +370,25 @@ class Initializer:
         Args:
             adv_model (AdvModel): The adversarial model to initialize.
             sample_attack (SampleAttack): The Sample-Attack instance used to generate candidates.
-            dl_candidates (TableLoader): A dataloader providing data for generating candidates.
+            dataloader (TableLoader): A dataloader providing data for generating candidates.
             num_candidates (int): The number of candidates to generate and evaluate.
         """
 
         assert sample_attack.adv_model == adv_model, "SampleAttack's adv_model must match the provided adv_model."
 
         # make sure the dataloader is shuffled
-        dl_candidates = dl_candidates.copy(shuffle=True)
+        dataloader = dataloader.copy(shuffle=True)
 
         # a random batch is used for testing candidates
-        batch0 = next(iter(dl_candidates))
+        batch0 = next(iter(dataloader))
         test_prompts = batch0["prompt"]
         test_targets = batch0["target"]
 
         candidate_list = []
 
-        with tqdm(total=num_candidates, desc="Sampling candidates", leave=False) as pbar:
+        with tqdm(total=num_candidates, desc="Sampling candidates") as pbar:
             while True:
-                for batch in dl_candidates:
+                for batch in dataloader:
                     convs = [[{"role": "user", "content": prm}] for prm in batch["prompt"]]
                     sample_results = sample_attack.fit(convs, target_texts=batch["target"])
 

@@ -31,7 +31,14 @@ class MetricLogger:
         if not disabled:
             Task.set_random_seed(None)  # NOTE: are you kidding me
             self.log_dir = self._create_directory(root_dir, *names)
-            self.cm_task = Task.init(project_name=project, task_name=self.run_name)
+            self.cm_task = Task.init(
+                project_name=project,
+                task_name=self.run_name,
+                auto_resource_monitoring={
+                    "first_report_sec": 1800.0,
+                    "sample_frequency_per_sec": 1,
+                },
+            )
 
     def get_hparams(self) -> dict[str, Any]:
         return {

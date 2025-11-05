@@ -174,6 +174,8 @@ class PEZ(SP):
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
         optim_embeds = adv_embeds
 
+        LOGS = {"loss": [], "remaining": []}
+        
         with tqdm(range(self.steps), disable=not self.verbose, leave=False, desc="Attack") as pbar:
             for step in pbar:
                 optim.zero_grad()
@@ -226,8 +228,12 @@ class PEZ(SP):
                 sched.step()
 
                 # update progress bar
-                remaining = f"{(~finished).sum().item()}/{len(conversations)}"
+                num_remaining = (~finished).sum().item()
+                remaining = f"{num_remaining}/{len(conversations)}"
                 pbar.set_postfix(loss=loss.item(), remaining=remaining)
+                
+                LOGS["loss"].append(loss.item() / result.logits.size(0))
+                LOGS["remaining"].append(num_remaining)
 
         with torch.no_grad():
             # replace adv token placeholders with discrete tokens
@@ -236,8 +242,8 @@ class PEZ(SP):
             if self.return_embeds:
                 # return convs with adv-token placeholders and the discrete embeddings
                 discrete_embeds = self.adv_model.embed(adv_ids)
-                return SampleOutput(conversations, discrete_embeds.detach())
+                return SampleOutput(conversations, discrete_embeds.detach(), logs=LOGS)
 
         # replace adv token placeholders with discrete tokens
         conversations = self.adv_model.repl_tokens(conversations, repl_ids=adv_ids.tolist())
-        return SampleOutput(conversations)
+        return SampleOutput(conversations, logs=LOGS)

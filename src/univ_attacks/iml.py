@@ -189,6 +189,10 @@ class IML(UnivAttack):
                 clean_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
                 sample_result = self.inner_attack.fit(clean_convs, target_texts, init_embeds=init_embeds)
 
+                if "loss" in sample_result.logs:
+                    initial_loss = sample_result.logs["loss"][0]
+                    self.metric_logger.report_scalar("IML/initial_sample_attack_loss", initial_loss, step_num)
+
             # skip failed per-sample attacks
             if self.skip_failed_attacks:
                 with torch.inference_mode():

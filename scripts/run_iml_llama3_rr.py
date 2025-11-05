@@ -17,6 +17,9 @@ from src.activ_extractor import ActivationExtractor
 from src.fgsm_optim import FGSM
 
 
+from src.data import TableLoader
+from scripts.utils.load_dataset import load_dataset
+
 class IML_Experiment(Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.set_defaults(
@@ -25,7 +28,14 @@ class IML_Experiment(Experiment):
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
-        embeds = Initializer.random_normal(adv_model, std=0.1)
+        
+        ds_train, _, _ = load_dataset("advbench")
+        dl_train = TableLoader(ds_train, batch_size=50)
+        candidates = [Initializer.random_normal(adv_model, std=0.1) for _ in range(500)]
+        batch = next(iter(dl_train))
+        embeds = Initializer.CRI(adv_model, candidates, test_prompts=batch["prompt"], test_targets=batch["target"])
+        
+        # embeds = Initializer.random_normal(adv_model, std=0.1)
         adv_model.set_embeddings(embeds)
         return adv_model
 

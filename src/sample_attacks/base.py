@@ -1,7 +1,8 @@
 from __future__ import annotations
 import torch
+from typing import Any
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.aliases import Conv
 from src.adv_model import AdvModel
@@ -17,6 +18,7 @@ class SampleOutput:
 
     conversations: list[Conv]
     adv_embeds: torch.Tensor | None = None
+    logs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self.validate()
