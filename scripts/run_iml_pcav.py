@@ -27,12 +27,12 @@ class IML_PCAV_Experiment(IML_Experiment):
 
         parser.set_defaults(
             model="meta-llama/Llama-2-7b-chat-hf",
+            layers=["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
             lr=1e-2,
             skip_fooled="true",
             skip_failed="true",
             dynamic_labels=20,
             warmup_epochs=4,
-            layer_names=["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
         )
 
     def load_data(self):

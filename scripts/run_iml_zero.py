@@ -21,12 +21,12 @@ class IML_Zero_Experiment(IML_Experiment):
 
         parser.set_defaults(
             model="meta-llama/Llama-2-7b-chat-hf",
+            layers=["lm_head"],
             lr=5e-3,
             skip_fooled="true",
             skip_failed="true",
             dynamic_labels=20,
             warmup_epochs=4,
-            layer_names=["lm_head"],
         )
 
     def initialize_attack(
