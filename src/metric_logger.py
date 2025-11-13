@@ -34,6 +34,7 @@ class MetricLogger:
             self.cm_task = Task.init(
                 project_name=project,
                 task_name=self.run_name,
+                reuse_last_task_id=False,
                 auto_resource_monitoring={
                     "first_report_sec": 1800.0,
                     "sample_frequency_per_sec": 1,

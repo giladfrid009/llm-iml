@@ -28,8 +28,8 @@ class IML_PCAV_Experiment(IML_Experiment):
         parser.set_defaults(
             model="meta-llama/Llama-2-7b-chat-hf",
             lr=1e-2,
-            skip_already_fooled="true",
-            skip_failed_attacks="true",
+            skip_fooled="true",
+            skip_failed="true",
             dynamic_labels=20,
             warmup_epochs=4,
             layer_names=["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],

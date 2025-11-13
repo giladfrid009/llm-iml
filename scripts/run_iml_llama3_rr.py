@@ -22,8 +22,8 @@ class IML_Llama3RR_Experiment(IML_Experiment):
         parser.set_defaults(
             model="GraySwanAI/Llama-3-8B-Instruct-RR",
             lr=1e-2,
-            skip_already_fooled="true",
-            skip_failed_attacks="true",
+            skip_fooled="true",
+            skip_failed="true",
             dynamic_labels=20,
             warmup_epochs=4,
             layer_names=["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
