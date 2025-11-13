@@ -18,11 +18,62 @@ from src.activ_extractor import ActivationExtractor
 
 class IML_Experiment(Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
-        pass
+        iml_args = parser.add_argument_group("IML Attack Parameters")
+
+        iml_args.add_argument(
+            "--lr",
+            type=float,
+            default=1e-2,
+            metavar="FLOAT",
+            help="Learning rate for the adversarial trigger optimization.",
+        )
+
+        iml_args.add_argument(
+            "--layers",
+            type=str,
+            nargs="+",
+            default=["lm_head"],
+            metavar="NAMES",
+            help="Names of the layers to extract activations from.",
+        )
+
+        iml_args.add_argument(
+            "--skip_fooled",
+            type=str,
+            default="true",
+            choices=["true", "false"],
+            metavar="BOOL",
+            help="Whether to skip samples that are already fooled by the universal trigger.",
+        )
+
+        iml_args.add_argument(
+            "--skip_failed",
+            type=str,
+            default="true",
+            choices=["true", "false"],
+            metavar="BOOL",
+            help="Whether to skip samples that the inner attack failed to attack.",
+        )
+
+        iml_args.add_argument(
+            "--dynamic_labels",
+            type=int,
+            default=20,
+            metavar="N",
+            help="Number of dynamic labels to use for each sample during IML training. If 0 no dynamic labels are used.",
+        )
+
+        iml_args.add_argument(
+            "--warmup_epochs",
+            type=int,
+            default=2,
+            metavar="NUM",
+            help="Number of warmup epochs.",
+        )
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
-        embeds = Initializer.random_normal(adv_model, std=0.1)  # High STD = Worse
+        embeds = Initializer.random_normal(adv_model, std=0.1)
         adv_model.set_embeddings(embeds)
         return adv_model
 
@@ -36,27 +87,25 @@ class IML_Experiment(Experiment):
         gen_config,
         metric_logger,
     ) -> UnivAttack:
+        args = self.args()
+
         inner_attack = SP(
             adv_model,
             optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
             steps=25,
-            mixed_precision=False,
-            early_stopping=True,
+            target_matching=True,
         )
 
         optimizer = optim.Adam(
             adv_model.parameters(),
-            lr=1e-2,
+            lr=args.lr,
             weight_decay=0,
         )
 
         activ_extractor = ActivationExtractor(
             adv_model.model,
-            "lm_head",
-            "model.layers.17",
-            "model.layers.12",
-            "model.layers.25",
-            capture_output=True,
+            *args.layers,
+            capture_output=False,
         )
 
         return IML(
@@ -71,9 +120,10 @@ class IML_Experiment(Experiment):
             mixed_precision=mixed_precision,
             metric_logger=metric_logger,
             # specialized args
-            skip_already_fooled=True,
-            skip_failed_attacks=True,
-            dynamic_labels=20,
+            skip_already_fooled=args.skip_fooled == "true",
+            skip_failed_attacks=args.skip_failed == "true",
+            warmup_epochs=args.warmup_epochs,
+            dynamic_labels=args.dynamic_labels,
         )
 
 

@@ -526,15 +526,12 @@ class PCAV(SampleAttack):
 
                     # update early stopping
                     if self.target_prob > 0.0:
-                        finished_status = self._check_early_stopping(activs)
-
-                        finished[~finished] = finished_status
-                        if finished.all():  # break early
-                            pbar.n = pbar.total
-                            pbar.close()
+                        status = self._check_early_stopping(activs)
+                        finished[~finished] = status
+                        if finished.all():
                             break
 
-                        activs = {layer: acts[~finished_status] for layer, acts in activs.items()}
+                        activs = {layer: acts[~status] for layer, acts in activs.items()}
 
                     loss = criterion.forward(activs, self.classifiers, target_value=0)
 
@@ -550,5 +547,9 @@ class PCAV(SampleAttack):
 
                 LOGS["loss"].append(loss.item() / num_remaining)
                 LOGS["remaining"].append(num_remaining)
+
+            # close pbar
+            pbar.n = pbar.total
+            pbar.close()
 
         return SampleOutput(conversations, adv_embeds.detach(), logs=LOGS)

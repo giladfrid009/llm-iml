@@ -7,6 +7,7 @@ from src.utils.logging import create_logger
 from src.utils.torch import clear_memory
 
 import time
+from dataclasses import dataclass
 from typing import Any
 from tqdm.auto import tqdm
 import pathlib
@@ -14,6 +15,13 @@ from abc import abstractmethod
 import torch
 
 logger = create_logger(__name__)
+
+
+@dataclass
+class TrainPosition:
+    epoch: int
+    batch: int
+    step: int
 
 
 class UnivAttack:
@@ -257,7 +265,8 @@ class UnivAttack:
                             break
 
                         # training step
-                        loss_value = self.optim_step(batch_data, epoch_num, batch_num, step)
+                        position = TrainPosition(epoch_num, batch_num, step)
+                        loss_value = self.optim_step(batch_data, position)
                         stop_criteria.update(epoch_num, None)
                         if loss_value is not None:
                             self.metric_logger.report_scalar("loss", loss_value, step)
@@ -283,15 +292,13 @@ class UnivAttack:
         return self.adv_model
 
     @abstractmethod
-    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int, step_num: int) -> float | None:
+    def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> float | None:
         """
         Perform a single optimization step on the given batch of data.
 
         Args:
             data (dict[str, list[Any]]): Batch data containing input and target texts.
-            epoch_num (int): Current epoch number.
-            batch_num (int): Current batch number.
-            step_num (int): Current global step number.
+            position (TrainPosition): Current position in training (epoch, batch, step).
 
         Returns:
             float | None: Loss value for the optimization step, or None if no loss is computed.

@@ -247,7 +247,6 @@ class Generator:
             adv_model=adv_model,
             evaluators=[KeywordMatching()],
             eval_metric="Matching/GCG1",
-            mixed_precision=False,
             metric_logger=MetricLogger(project="none", disabled=True),
             gen_config=gen_config,
         )

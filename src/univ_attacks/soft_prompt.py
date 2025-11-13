@@ -1,7 +1,7 @@
 from src.adv_model import AdvModel
 from src.eval.evaluator import Evaluator
 from src.config import GenConfig
-from src.univ_attacks.univ_attack import UnivAttack
+from src.univ_attacks.univ_attack import UnivAttack, TrainPosition
 from src.fgsm_optim import FGSM
 from src.metric_logger import MetricLogger
 
@@ -71,7 +71,7 @@ class SoftPrompt(UnivAttack):
         loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
         return loss
 
-    def optim_step(self, data: dict[str, list[Any]], epoch_num: int, batch_num: int, step_num: int) -> float | None:
+    def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> float | None:
         self.optimizer.zero_grad()
 
         # construct input conversations

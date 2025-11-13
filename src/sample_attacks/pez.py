@@ -93,7 +93,8 @@ class PEZ(SP):
         adv_model: AdvModel,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer] = default_optimizer,
         steps: int = 100,
-        early_stopping: bool = False,
+        target_matching: bool = False,
+        target_loss: float | None = None,
         mixed_precision: bool = False,
         return_embeds: bool = True,
         verbose: bool = True,
@@ -102,7 +103,8 @@ class PEZ(SP):
             adv_model=adv_model,
             optim_factory=optim_factory,
             steps=steps,
-            early_stopping=early_stopping,
+            target_matching=target_matching,
+            target_loss=target_loss,
             noise_scale=0.0,
             mixed_precision=mixed_precision,
             verbose=verbose,
@@ -175,18 +177,18 @@ class PEZ(SP):
         optim_embeds = adv_embeds
 
         LOGS = {"loss": [], "remaining": []}
-        
+
         with tqdm(range(self.steps), disable=not self.verbose, leave=False, desc="Attack") as pbar:
             for step in pbar:
                 optim.zero_grad()
 
                 # NOTE: need to copy kv-cache since forward modifies it in-place
-                step_encodings = encodings.copy()
-                step_encodings["kv_cache"] = copy.deepcopy(encodings.kv_cache)
+                step_enc = encodings.copy()
+                step_enc["kv_cache"] = copy.deepcopy(encodings.kv_cache)
 
                 # select only unfinished samples if early stopping is enabled
-                if self.early_stopping:
-                    step_encodings = self._masked_select(step_encodings, ~finished)
+                if self.target_matching:
+                    step_enc = self._masked_select(step_enc, ~finished)
                     optim_embeds = adv_embeds[~finished]
 
                 with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
@@ -194,32 +196,36 @@ class PEZ(SP):
                     optim_embeds = self.soft_project.forward(optim_embeds)
 
                     result = self.adv_model.forward(
-                        input_ids=step_encodings.input_ids,
-                        attention_mask=step_encodings.attention_mask,
-                        adv_mask=step_encodings.adv_mask,
-                        past_key_values=step_encodings.kv_cache,
+                        input_ids=step_enc.input_ids,
+                        attention_mask=step_enc.attention_mask,
+                        adv_mask=step_enc.adv_mask,
+                        past_key_values=step_enc.kv_cache,
                         adv_embeds=optim_embeds,
                     )
 
-                    # update early stopping based on predictions
-                    if self.early_stopping:
-                        finished_status = self._check_early_stopping(
-                            logits=result.logits,
-                            input_ids=step_encodings.input_ids,
-                            target_mask=step_encodings.target_mask,
-                        )
-
-                        finished[~finished] = finished_status
-                        if finished.all():  # break early
-                            pbar.n = pbar.total
-                            pbar.close()
+                    # update early stopping based on matching
+                    if self.target_matching:
+                        status = self._check_matching(result.logits, step_enc.input_ids, step_enc.target_mask)
+                        finished[~finished] = status
+                        if finished.all():
                             break
 
-                    loss = self.criterion(
+                    sample_loss = self.sample_criterion(
                         logits=result.logits,
-                        input_ids=step_encodings.input_ids,
-                        target_mask=step_encodings.target_mask,
+                        input_ids=step_enc.input_ids,
+                        target_mask=step_enc.target_mask,
                     )
+
+                    # update early stopping based on loss
+                    if self.target_loss is not None:
+                        status = sample_loss <= self.target_loss
+                        finished[~finished] |= status
+                        if finished.all():
+                            break
+
+                        sample_loss = sample_loss[~status]
+
+                    loss = sample_loss.sum()
 
                 # backward pass and optimization step
                 scaler.scale(loss).backward()
@@ -231,9 +237,13 @@ class PEZ(SP):
                 num_remaining = (~finished).sum().item()
                 remaining = f"{num_remaining}/{len(conversations)}"
                 pbar.set_postfix(loss=loss.item(), remaining=remaining)
-                
+
                 LOGS["loss"].append(loss.item() / result.logits.size(0))
                 LOGS["remaining"].append(num_remaining)
+
+            # close pbar
+            pbar.n = pbar.total
+            pbar.close()
 
         with torch.no_grad():
             # replace adv token placeholders with discrete tokens

@@ -11,14 +11,9 @@ import torch
 
 def default_injector(adv_model: AdvModel, conversations: list[Conv]) -> list[Conv]:
     """
-    Injects an adversarial prefix to each conversation in the list,
-    with spaces separating the adversarial tokens.
+    Injects an adversarial suffix to each conversation in the list.
     """
-    return adv_model.inject_tokens(
-        conversations,
-        add_spaces=True,
-        adv_suffix=False,
-    )
+    return adv_model.inject_tokens(conversations, add_spaces=False, adv_suffix=True)
 
 
 def default_initializer(adv_model: AdvModel, num_inputs: int) -> torch.Tensor:

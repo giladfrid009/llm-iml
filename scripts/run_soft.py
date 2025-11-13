@@ -16,7 +16,7 @@ from src.initialize import Initializer
 
 class SoftPrompt_Experiment(Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
-        soft_group = parser.add_argument_group("Soft Prompt Arguments")
+        soft_group = parser.add_argument_group("Soft-Prompt Attack Parameters")
 
         soft_group.add_argument(
             "--lr",

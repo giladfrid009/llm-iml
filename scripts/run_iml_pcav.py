@@ -9,11 +9,10 @@ module_dir = pathlib.Path(__file__).parent.resolve().parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
-from scripts.experiment import Experiment
+from scripts.run_iml import IML_Experiment
 from src.sample_attacks import PCAV, LogisticTrainer
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
-from src.initialize import Initializer
 from src.activ_extractor import ActivationExtractor
 from src.data import TableLoader
 from src.utils.logging import create_logger
@@ -22,10 +21,18 @@ from src.utils.logging import create_logger
 logger = create_logger(__name__)
 
 
-class IML_Experiment(Experiment):
+class IML_PCAV_Experiment(IML_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
+        super().add_arguments(parser)
+
         parser.set_defaults(
             model="meta-llama/Llama-2-7b-chat-hf",
+            lr=1e-2,
+            skip_already_fooled="true",
+            skip_failed_attacks="true",
+            dynamic_labels=20,
+            warmup_epochs=4,
+            layer_names=["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
         )
 
     def load_data(self):
@@ -33,12 +40,6 @@ class IML_Experiment(Experiment):
         scav_train = scav_data[scav_data["split"] == "train"]
         scav_eval = scav_data[scav_data["split"] == "test"]
         return scav_train, scav_eval
-
-    def create_adversarial_model(self, model, tokenizer) -> AdvModel:
-        adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
-        embeds = Initializer.random_normal(adv_model, std=0.1)
-        adv_model.set_embeddings(embeds)
-        return adv_model
 
     def initialize_attack(
         self,
@@ -69,18 +70,16 @@ class IML_Experiment(Experiment):
             target_prob=0.05,
         )
 
+        args = self.args()
+
         optimizer = optim.Adam(
             adv_model.parameters(),
-            lr=1e-2,
-            weight_decay=0,
+            lr=args.lr,
         )
 
         activ_extractor = ActivationExtractor(
             adv_model.model,
-            "model.layers.12",
-            "model.layers.17",
-            "model.layers.25",
-            "lm_head",
+            *args.layers,
             capture_output=False,
         )
 
@@ -96,11 +95,12 @@ class IML_Experiment(Experiment):
             mixed_precision=mixed_precision,
             metric_logger=metric_logger,
             # specialized args
-            skip_already_fooled=True,
-            skip_failed_attacks=True,
-            dynamic_labels=20,
+            skip_already_fooled=args.skip_fooled == "true",
+            skip_failed_attacks=args.skip_failed == "true",
+            warmup_epochs=args.warmup_epochs,
+            dynamic_labels=args.dynamic_labels,
         )
 
 
 if __name__ == "__main__":
-    IML_Experiment().main()
+    IML_PCAV_Experiment().main()

@@ -8,23 +8,26 @@ module_dir = pathlib.Path(__file__).parent.resolve().parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
-from scripts.experiment import Experiment
+from scripts.run_iml import IML_Experiment
 from src.sample_attacks import SPZ
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
-from src.initialize import Initializer
 from src.activ_extractor import ActivationExtractor
 
 
-class IMLZero_Experiment(Experiment):
+class IML_Zero_Experiment(IML_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
-        pass
+        super().add_arguments(parser)
 
-    def create_adversarial_model(self, model, tokenizer) -> AdvModel:
-        adv_model = AdvModel(model=model, tokenizer=tokenizer, num_tokens=20)
-        embeds = Initializer.random_normal(adv_model, std=0.1)
-        adv_model.set_embeddings(embeds)
-        return adv_model
+        parser.set_defaults(
+            model="meta-llama/Llama-2-7b-chat-hf",
+            lr=5e-3,
+            skip_already_fooled="true",
+            skip_failed_attacks="true",
+            dynamic_labels=20,
+            warmup_epochs=4,
+            layer_names=["lm_head"],
+        )
 
     def initialize_attack(
         self,
@@ -41,19 +44,19 @@ class IMLZero_Experiment(Experiment):
             optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
             inject_func=lambda a, x: a.inject_tokens(x, add_spaces=False, adv_suffix=False),
             steps=25,
-            mixed_precision=False,
-            early_stopping=True,
+            target_matching=True,
         )
+
+        args = self.args()
 
         optimizer = optim.Adam(
             adv_model.parameters(),
-            lr=5e-3,
-            weight_decay=0,
+            lr=args.lr,
         )
 
         activ_extractor = ActivationExtractor(
             adv_model.model,
-            "lm_head",
+            *args.layers,
             capture_output=False,
         )
 
@@ -69,11 +72,12 @@ class IMLZero_Experiment(Experiment):
             mixed_precision=mixed_precision,
             metric_logger=metric_logger,
             # specialized args
-            skip_already_fooled=False,
-            skip_failed_attacks=True,
-            dynamic_labels=20,
+            skip_already_fooled=args.skip_fooled == "true",
+            skip_failed_attacks=args.skip_failed == "true",
+            warmup_epochs=args.warmup_epochs,
+            dynamic_labels=args.dynamic_labels,
         )
 
 
 if __name__ == "__main__":
-    IMLZero_Experiment().main()
+    IML_Zero_Experiment().main()

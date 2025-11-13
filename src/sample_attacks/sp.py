@@ -24,7 +24,8 @@ class SP(SampleAttack):
         adv_model: AdvModel,
         optim_factory: Callable[[Iterable[torch.Tensor]], torch.optim.Optimizer],
         steps: int = 100,
-        early_stopping: bool = False,
+        target_matching: bool = False,
+        target_loss: float | None = None,
         noise_scale: float = 0.0,
         mixed_precision: bool = False,
         verbose: bool = True,
@@ -35,7 +36,8 @@ class SP(SampleAttack):
             optim_factory (Callable[Iterable[torch.Tensor], torch.optim.Optimizer]):
                 A factory function that creates an optimizer given the parameters to optimize.
             steps (int): Number of optimization steps.
-            early_stopping (bool): Whether to stop optimizing a sample once it achieves target matching.
+            target_matching (bool): Whether to stop optimizing a sample once it achieves perfect target matching.
+            target_loss (float | None): If specified, stop optimizing a sample once its loss is below this threshold.
             noise_scale (float): Standard deviation of Gaussian noise added to the initial embeddings.
             mixed_precision (bool): Whether to use mixed precision training.
             verbose (bool): Whether to display a progress bar.
@@ -44,7 +46,8 @@ class SP(SampleAttack):
 
         self.steps = steps
         self.optim_factory = optim_factory
-        self.early_stopping = early_stopping
+        self.target_matching = target_matching
+        self.target_loss = target_loss
         self.noise_scale = noise_scale
         self.mixed_precision = mixed_precision
 
@@ -53,7 +56,8 @@ class SP(SampleAttack):
         return {
             "name": type(self).__name__,
             "steps": self.steps,
-            "early_stopping": self.early_stopping,
+            "target_matching": self.target_matching,
+            "target_loss": self.target_loss,
             "mixed_precision": self.mixed_precision,
             "noise_scale": self.noise_scale,
             "optim": dummy_optim.state_dict()["param_groups"][0],
@@ -147,7 +151,7 @@ class SP(SampleAttack):
         return BatchEncoding(new_data)
 
     @torch.no_grad()
-    def _check_early_stopping(
+    def _check_matching(
         self,
         logits: torch.Tensor,
         input_ids: torch.Tensor,
@@ -174,7 +178,7 @@ class SP(SampleAttack):
         match_mask.masked_fill_(~target_mask, True)  # Ignore non-target tokens
         return match_mask.all(dim=-1).flatten()
 
-    def criterion(
+    def sample_criterion(
         self,
         logits: torch.Tensor,
         input_ids: torch.Tensor,
@@ -189,7 +193,7 @@ class SP(SampleAttack):
             target_mask (torch.Tensor): Mask indicating target tokens in the input, shape (batch_size, seq_len)
 
         Returns:
-            torch.Tensor: Scalar tensor representing the loss.
+            torch.Tensor: Loss of shape (batch_size,) for each sample.
         """
         # align predicted logits and target_ids
         logits = logits[:, :-1]  # remove new token
@@ -206,7 +210,8 @@ class SP(SampleAttack):
         # scatter losses back to the original shape and compute sample-mean
         loss_matrix = torch.zeros_like(target_mask, dtype=flat_losses.dtype)
         loss_matrix[target_mask] = flat_losses
-        loss = torch.sum(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
+        loss = loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1)
+        # loss = torch.sum(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
         return loss
 
     def fit(
@@ -244,43 +249,47 @@ class SP(SampleAttack):
                 optim.zero_grad()
 
                 # NOTE: need to copy kv-cache since forward modifies it in-place
-                step_encodings = encodings.copy()
-                step_encodings["kv_cache"] = copy.deepcopy(encodings.kv_cache)
+                step_enc = encodings.copy()
+                step_enc["kv_cache"] = copy.deepcopy(encodings.kv_cache)
 
                 # select only unfinished samples if early stopping is enabled
-                if self.early_stopping:
-                    step_encodings = self._masked_select(step_encodings, ~finished)
+                if self.target_matching or self.target_loss is not None:
+                    step_enc = self._masked_select(step_enc, ~finished)
                     optim_embeds = adv_embeds[~finished]
 
                 with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                     # forward pass
                     result = self.adv_model.forward(
-                        input_ids=step_encodings.input_ids,
-                        attention_mask=step_encodings.attention_mask,
-                        adv_mask=step_encodings.adv_mask,
-                        past_key_values=step_encodings.kv_cache,
+                        input_ids=step_enc.input_ids,
+                        attention_mask=step_enc.attention_mask,
+                        adv_mask=step_enc.adv_mask,
+                        past_key_values=step_enc.kv_cache,
                         adv_embeds=optim_embeds,
                     )
 
-                    # update early stopping based on predictions
-                    if self.early_stopping:
-                        finished_status = self._check_early_stopping(
-                            logits=result.logits,
-                            input_ids=step_encodings.input_ids,
-                            target_mask=step_encodings.target_mask,
-                        )
-
-                        finished[~finished] = finished_status
-                        if finished.all():  # break early
-                            pbar.n = pbar.total
-                            pbar.close()
+                    # update early stopping based on matching
+                    if self.target_matching:
+                        status = self._check_matching(result.logits, step_enc.input_ids, step_enc.target_mask)
+                        finished[~finished] = status
+                        if finished.all():
                             break
 
-                    loss = self.criterion(
+                    sample_loss = self.sample_criterion(
                         logits=result.logits,
-                        input_ids=step_encodings.input_ids,
-                        target_mask=step_encodings.target_mask,
+                        input_ids=step_enc.input_ids,
+                        target_mask=step_enc.target_mask,
                     )
+
+                    # update early stopping based on loss
+                    if self.target_loss is not None:
+                        status = sample_loss <= self.target_loss
+                        finished[~finished] |= status
+                        if finished.all():
+                            break
+
+                        sample_loss = sample_loss[~status]
+
+                    loss = sample_loss.sum()
 
                 # backward pass and optimization step
                 scaler.scale(loss).backward()
@@ -294,5 +303,9 @@ class SP(SampleAttack):
 
                 LOGS["loss"].append(loss.item() / result.logits.size(0))
                 LOGS["remaining"].append(num_remaining)
+
+            # close pbar
+            pbar.n = pbar.total
+            pbar.close()
 
         return SampleOutput(conversations, adv_embeds.detach(), logs=LOGS)
