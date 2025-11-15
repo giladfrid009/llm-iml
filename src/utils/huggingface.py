@@ -104,7 +104,7 @@ def load_hf_model(
 
     if adapter_name is not None:
         model.load_adapter(
-            adapter_name,
+            peft_model_id=adapter_name,
             device_map=device_map,
             **adapter_kwargs,
         )
