@@ -26,7 +26,7 @@ class IML_Phi3_CAPO_Experiment(IML_Experiment):
             skip_fooled="true",
             skip_failed="true",
             dynamic_labels=40,
-            warmup_epochs=0,
+            warmup_epochs=4,
         )
 
     def initialize_attack(
@@ -43,15 +43,15 @@ class IML_Phi3_CAPO_Experiment(IML_Experiment):
             if epoch < args.warmup_epochs:
                 return SP(
                     adv_model,
-                    optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
-                    steps=45,
+                    optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
+                    steps=65,
                     target_matching=False,
                 )
 
             return SP(
                 adv_model,
-                optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
-                steps=15,
+                optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
+                steps=25,
                 target_matching=True,
             )
 
