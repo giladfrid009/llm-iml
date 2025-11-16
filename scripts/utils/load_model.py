@@ -16,6 +16,7 @@ MPT_TEMPLATE = "{% if messages[0]['role'] == 'system' %}{% set loop_messages = m
 
 SUPPORTED_MODELS = [
     "Qwen/Qwen3-0.6B",
+    "Qwen/Qwen3-4B-Instruct-2507",
     "Qwen/Qwen2.5-0.5B-Instruct",
     "Orenguteng/Llama-3-8B-Lexi-Uncensored",
     "meta-llama/Meta-Llama-3-8B-Instruct",
@@ -87,7 +88,7 @@ def load_model(
 
     elif model_name == "AIM-Intelligence/RepBend_Mistral_7B_LoRA":
         config.update({"model_name": "mistralai/Mistral-7B-Instruct-v0.2", "adapter_name": "AIM-Intelligence/RepBend_Mistral_7B_LoRA"})
-    
+
     elif model_name == "ContinuousAT/Llama-2-7B-CAT":
         config.update({"model_name": "meta-llama/Llama-2-7b-chat-hf", "adapter_name": "ContinuousAT/Llama-2-7B-CAT"})
 

@@ -9,24 +9,24 @@ if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
 from scripts.run_iml import IML_Experiment
-from src.sample_attacks import SPZ
+from src.sample_attacks import SP
 from src.univ_attacks import UnivAttack, IML
 from src.adv_model import AdvModel
 from src.activ_extractor import ActivationExtractor
 
 
-class IML_Zero_Experiment(IML_Experiment):
+class IML_Mistral_RepBend_Experiment(IML_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         super().add_arguments(parser)
 
         parser.set_defaults(
-            model="meta-llama/Llama-2-7b-chat-hf",
-            layers=["lm_head"],
-            lr=5e-3,
+            model="AIM-Intelligence/RepBend_Mistral_7B_LoRA",
+            layers=["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
+            lr=1e-2,
             skip_fooled="true",
             skip_failed="true",
             dynamic_labels=40,
-            warmup_epochs=4,
+            warmup_epochs=0,
         )
 
     def initialize_attack(
@@ -39,13 +39,21 @@ class IML_Zero_Experiment(IML_Experiment):
         gen_config,
         metric_logger,
     ) -> UnivAttack:
-        inner_attack = SPZ(
-            adv_model,
-            optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
-            inject_func=lambda a, x: a.inject_tokens(x, add_spaces=False, adv_suffix=False),
-            steps=25,
-            target_matching=True,
-        )
+        def sample_attack_factory(adv_model: AdvModel, epoch: int):
+            if epoch < args.warmup_epochs:
+                return SP(
+                    adv_model,
+                    optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
+                    steps=45,
+                    target_matching=False,
+                )
+
+            return SP(
+                adv_model,
+                optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
+                steps=15,
+                target_matching=True,
+            )
 
         args = self.args()
 
@@ -62,7 +70,7 @@ class IML_Zero_Experiment(IML_Experiment):
 
         return IML(
             adv_model=adv_model,
-            inner_attack=inner_attack,
+            inner_attack=sample_attack_factory,
             optimizer=optimizer,
             activ_extractor=activ_extractor,
             evaluators=evaluators,
@@ -80,4 +88,4 @@ class IML_Zero_Experiment(IML_Experiment):
 
 
 if __name__ == "__main__":
-    IML_Zero_Experiment().main()
+    IML_Mistral_RepBend_Experiment().main()

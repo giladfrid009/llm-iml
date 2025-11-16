@@ -31,7 +31,7 @@ class IML_PCAV_Experiment(IML_Experiment):
             lr=1e-2,
             skip_fooled="true",
             skip_failed="true",
-            dynamic_labels=20,
+            dynamic_labels=40,
             warmup_epochs=4,
         )
 

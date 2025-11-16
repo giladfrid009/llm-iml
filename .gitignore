@@ -15,4 +15,5 @@ logs
 notebooks
 tests
 tests2
-run_all_rr.py
+run_all_llama3_rr.py
+run_all_llama2.py
