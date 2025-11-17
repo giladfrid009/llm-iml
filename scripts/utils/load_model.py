@@ -38,8 +38,6 @@ SUPPORTED_MODELS = [
     "google/gemma-3-1b-it",
     "apple/OpenELM-1_1B-Instruct",
     # robust models
-    "AIM-Intelligence/RepBend_Llama3_8B_LoRA",
-    "AIM-Intelligence/RepBend_Mistral_7B_LoRA",
     "GraySwanAI/Llama-3-8B-Instruct-RR",
     "GraySwanAI/Mistral-7B-Instruct-RR",
     "cais/zephyr_7b_r2d2",
@@ -82,12 +80,6 @@ def load_model(
 
     elif model_name == "microsoft/Phi-4-mini-instruct":
         config.update({"trust_remote_code": True})
-
-    elif model_name == "AIM-Intelligence/RepBend_Llama3_8B_LoRA":
-        config.update({"model_name": "meta-llama/Meta-Llama-3-8B-Instruct", "adapter_name": "AIM-Intelligence/RepBend_Llama3_8B_LoRA"})
-
-    elif model_name == "AIM-Intelligence/RepBend_Mistral_7B_LoRA":
-        config.update({"model_name": "mistralai/Mistral-7B-Instruct-v0.2", "adapter_name": "AIM-Intelligence/RepBend_Mistral_7B_LoRA"})
 
     elif model_name == "ContinuousAT/Llama-2-7B-CAT":
         config.update({"model_name": "meta-llama/Llama-2-7b-chat-hf", "adapter_name": "ContinuousAT/Llama-2-7B-CAT"})
