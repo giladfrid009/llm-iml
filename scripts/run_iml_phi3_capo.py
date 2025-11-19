@@ -43,16 +43,16 @@ class IML_Phi3_CAPO_Experiment(IML_Experiment):
             if epoch < args.warmup_epochs:
                 return SP(
                     adv_model,
-                    optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
-                    steps=65,
+                    optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
+                    steps=150,
                     target_matching=False,
                 )
 
             return SP(
                 adv_model,
-                optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
-                steps=25,
-                target_matching=True,
+                optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
+                steps=150,
+                target_matching=False,
             )
 
         args = self.args()

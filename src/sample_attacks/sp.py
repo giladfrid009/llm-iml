@@ -27,6 +27,8 @@ class SP(SampleAttack):
         target_matching: bool = False,
         target_loss: float | None = None,
         noise_scale: float = 0.0,
+        *,
+        kv_caching: bool = True,
         mixed_precision: bool = False,
         verbose: bool = True,
     ):
@@ -39,6 +41,7 @@ class SP(SampleAttack):
             target_matching (bool): Whether to stop optimizing a sample once it achieves perfect target matching.
             target_loss (float | None): If specified, stop optimizing a sample once its loss is below this threshold.
             noise_scale (float): Standard deviation of Gaussian noise added to the initial embeddings.
+            kv_caching (bool): Whether to use kv-caching for the constant part of the input.
             mixed_precision (bool): Whether to use mixed precision training.
             verbose (bool): Whether to display a progress bar.
         """
@@ -50,6 +53,7 @@ class SP(SampleAttack):
         self.target_loss = target_loss
         self.noise_scale = noise_scale
         self.mixed_precision = mixed_precision
+        self.kv_caching = kv_caching
 
     def get_hparams(self) -> dict:
         dummy_optim = self.optim_factory([torch.zeros(1)])
@@ -235,8 +239,9 @@ class SP(SampleAttack):
         encodings = self.adv_model.tokenize(conversations, target_texts)
 
         # compute kv-cache
-        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-            encodings = self._compute_cache(encodings)
+        if self.kv_caching:
+            with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+                encodings = self._compute_cache(encodings)
 
         # early stopping state
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
@@ -250,7 +255,7 @@ class SP(SampleAttack):
 
                 # NOTE: need to copy kv-cache since forward modifies it in-place
                 step_enc = encodings.copy()
-                step_enc["kv_cache"] = copy.deepcopy(encodings.kv_cache)
+                step_enc["kv_cache"] = copy.deepcopy(encodings.kv_cache) if "kv_cache" in step_enc else None
 
                 # select only unfinished samples if early stopping is enabled
                 if self.target_matching or self.target_loss is not None:

@@ -128,8 +128,7 @@ class IML(UnivAttack):
                 return ev
 
         raise ValueError(
-            f"Judge metric {self.eval_metric} not found in any evaluator. "
-            f"Available metrics: {[ev.metric_names for ev in self.evaluators]}"
+            f"Judge metric {self.eval_metric} not found in any evaluator. Available metrics: {[ev.metric_names for ev in self.evaluators]}"
         )
 
     def make_attack(self, epoch_num: int) -> SampleAttack:
@@ -186,6 +185,15 @@ class IML(UnivAttack):
                     input_convs = [conv for conv, m in zip(input_convs, fooled_mask) if not m]
                     target_texts = [tgt for tgt, m in zip(target_texts, fooled_mask) if not m]
 
+                # TODO: IMPORTANT: we can use the not_fooled_ratio value to evaluate current perturbation effectiveness
+                # for free. It should drastically improve the results. especially if the batch size is large.
+                # to achieve this, we can return am optional batch_metric value from optim_step.
+                # then, we can implement the evaluation strategy in the parent class (UnivAttack)
+                # there will be 3 strategies:
+                # 1. latest only: use only the latest batch metric (current implementation)
+                # 2. best metric: keep track of the best metric in the batch so far, and evaluate the perturbation associated with it
+                # 3. last and best: evaluate both the latest and the best metrics, and choose the better perturbation
+
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
                 init_embeds = None
@@ -196,9 +204,8 @@ class IML(UnivAttack):
                 clean_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
                 sample_result = self.inner_attack.fit(clean_convs, target_texts, init_embeds=init_embeds)
 
-                if "loss" in sample_result.logs:
-                    initial_loss = sample_result.logs["loss"][0]
-                    self.metric_logger.report_scalar("IML/initial_sample_attack_loss", initial_loss, position.step)
+                if sample_losses := sample_result.logs.get("loss"):
+                    self.metric_logger.report_scalar("IML/initial_sample_attack_loss", sample_losses[0], position.step)
 
             # skip failed per-sample attacks
             if self.skip_failed_attacks:

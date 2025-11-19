@@ -15,12 +15,12 @@ from src.adv_model import AdvModel
 from src.activ_extractor import ActivationExtractor
 
 
-class IML_Gemma3_Experiment(IML_Experiment):
+class IML_Gemma2_Experiment(IML_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         super().add_arguments(parser)
 
         parser.set_defaults(
-            model="google/gemma-3-1b-it",
+            model="google/gemma-2-2b-it",
             layers=["model.layers.10", "model.layers.15", "model.layers.21", "lm_head"],
             lr=1e-2,
             skip_fooled="true",
@@ -44,15 +44,17 @@ class IML_Gemma3_Experiment(IML_Experiment):
                 return SP(
                     adv_model,
                     optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
-                    steps=45,
+                    steps=100,
                     target_matching=False,
+                    kv_caching=False,
                 )
 
             return SP(
                 adv_model,
                 optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
-                steps=15,
+                steps=100,
                 target_matching=True,
+                kv_caching=False,
             )
 
         args = self.args()
@@ -88,4 +90,4 @@ class IML_Gemma3_Experiment(IML_Experiment):
 
 
 if __name__ == "__main__":
-    IML_Gemma3_Experiment().main()
+    IML_Gemma2_Experiment().main()

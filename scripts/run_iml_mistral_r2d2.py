@@ -15,18 +15,18 @@ from src.adv_model import AdvModel
 from src.activ_extractor import ActivationExtractor
 
 
-class IML_Qwen3_Experiment(IML_Experiment):
+class IML_Mistral_R2D2_Experiment(IML_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         super().add_arguments(parser)
 
         parser.set_defaults(
-            model="Qwen/Qwen3-4B-Instruct-2507",
-            layers=["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
+            model="cais/zephyr_7b_r2d2",
+            layers=["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
             lr=1e-2,
             skip_fooled="true",
             skip_failed="true",
             dynamic_labels=40,
-            warmup_epochs=0,
+            warmup_epochs=4,
         )
 
     def initialize_attack(
@@ -88,4 +88,4 @@ class IML_Qwen3_Experiment(IML_Experiment):
 
 
 if __name__ == "__main__":
-    IML_Qwen3_Experiment().main()
+    IML_Mistral_R2D2_Experiment().main()

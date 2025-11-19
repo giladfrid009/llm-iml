@@ -35,7 +35,7 @@ SUPPORTED_MODELS = [
     "HuggingFaceH4/zephyr-7b-beta",
     "google/gemma-2b-it",
     "google/gemma-2-2b-it",
-    "google/gemma-3-1b-it",
+    # "google/gemma-3-1b-it", # NOTE: broken due to HF bug see https://github.com/google-deepmind/gemma/issues/169
     "apple/OpenELM-1_1B-Instruct",
     # robust models
     "GraySwanAI/Llama-3-8B-Instruct-RR",

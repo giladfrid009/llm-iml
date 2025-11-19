@@ -95,6 +95,8 @@ class PEZ(SP):
         steps: int = 100,
         target_matching: bool = False,
         target_loss: float | None = None,
+        *,
+        kv_caching: bool = True,
         mixed_precision: bool = False,
         return_embeds: bool = True,
         verbose: bool = True,
@@ -106,6 +108,7 @@ class PEZ(SP):
             target_matching=target_matching,
             target_loss=target_loss,
             noise_scale=0.0,
+            kv_caching=kv_caching,
             mixed_precision=mixed_precision,
             verbose=verbose,
         )
@@ -169,8 +172,9 @@ class PEZ(SP):
         encodings = self.adv_model.tokenize(conversations, target_texts)
 
         # compute kv-cache
-        with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
-            encodings = self._compute_cache(encodings)
+        if self.kv_caching:
+            with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
+                encodings = self._compute_cache(encodings)
 
         # early stopping state
         finished = torch.zeros(len(conversations), dtype=torch.bool, device=self.device)
@@ -184,7 +188,7 @@ class PEZ(SP):
 
                 # NOTE: need to copy kv-cache since forward modifies it in-place
                 step_enc = encodings.copy()
-                step_enc["kv_cache"] = copy.deepcopy(encodings.kv_cache)
+                step_enc["kv_cache"] = copy.deepcopy(encodings.kv_cache) if "kv_cache" in step_enc else None
 
                 # select only unfinished samples if early stopping is enabled
                 if self.target_matching:

@@ -53,7 +53,7 @@ class Experiment(ABC):
             "--dataset",
             type=str,
             choices=SUPPORTED_DATASETS,
-            default="harmbench-std",
+            default="advbench",
             metavar="DATASET",
             help=f"The datasets to use. Available datasets: {SUPPORTED_DATASETS}",
         )
