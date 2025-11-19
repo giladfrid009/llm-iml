@@ -71,7 +71,7 @@ class SoftPrompt(UnivAttack):
         loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
         return loss
 
-    def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> float | None:
+    def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
         self.optimizer.zero_grad()
 
         # construct input conversations
@@ -100,4 +100,4 @@ class SoftPrompt(UnivAttack):
         self.grad_scaler.step(self.optimizer)
         self.grad_scaler.update()
 
-        return loss.item()
+        return {"loss": loss.item()}

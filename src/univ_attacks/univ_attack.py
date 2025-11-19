@@ -7,6 +7,7 @@ from src.utils.logging import create_logger
 from src.utils.torch import clear_memory
 
 import time
+from functools import total_ordering
 from dataclasses import dataclass
 from typing import Any
 from tqdm.auto import tqdm
@@ -17,11 +18,18 @@ import torch
 logger = create_logger(__name__)
 
 
+@total_ordering
 @dataclass
 class TrainPosition:
     epoch: int
     batch: int
     step: int
+
+    def __lt__(self, other) -> bool:
+        if not isinstance(other, TrainPosition):
+            return NotImplemented
+        # compare by (epoch, batch, step), python automatically handles lexicographic comparison
+        return (self.epoch, self.batch, self.step) < (other.epoch, other.batch, other.step)
 
 
 class UnivAttack:
@@ -210,9 +218,7 @@ class UnivAttack:
         if update_best:
             value = all_metrics.get(self.eval_metric)
             if value is None:
-                raise ValueError(
-                    f"Eval metric `{self.eval_metric}` not found in the list of produced metrics {list(all_metrics.keys())}."
-                )
+                raise ValueError(f"Eval metric `{self.eval_metric}` not found in the list of produced metrics {list(all_metrics.keys())}.")
 
             if self.best_metric < value:
                 self.best_metric = value
@@ -235,7 +241,6 @@ class UnivAttack:
 
         # local stats
         step = 0
-        loss_value = None
         stop_criteria.reset()
         should_stop = stop_criteria.should_stop()
 
@@ -246,13 +251,13 @@ class UnivAttack:
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
             # initial evaluation
-            metrics = self.evaluate(self.evaluators, dl_eval, update_best=True)
+            eval_metrics = self.evaluate(self.evaluators, dl_eval, update_best=True)
             clear_memory()
 
             self.save_checkpoint()
             self.metric_logger.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step=-1)
-            self.metric_logger.report_scalars(metrics, step=-1)
-            epoch_pbar.set_postfix(metrics)
+            self.metric_logger.report_scalars(eval_metrics, step=-1)
+            epoch_pbar.set_postfix(eval_metrics)
 
             # main training loop
             for epoch_num in epoch_pbar:
@@ -266,24 +271,23 @@ class UnivAttack:
 
                         # training step
                         position = TrainPosition(epoch_num, batch_num, step)
-                        loss_value = self.optim_step(batch_data, position)
+                        batch_metrics = self.optim_step(batch_data, position)
                         stop_criteria.update(epoch_num, None)
-                        if loss_value is not None:
-                            self.metric_logger.report_scalar("loss", loss_value, step)
-                        batch_pbar.set_postfix({"loss": loss_value})
+                        self.metric_logger.report_scalars(batch_metrics, step)
+                        batch_pbar.set_postfix(batch_metrics)
                         should_stop = stop_criteria.should_stop()
 
                         # evaluation step
                         if should_stop or (step > 0 and step % round(self.eval_freq * len(dl_train)) == 0):
                             clear_memory()
-                            metrics = self.evaluate(self.evaluators, dl_eval, update_best=True)
-                            stop_criteria.update(epoch_num, metrics[self.eval_metric])
+                            eval_metrics = self.evaluate(self.evaluators, dl_eval, update_best=True)
+                            stop_criteria.update(epoch_num, eval_metrics[self.eval_metric])
                             clear_memory()
 
                             self.save_checkpoint()
                             self.metric_logger.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step)
-                            self.metric_logger.report_scalars(metrics, step)
-                            epoch_pbar.set_postfix(metrics)
+                            self.metric_logger.report_scalars(eval_metrics, step)
+                            epoch_pbar.set_postfix(eval_metrics)
 
                         step += 1
 
@@ -292,7 +296,7 @@ class UnivAttack:
         return self.adv_model
 
     @abstractmethod
-    def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> float | None:
+    def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
         """
         Perform a single optimization step on the given batch of data.
 
@@ -301,7 +305,6 @@ class UnivAttack:
             position (TrainPosition): Current position in training (epoch, batch, step).
 
         Returns:
-            float | None: Loss value for the optimization step, or None if no loss is computed.
-
+            (dict[str, Any]): A dictionary containing relevant metrics from the optimization step.
         """
         raise NotImplementedError("Subclasses must implement the optim_step method.")

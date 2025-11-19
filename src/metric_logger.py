@@ -151,22 +151,23 @@ class MetricLogger:
         for k, v in metrics.items():
             self.cm_task.logger.report_single_value(k, v)
 
-    def report_scalars(self, scalers: dict[str, int | float], step: int):
+    def report_scalars(self, scalers: dict[str, int | float] | dict[str, int | float | None], step: int, skip_infinite: bool = True):
         """
         Logs multiple scalar values.
 
         Args:
-            scalers (dict[str, int | float]): The scalar values to log.
+            scalers (dict[str, int | float | None]): The scalar values to log.
             step (int): The step number.
+            skip_infinite (bool): Whether to skip logging if the value is not finite or NaN.
         """
         if self.cm_task is None or self.disabled:
             logger.debug("MetricLogger is disabled. Skipping.")
             return
 
         for key, value in scalers.items():
-            self.report_scalar(key, value, step)
+            self.report_scalar(key, value, step, skip_infinite)
 
-    def report_scalar(self, tag: str, value: int | float | None, step: int):
+    def report_scalar(self, tag: str, value: int | float | None, step: int, skip_infinite: bool = True):
         """
         Logs a scalar value.
 
@@ -174,6 +175,7 @@ class MetricLogger:
             tag (str): The name of the scalar value.
             value (int | float | None): The scalar value to log.
             step (int): The step number.
+            skip_infinite (bool): Whether to skip logging if the value is not finite or NaN.
         """
         if self.cm_task is None or self.disabled:
             logger.debug("MetricLogger is disabled. Skipping.")
@@ -186,6 +188,9 @@ class MetricLogger:
             title = series = tag
 
         title = title.title()
+
+        if skip_infinite and (value is None or not np.isfinite(value)):
+            return  # skip logging non-finite values
 
         if value is None:
             value = float("nan")
