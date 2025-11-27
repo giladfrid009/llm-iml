@@ -262,7 +262,7 @@ class Experiment(ABC):
         with MetricLogger(
             self.args().run_name,
             root_dir=f"logs/{args.model.split('/')[-1]}/{args.dataset}",
-            project="LLM-IML-Ablations",
+            project="LLM-IML",
             disabled=args.test_run,
         ) as metric_logger:
             logger.info(f"Loading dataset: {args.dataset}")
@@ -271,10 +271,7 @@ class Experiment(ABC):
             dl_eval = TableLoader(ds_val, batch_size=args.eval_batch, shuffle=False)
             dl_test = TableLoader(ds_test, batch_size=args.eval_batch, shuffle=False)
 
-            logger.info(
-                f"Loaded datasets with sample counts: "
-                f"(train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)})."
-            )
+            logger.info(f"Loaded datasets with sample counts: (train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)}).")
 
             logger.info(f"Loading evaluator: {args.evaluator}")
             device_count = torch.cuda.device_count()
@@ -336,14 +333,29 @@ class Experiment(ABC):
 
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)
 
-            logger.info("Running test evaluation...")
-            metrics = univ_attack.evaluate(evaluators, dl_test)
-            metric_logger.report_globals(metrics)
-            if cm_task := metric_logger.cm_task:
-                cm_task.upload_artifact(name="test_result", artifact_object=dl_eval.df)
+            if log_dir := metric_logger.log_dir:
+                # NOTE: disabling shuffling and drop last to make sure evaluation works
+                dl_train = dl_train.copy(batch_size=args.eval_batch, shuffle=False, drop_last=False)
+                dl_eval = dl_eval.copy(batch_size=args.eval_batch, shuffle=False, drop_last=False)
+                dl_test = dl_test.copy(batch_size=args.eval_batch, shuffle=False, drop_last=False)
 
-        for eval in evaluators:
-            eval.close()
+                logger.info("Evaluation on train set...")
+                univ_attack.evaluate(evaluators, dl_train)
+
+                logger.info("Evaluation on eval set...")
+                univ_attack.evaluate(evaluators, dl_eval)
+
+                logger.info("Evaluation on test set...")
+                test_metrics = univ_attack.evaluate(evaluators, dl_test)
+                metric_logger.report_globals(test_metrics)
+
+                dl_train.df.to_csv(f"{log_dir}/train_results.csv", index=False)
+                dl_eval.df.to_csv(f"{log_dir}/eval_results.csv", index=False)
+                dl_test.df.to_csv(f"{log_dir}/test_results.csv", index=False)
+                logger.info(f"Saved evaluation results to '{log_dir}/'.")
+
+        for ev in evaluators:
+            ev.close()
 
     def main(self):
         try:

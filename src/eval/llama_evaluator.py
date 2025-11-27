@@ -54,14 +54,12 @@ class LlamaEvaluator(Evaluator):
         verbose: bool = True,
     ):
         super().__init__(verbose)
-        
+
         if model_name not in SUPPORTED_MODELS:
             raise ValueError(f"Unsupported model: {model_name}. Supported models are: {SUPPORTED_MODELS}")
 
         if llm_config is not None and llm_config.model_name != model_name:
-            raise ValueError(
-                f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
-            )
+            raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
 
         if llm_config is None:
             if model_name == "meta-llama/Llama-2-7b-chat-hf":
@@ -102,10 +100,7 @@ class LlamaEvaluator(Evaluator):
         }
 
     def _fmt_convs(self, input_texts: list[str], response_texts: list[str]) -> list[Conv]:
-        return [
-            [{"role": "user", "content": LLAMA_PROMPT.format(behavior=beh, generation=gen)}]
-            for beh, gen in zip(input_texts, response_texts)
-        ]
+        return [[{"role": "user", "content": LLAMA_PROMPT.format(behavior=beh, generation=gen)}] for beh, gen in zip(input_texts, response_texts)]
 
     def _parse_response(self, response: str) -> float:
         response = response.strip().lower()

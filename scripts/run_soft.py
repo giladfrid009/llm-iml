@@ -19,6 +19,14 @@ class SoftPrompt_Experiment(Experiment):
         soft_group = parser.add_argument_group("Soft-Prompt Attack Parameters")
 
         soft_group.add_argument(
+            "--num_tokens",
+            type=int,
+            default=20,
+            metavar="NUM",
+            help="Number of tokens in the adversarial trigger.",
+        )
+
+        soft_group.add_argument(
             "--lr",
             type=float,
             metavar="FLOAT",
@@ -26,24 +34,14 @@ class SoftPrompt_Experiment(Experiment):
             help="Learning rate for FGSM optimizer.",
         )
 
-        soft_group.add_argument(
-            "--init_str",
-            type=str,
-            metavar="STR",
-            default="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
-            help="Initialization string for the soft prompt embeddings.",
-        )
-
         parser.set_defaults(
             train_batch=16,
             max_epochs=2000,
-            max_time=60,
-            eval_freq=10,
         )
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
-        adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
-        embeds = Initializer.from_string(adv_model, self.args().init_str, strict=False)
+        adv_model = AdvModel(model, tokenizer, num_tokens=self.args().num_tokens, add_spaces=False, adv_suffix=True)
+        embeds = Initializer.random_normal(adv_model, std=0.1)
         adv_model.set_embeddings(embeds)
         return adv_model
 

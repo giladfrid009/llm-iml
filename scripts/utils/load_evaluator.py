@@ -23,13 +23,13 @@ class EvalName(str, Enum):
     BEAVER = "beaver"
     HARMBENCH = "hb-judge"
     LLAMA2 = "llama2-7b"
-    LLAMA3 = "llama3-8b"
+    # LLAMA3 = "llama3-8b" # NOTE: currently broken
     LLAMAGUARD_7B = "llamaguard-7b"
     LLAMAGUARD2_8B = "llamaguard2-8b"
     LLAMAGUARD3_1B = "llamaguard3-1b"
     LLAMAGUARD3_8B = "llamaguard3-8b"
     LLAMAGUARD4_12B = "llamaguard4-12b"
-    MDJUDGE = "md-judge"
+    # MDJUDGE = "md-judge" # NOTE: currently broken
     JBBJUDGE = "jbb-judge"
     STRONGREJECT = "strong-reject"
     WILDGUARD = "wild-guard"
@@ -49,8 +49,8 @@ def load_single_evaluator(name: str, serve_config: ServeConfig, **kwargs) -> Eva
     if name == EvalName.LLAMA2:
         return LlamaEvaluator(serve_config, "meta-llama/Llama-2-7b-chat-hf", **kwargs)
 
-    if name == EvalName.LLAMA3:
-        return LlamaEvaluator(serve_config, "meta-llama/Llama-3.1-8B-Instruct", **kwargs)
+    # if name == EvalName.LLAMA3: # NOTE: currently broken
+    #     return LlamaEvaluator(serve_config, "meta-llama/Llama-3.1-8B-Instruct", **kwargs)
 
     if name == EvalName.LLAMAGUARD_7B:
         return LlamaGuard(serve_config, "meta-llama/LlamaGuard-7b", **kwargs)
@@ -67,8 +67,8 @@ def load_single_evaluator(name: str, serve_config: ServeConfig, **kwargs) -> Eva
     if name == EvalName.LLAMAGUARD4_12B:
         return LlamaGuard(serve_config, "meta-llama/Llama-Guard-4-12B", **kwargs)
 
-    if name == EvalName.MDJUDGE:
-        return MDJudge(serve_config, **kwargs)
+    # if name == EvalName.MDJUDGE: # NOTE: currently broken
+    #     return MDJudge(serve_config, **kwargs)
 
     if name == EvalName.JBBJUDGE:
         return JBBJudge(serve_config, **kwargs)

@@ -81,10 +81,7 @@ def parse_args() -> argparse.Namespace:
         choices=SUPPORTED_EVALUATORS,
         default=SUPPORTED_EVALUATORS,
         metavar="EVALUATOR",
-        help=(
-            "List of evaluator names to run. If not provided, all evaluators will be run. "
-            f"Available evaluators: {SUPPORTED_EVALUATORS}"
-        ),
+        help=(f"List of evaluator names to run. If not provided, all evaluators will be run. Available evaluators: {SUPPORTED_EVALUATORS}"),
     )
 
     parser.add_argument(
@@ -137,7 +134,7 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def read_data(paths: list[str]) -> tuple[list[str], list[pd.DataFrame]]:
+def read_data(paths: list[str], recurse: bool) -> tuple[list[str], list[pd.DataFrame]]:
     path_list = []
     data_list = []
 
@@ -148,7 +145,7 @@ def read_data(paths: list[str]) -> tuple[list[str], list[pd.DataFrame]]:
         path = path.relative_to(user_dir, walk_up=True)
 
         if path.is_dir():
-            sub_paths, sub_data = read_data([p.as_posix() for p in path.iterdir() if p.is_file() or args.recurse])
+            sub_paths, sub_data = read_data([p.as_posix() for p in path.iterdir() if p.is_file() or recurse], recurse)
             if len(sub_data) == 0:
                 continue
 
@@ -186,14 +183,30 @@ def prepare_environment(seed: int | None):
     env.set_seed(seed)
 
 
+def _create_evaluator(eval_name: str, serve_config: ServeConfig) -> Evaluator | None:
+    try:
+        clear_memory()
+        evaluator = load_single_evaluator(eval_name, serve_config)
+        return evaluator
+
+    except Exception as e:
+        logger.exception(e)
+        clear_memory()
+        return None
+
+
 def main(args: argparse.Namespace):
     # get terminal width for pretty printing
     width = _display_width()
 
     # read data
-    path_list, data_list = read_data(args.data_path)
+    path_list, data_list = read_data(args.data_path, args.recurse)
     loader_list = [TableLoader(df, batch_size=args.batch_size, shuffle=False) for df in data_list]
     all_results = {ds_name: {} for ds_name in path_list}
+
+    if len(loader_list) == 0:
+        logger.error("No valid data files found. Exiting.")
+        return
 
     for eval_name in args.evaluators:
         print()
@@ -201,31 +214,39 @@ def main(args: argparse.Namespace):
         print(f"Running evaluator: {eval_name}".center(width))
         print("=".center(width, "="))
 
-        try:
-            serve_config = _create_serve(args.gpu_id, args.log_level)
-            evaluator = load_single_evaluator(eval_name, serve_config)
-
-        except Exception as e:
-            logger.exception(e)
-            logger.error(f"Failed to initialize evaluator {eval_name}. Skipping...")
-            clear_memory()
+        serve_config = _create_serve(args.gpu_id, args.log_level)
+        evaluator = _create_evaluator(eval_name, serve_config)
+        if evaluator is None:
+            logger.error("Skipping evaluator due to initialization failure.")
             continue
 
         logger.info(f"Hyperparameters: {evaluator.get_hparams()}")
 
-        try:
-            eval_results = {}
-            for dl, ds_name in zip(loader_list, path_list):
-                print()
-                print(f"Evaluating: {ds_name}".center(width))
+        eval_results = {}
+        for i, (dl, ds_name) in enumerate(zip(loader_list, path_list)):
+            print()
+            print(f"Evaluating: {ds_name}".center(width))
 
+            if evaluator is None:
+                logger.info("Re-initializing evaluator...")
+                evaluator = _create_evaluator(eval_name, serve_config)
+                if evaluator is None:
+                    logger.error("Failed to re-initialize evaluator. Skipping remaining datasets.")
+                    break
+
+            try:
                 results = evaluator.evaluate(dl)
                 all_results[ds_name].update(results)
                 eval_results[ds_name] = results
 
-        finally:
+            except Exception as e:
+                logger.exception(e)
+                logger.error(f"Evaluation failed on dataset {ds_name}.")
+                evaluator.close()
+                evaluator = None
+
+        if evaluator is not None:
             evaluator.close()
-            clear_memory()
 
         print()
         for k, v in eval_results.items():

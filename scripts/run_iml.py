@@ -21,6 +21,14 @@ class IML_Experiment(Experiment):
         iml_args = parser.add_argument_group("IML Attack Parameters")
 
         iml_args.add_argument(
+            "--num_tokens",
+            type=int,
+            default=20,
+            metavar="NUM",
+            help="Number of tokens in the adversarial trigger.",
+        )
+
+        iml_args.add_argument(
             "--lr",
             type=float,
             default=1e-2,
@@ -58,7 +66,7 @@ class IML_Experiment(Experiment):
         iml_args.add_argument(
             "--dynamic_labels",
             type=int,
-            default=20,
+            default=40,
             metavar="N",
             help="Number of dynamic labels to use for each sample during IML training. If 0 no dynamic labels are used.",
         )
@@ -72,7 +80,7 @@ class IML_Experiment(Experiment):
         )
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
-        adv_model = AdvModel(model, tokenizer, num_tokens=20, add_spaces=False, adv_suffix=True)
+        adv_model = AdvModel(model, tokenizer, num_tokens=self.args().num_tokens, add_spaces=False, adv_suffix=True)
         embeds = Initializer.random_normal(adv_model, std=0.1)
         adv_model.set_embeddings(embeds)
         return adv_model

@@ -17,3 +17,6 @@ tests
 tests2
 run_all_llama3_rr.py
 run_all_llama2.py
+run_all_soft.py
+summaries
+logs-softprompt-judge-strongreject

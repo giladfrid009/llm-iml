@@ -46,9 +46,7 @@ class LlamaGuard(Evaluator):
             raise ValueError(f"Unsupported model: {model_name}. Supported models are: {SUPPORTED_MODELS}")
 
         if llm_config is not None and llm_config.model_name != model_name:
-            raise ValueError(
-                f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
-            )
+            raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
 
         if llm_config is None:
             max_model_len = 4096 if model_name == "meta-llama/Llama-Guard-4-12B" else None

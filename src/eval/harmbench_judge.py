@@ -50,9 +50,7 @@ class HarmBenchJudge(Evaluator):
         model_name = "cais/HarmBench-Llama-2-13b-cls"
 
         if llm_config is not None and llm_config.model_name != model_name:
-            raise ValueError(
-                f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
-            )
+            raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
 
         if llm_config is None:
             llm_config = LLMConfig(model_name=model_name, dtype="bfloat16")
@@ -88,10 +86,7 @@ class HarmBenchJudge(Evaluator):
         }
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
-        return [
-            LLAMA2_CLS_PROMPT.format(behavior=input, generation=response)
-            for input, response in zip(input_texts, response_texts)
-        ]
+        return [LLAMA2_CLS_PROMPT.format(behavior=input, generation=response) for input, response in zip(input_texts, response_texts)]
 
     def _parse_response(self, response: str) -> float:
         response = response.strip().lower()

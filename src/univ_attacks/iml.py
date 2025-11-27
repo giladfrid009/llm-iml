@@ -112,11 +112,7 @@ class IML(UnivAttack):
 
         self.metric_logger.report_hparams("activ_extractor", activ_extractor.get_hparams())
         self.metric_logger.report_hparams("inner_attack", self.inner_attack.get_hparams())
-        self.metric_logger.report_hparams(
-            "optim",
-            optimizer.state_dict()["param_groups"][0],
-            name=type(self.optimizer).__name__,
-        )
+        self.metric_logger.report_hparams("optim", optimizer.state_dict()["param_groups"][0], name=type(self.optimizer).__name__)
 
     @property
     def judge_evaluator(self) -> Evaluator:

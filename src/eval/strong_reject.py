@@ -64,9 +64,7 @@ class StrongReject(Evaluator):
         lora_name = "qylu4156/strongreject-15k-v1"
 
         if llm_config is not None and llm_config.model_name != model_name:
-            raise ValueError(
-                f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
-            )
+            raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
 
         lora_path = huggingface_hub.snapshot_download(lora_name)
 
@@ -114,10 +112,7 @@ class StrongReject(Evaluator):
         }
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
-        return [
-            STRONG_REJECT_PROMPT.format(forbidden_prompt=inp, response=resp)
-            for inp, resp in zip(input_texts, response_texts)
-        ]
+        return [STRONG_REJECT_PROMPT.format(forbidden_prompt=inp, response=resp) for inp, resp in zip(input_texts, response_texts)]
 
     def _compute_score(self, resp: ResponseOutput) -> float:
         """

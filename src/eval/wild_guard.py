@@ -46,9 +46,7 @@ class WildGuard(Evaluator):
         model_name = "allenai/wildguard"
 
         if llm_config is not None and llm_config.model_name != model_name:
-            raise ValueError(
-                f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}."
-            )
+            raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
 
         if llm_config is None:
             llm_config = LLMConfig(
@@ -96,10 +94,7 @@ class WildGuard(Evaluator):
         }
 
     def _fmt_inputs(self, input_texts: list[str], response_texts: list[str]) -> list[str]:
-        return [
-            INSTRUCTION_FORMAT.format(prompt=input, response=response)
-            for input, response in zip(input_texts, response_texts)
-        ]
+        return [INSTRUCTION_FORMAT.format(prompt=input, response=response) for input, response in zip(input_texts, response_texts)]
 
     def _parse_response(self, response: str) -> dict[str, float]:
         regex_match = re.match(".*:(.*)\n.*:(.*)\n.*:(.*)", response)
