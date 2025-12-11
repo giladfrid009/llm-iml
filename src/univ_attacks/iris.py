@@ -44,6 +44,25 @@ class RefusalConfig:
         assert self.token_index < 0
         assert self.direction.ndim == 1, "Direction must be a 1D tensor."
 
+    def save(self, path: str) -> None:
+        torch.save(
+            {
+                "layer_index": self.layer_index,
+                "token_index": self.token_index,
+                "direction": self.direction,
+            },
+            path,
+        )
+
+    @classmethod
+    def load(cls, path: str) -> "RefusalConfig":
+        data = torch.load(path)
+        return cls(
+            layer_index=data["layer_index"],
+            token_index=data["token_index"],
+            direction=data["direction"],
+        )
+
     def get_hparams(self) -> dict[str, Any]:
         return {
             "layer_index": self.layer_index,

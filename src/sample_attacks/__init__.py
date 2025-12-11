@@ -17,7 +17,6 @@ __all__ = [
     "SampleOutput",
     "SP",
     "SPZ",
-    "LogisticTrainer",
     "AmpleGCG",
     "PA",
     "AP",
