@@ -57,13 +57,16 @@ def load_hf_tokenizer(
         tokenizer.chat_template = chat_template
 
     # add pad token if not present
-    if not tokenizer.pad_token or not tokenizer.pad_token_id:
+    if tokenizer.pad_token is None or tokenizer.pad_token_id is None:
         if tokenizer.unk_token:
             tokenizer.pad_token = tokenizer.unk_token
+            logger.info(f"Set pad_token to unk_token (id: {tokenizer.pad_token_id})")
         elif tokenizer.eos_token:
             tokenizer.pad_token = tokenizer.eos_token
+            logger.info(f"Set pad_token to eos_token (id: {tokenizer.pad_token_id})")
         else:
             tokenizer.add_special_tokens({"pad_token": "[pad]"})
+            logger.info(f"Added new pad_token '[pad]' (id: {tokenizer.pad_token_id})")
 
     return tokenizer
 
@@ -103,6 +106,7 @@ def load_hf_model(
     )
 
     if adapter_name is not None:
+        logger.debug(f"Loading adapter: {adapter_name}")
         model.load_adapter(
             peft_model_id=adapter_name,
             device_map=device_map,

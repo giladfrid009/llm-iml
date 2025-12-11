@@ -77,12 +77,6 @@ def load_model(
     elif model_name == "microsoft/Orca-2-7b":
         config.update({"chat_template": ORCA_TEMPLATE})
 
-    elif model_name == "microsoft/Phi-3-mini-4k-instruct":
-        config.update({"trust_remote_code": True})
-
-    elif model_name == "microsoft/Phi-4-mini-instruct":
-        config.update({"trust_remote_code": True})
-
     elif model_name == "ContinuousAT/Llama-2-7B-CAT":
         config.update({"model_name": "meta-llama/Llama-2-7b-chat-hf", "adapter_name": "ContinuousAT/Llama-2-7B-CAT"})
 

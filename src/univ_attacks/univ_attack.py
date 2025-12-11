@@ -96,7 +96,7 @@ class UnivAttack:
         self.metric_logger = metric_logger
 
         self.metric_logger.report_hparams(
-            "univ_attack",
+            "attack",
             model_name=adv_model.model.name_or_path,
             num_tokens=self.num_tokens,
             mixed_precision=self.mixed_precision,

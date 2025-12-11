@@ -69,7 +69,7 @@ class IML(UnivAttack):
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
-        skip_already_fooled: bool = False,
+        skip_already_fooled: bool = True,
         skip_failed_attacks: bool = True,
         warmup_epochs: int = 0,
         dynamic_labels: int = -1,
@@ -100,7 +100,7 @@ class IML(UnivAttack):
         self.dynamic_labels = dynamic_labels
 
         self.metric_logger.report_hparams(
-            "iml",
+            "attack",
             inner_attack=type(self.inner_attack).__name__,
             attack_builder=inspect.getsource(self.attack_builder_func) if self.attack_builder_func else None,
             optimizer=type(self.optimizer).__name__,

@@ -9,6 +9,34 @@ from typing import Any
 import torch
 
 
+def ce_criterion(
+    logits: torch.Tensor,
+    input_ids: torch.Tensor,
+    target_mask: torch.Tensor,
+    sample_mean: bool = True,
+) -> torch.Tensor:
+    # align predicted logits and target_ids
+    logits = logits[:, :-1]  # remove new token
+    input_ids = input_ids[:, 1:]  # remove BOS token
+    target_mask = target_mask[:, 1:]  # remove BOS token
+
+    # extract only targets
+    target_logits = logits[target_mask].view(-1, logits.size(-1))
+    target_ids = input_ids[target_mask].view(-1)
+
+    # compute token-wise loss
+    flat_losses = torch.nn.functional.cross_entropy(target_logits, target_ids, reduction="none")
+
+    if not sample_mean:
+        return flat_losses.mean()
+
+    # scatter losses back to the original shape and compute sample-mean
+    loss_matrix = torch.zeros_like(target_mask, dtype=flat_losses.dtype)
+    loss_matrix[target_mask] = flat_losses
+    loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
+    return loss
+
+
 class SoftPrompt(UnivAttack):
     def __init__(
         self,
@@ -33,36 +61,8 @@ class SoftPrompt(UnivAttack):
 
         self.optimizer = optimizer
 
-        self.metric_logger.report_hparams("soft_prompt", optimizer=type(self.optimizer).__name__)
+        self.metric_logger.report_hparams("attack", optimizer=type(self.optimizer).__name__)
         self.metric_logger.report_hparams("optim", optimizer.state_dict()["param_groups"][0], name=type(self.optimizer).__name__)
-
-    def criterion(
-        self,
-        logits: torch.Tensor,
-        input_ids: torch.Tensor,
-        target_mask: torch.Tensor,
-        sample_mean: bool = True,
-    ) -> torch.Tensor:
-        # align predicted logits and target_ids
-        logits = logits[:, :-1]  # remove new token
-        input_ids = input_ids[:, 1:]  # remove BOS token
-        target_mask = target_mask[:, 1:]  # remove BOS token
-
-        # extract only targets
-        target_logits = logits[target_mask].view(-1, logits.size(-1))
-        target_ids = input_ids[target_mask].view(-1)
-
-        # compute token-wise loss
-        flat_losses = torch.nn.functional.cross_entropy(target_logits, target_ids, reduction="none")
-
-        if not sample_mean:
-            return flat_losses.mean()
-
-        # scatter losses back to the original shape and compute sample-mean
-        loss_matrix = torch.zeros_like(target_mask, dtype=flat_losses.dtype)
-        loss_matrix[target_mask] = flat_losses
-        loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
-        return loss
 
     def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
         self.optimizer.zero_grad()
@@ -81,7 +81,7 @@ class SoftPrompt(UnivAttack):
                 adv_embeds=self.univ_embeds,
             )
 
-            loss = self.criterion(
+            loss = ce_criterion(
                 logits=result.logits,
                 input_ids=encodings.input_ids,
                 target_mask=encodings.target_mask,
