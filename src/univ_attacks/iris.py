@@ -7,6 +7,7 @@ from src.univ_attacks.soft_prompt import SoftPrompt, ce_criterion
 from src.fgsm_optim import FGSM
 from src.metric_logger import MetricLogger
 
+from dataclasses import dataclass
 from typing import Any
 import torch
 
@@ -25,9 +26,30 @@ def iris_criterion(
     Returns:
         torch.Tensor: Computed loss for each sample, of shape (batch_size,).
     """
+    assert direction.ndim == 1, "Direction must be a 1D tensor."
+    assert direction.size(0) == activs.size(2), "Direction size must match hidden size."
+
     token_activs = activs[:, token_index]  # (B, H)
     loss = torch.square(token_activs @ direction)
     return loss
+
+
+@dataclass
+class RefusalConfig:
+    layer_index: int
+    token_index: int
+    direction: torch.Tensor
+
+    def __post_init__(self):
+        assert self.token_index < 0
+        assert self.direction.ndim == 1, "Direction must be a 1D tensor."
+
+    def get_hparams(self) -> dict[str, Any]:
+        return {
+            "layer_index": self.layer_index,
+            "token_index": self.token_index,
+            "direction_shape": self.direction.shape,
+        }
 
 
 class IRIS(SoftPrompt):
@@ -42,10 +64,11 @@ class IRIS(SoftPrompt):
         self,
         adv_model: AdvModel,
         optimizer: FGSM,
-        activ_extractor: ActivationExtractor,
+        refusal_config: RefusalConfig,
         evaluators: list[Evaluator],
-        eval_metric: str | None = None,
         beta: float = 0.5,
+        activ_extractor: ActivationExtractor | None = None,
+        eval_metric: str | None = None,
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
@@ -62,11 +85,20 @@ class IRIS(SoftPrompt):
             metric_logger=metric_logger,
         )
 
+        if activ_extractor is None:
+            activ_extractor = ActivationExtractor(
+                adv_model.model,
+                f"model.layers.{refusal_config.layer_index}",
+                capture_output=False,
+            )
+
+        self.refusal_config = refusal_config
         self.activ_extractor = activ_extractor
         self.beta = beta
 
-        self.metric_logger.report_hparams("attack", beta=self.beta)
-        self.metric_logger.report_hparams("activ_extractor", activ_extractor.get_hparams())
+        self.metric_logger.report_hparams("attack", beta=self.beta, refusal_layer=refusal_config.layer_index)
+        self.metric_logger.report_hparams("refusal_config", self.refusal_config.get_hparams())
+        self.metric_logger.report_hparams("activ_extractor", self.activ_extractor.get_hparams())
 
     def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
         self.optimizer.zero_grad()
@@ -109,8 +141,8 @@ class IRIS(SoftPrompt):
             # iris loss is computed w.r.t the last tokens of the input prompt
             iris_loss = ActivationLoss(loss_fn=iris_criterion, reduction="sum-mean").forward(
                 activs,
-                token_index=-1,  # TODO
-                direction=None,  # TODO
+                token_index=self.refusal_config.token_index,
+                direction=self.refusal_config.direction,
             )
 
             loss = (1 - self.beta) * ce_loss + self.beta * iris_loss
