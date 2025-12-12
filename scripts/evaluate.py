@@ -166,7 +166,8 @@ def read_data(paths: list[str], recurse: bool) -> tuple[list[str], list[pd.DataF
         req_cols = {"prompt", "response"}
         if not req_cols.issubset(df.columns):
             logger.error(f"File {path} is missing required columns: {req_cols}. Skipping...")
-
+            continue
+    
         path_list.append(path.as_posix())
         data_list.append(df)
 
