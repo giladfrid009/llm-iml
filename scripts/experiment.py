@@ -59,6 +59,15 @@ class Experiment(ABC):
         )
 
         parser.add_argument(
+            "--test_datasets",
+            type=str,
+            choices=SUPPORTED_DATASETS,
+            nargs="+",
+            default=[],
+            metavar="DATASET",
+        )
+
+        parser.add_argument(
             "--evaluator",
             type=str,
             nargs="+",
@@ -252,6 +261,34 @@ class Experiment(ABC):
     ) -> UnivAttack:
         pass
 
+    def final_evaluation(self, univ_attack: UnivAttack, evaluators: list[Evaluator], metric_logger: MetricLogger):
+        args = self.args()
+        log_dir = metric_logger.log_dir
+
+        if log_dir is None:
+            logger.warning("No log directory found. Skipping final evaluation.")
+            return
+
+        dataset_names = args.test_datasets
+        if args.dataset not in dataset_names:
+            dataset_names.append(args.dataset)
+
+        logger.info(f"Running final evaluation on datasets: {dataset_names}")
+
+        for ds_name in dataset_names:
+            _, _, ds_test = load_dataset(ds_name)
+            dl_test = TableLoader(ds_test, batch_size=args.eval_batch, shuffle=False)
+            logger.info(f"Loaded test dataset: {ds_name} with {len(ds_test)} samples.")
+            logger.info(f"Evaluating on test dataset: {ds_name}")
+            test_metrics = univ_attack.evaluate(evaluators, dl_test)
+
+            if ds_name == args.dataset:
+                # report main dataset results
+                metric_logger.report_globals(test_metrics)
+
+            dl_test.df.to_csv(f"{log_dir}/{ds_name}_results.csv", index=False)
+            logger.info(f"Saved evaluation results to '{log_dir}/'.")
+
     def run(self):
         args = self.args()
 
@@ -269,7 +306,6 @@ class Experiment(ABC):
             ds_train, ds_val, ds_test = load_dataset(args.dataset)
             dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True)
             dl_eval = TableLoader(ds_val, batch_size=args.eval_batch, shuffle=False)
-            dl_test = TableLoader(ds_test, batch_size=args.eval_batch, shuffle=False)
 
             logger.info(f"Loaded datasets with sample counts: (train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)}).")
 
@@ -317,13 +353,6 @@ class Experiment(ABC):
             if expr_file := getattr(sys.modules.get(__name__), "__file__", None):
                 metric_logger.upload_code(expr_file)
 
-            if cm_task := metric_logger.cm_task:
-                cm_task.upload_artifact("train_data", dl_train.df, metadata=dl_train.get_hparams())
-                cm_task.upload_artifact("eval_data", dl_eval.df, metadata=dl_eval.get_hparams())
-                cm_task.upload_artifact("test_data", dl_test.df, metadata=dl_test.get_hparams())
-
-            logger.info("Running attack...")
-
             stop = StopCriteria(
                 max_epochs=args.max_epochs if not args.test_run else 1,
                 max_time=args.max_time * 60 if not args.test_run else 5,
@@ -331,28 +360,11 @@ class Experiment(ABC):
                 max_evals=None if not args.test_run else 1,
             )
 
+            logger.info("Running attack...")
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)
 
-            if log_dir := metric_logger.log_dir:
-                # NOTE: disabling shuffling and drop last to make sure evaluation works
-                dl_train = dl_train.copy(batch_size=args.eval_batch, shuffle=False, drop_last=False)
-                dl_eval = dl_eval.copy(batch_size=args.eval_batch, shuffle=False, drop_last=False)
-                dl_test = dl_test.copy(batch_size=args.eval_batch, shuffle=False, drop_last=False)
-
-                logger.info("Evaluation on train set...")
-                univ_attack.evaluate(evaluators, dl_train)
-
-                logger.info("Evaluation on eval set...")
-                univ_attack.evaluate(evaluators, dl_eval)
-
-                logger.info("Evaluation on test set...")
-                test_metrics = univ_attack.evaluate(evaluators, dl_test)
-                metric_logger.report_globals(test_metrics)
-
-                dl_train.df.to_csv(f"{log_dir}/train_results.csv", index=False)
-                dl_eval.df.to_csv(f"{log_dir}/eval_results.csv", index=False)
-                dl_test.df.to_csv(f"{log_dir}/test_results.csv", index=False)
-                logger.info(f"Saved evaluation results to '{log_dir}/'.")
+            logger.info("Running final evaluation...")
+            self.final_evaluation(univ_attack, evaluators, metric_logger)
 
         for ev in evaluators:
             ev.close()

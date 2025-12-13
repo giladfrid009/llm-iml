@@ -6,6 +6,8 @@ import random
 import torch
 import logging
 import pprint
+import fnmatch
+from tqdm.auto import tqdm
 
 # set pythonpath to the main module directory
 module_dir = pathlib.Path(__file__).parent.resolve().parent
@@ -122,6 +124,15 @@ def parse_args() -> argparse.Namespace:
         help="Recursively search directories for data files.",
     )
 
+    parser.add_argument(
+        "--patterns",
+        type=str,
+        nargs="+",
+        default=["*"],
+        metavar="PATTERN",
+        help="List of filename patterns to include when searching directories.",
+    )
+
     args = parser.parse_args()
 
     # print the parsed arguments
@@ -134,9 +145,15 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def read_data(paths: list[str], recurse: bool) -> tuple[list[str], list[pd.DataFrame]]:
+def read_data(paths: list[str], recurse: bool, patterns: list[str]) -> tuple[list[str], list[pd.DataFrame]]:
     path_list = []
     data_list = []
+
+    def matches_patterns(file_path: pathlib.Path) -> bool:
+        """Check if file path matches any of the patterns."""
+        # Use forward-slash normalized path for consistent pattern matching
+        path_str = file_path.as_posix()
+        return any(fnmatch.fnmatch(path_str, pattern) for pattern in patterns)
 
     user_dir = pathlib.Path.cwd()
     for path in paths:
@@ -145,7 +162,8 @@ def read_data(paths: list[str], recurse: bool) -> tuple[list[str], list[pd.DataF
         path = path.relative_to(user_dir, walk_up=True)
 
         if path.is_dir():
-            sub_paths, sub_data = read_data([p.as_posix() for p in path.iterdir() if p.is_file() or recurse], recurse)
+            inner_paths = [p.as_posix() for p in path.iterdir() if (p.is_file() and matches_patterns(p)) or (p.is_dir() and recurse)]
+            sub_paths, sub_data = read_data(inner_paths, recurse, patterns)
             if len(sub_data) == 0:
                 continue
 
@@ -167,7 +185,7 @@ def read_data(paths: list[str], recurse: bool) -> tuple[list[str], list[pd.DataF
         if not req_cols.issubset(df.columns):
             logger.error(f"File {path} is missing required columns: {req_cols}. Skipping...")
             continue
-    
+
         path_list.append(path.as_posix())
         data_list.append(df)
 
@@ -201,7 +219,7 @@ def main(args: argparse.Namespace):
     width = _display_width()
 
     # read data
-    path_list, data_list = read_data(args.data_path, args.recurse)
+    path_list, data_list = read_data(args.data_path, args.recurse, args.patterns)
     loader_list = [TableLoader(df, batch_size=args.batch_size, shuffle=False) for df in data_list]
     all_results = {ds_name: {} for ds_name in path_list}
 
@@ -224,10 +242,7 @@ def main(args: argparse.Namespace):
         logger.info(f"Hyperparameters: {evaluator.get_hparams()}")
 
         eval_results = {}
-        for i, (dl, ds_name) in enumerate(zip(loader_list, path_list)):
-            print()
-            print(f"Evaluating: {ds_name}".center(width))
-
+        for dl, ds_name in tqdm(zip(loader_list, path_list), total=len(loader_list), desc="Files", leave=False):
             if evaluator is None:
                 logger.info("Re-initializing evaluator...")
                 evaluator = _create_evaluator(eval_name, serve_config)
@@ -265,6 +280,8 @@ def main(args: argparse.Namespace):
         print()
 
     for ds_name, dl in zip(path_list, loader_list):
+        # change ds_name suffix to .csv
+        ds_name = str(pathlib.Path(ds_name).with_suffix(".csv"))
         dl.df.to_csv(ds_name, index=False)
         logger.info(f"Saved results to {ds_name}")
 

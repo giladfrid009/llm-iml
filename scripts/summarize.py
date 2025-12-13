@@ -1,6 +1,7 @@
 # NOTE: GPT5 Generated
 
 import argparse
+import fnmatch
 import json
 import pathlib
 import sys
@@ -127,6 +128,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Recursively search directories for data files.",
     )
+    
+    parser.add_argument(
+        "--patterns",
+        type=str,
+        nargs="+",
+        default=["*"],
+        metavar="PATTERN",
+        help="List of filename patterns to include when searching directories.",
+    )
+    
     parser.add_argument(
         "--output_dir",
         type=str,
@@ -152,9 +163,15 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def read_data(paths: list[str], recurse: bool) -> tuple[list[str], list[pd.DataFrame]]:
+def read_data(paths: list[str], recurse: bool, patterns: list[str]) -> tuple[list[str], list[pd.DataFrame]]:
     path_list = []
     data_list = []
+
+    def matches_patterns(file_path: pathlib.Path) -> bool:
+        """Check if file path matches any of the patterns."""
+        # Use forward-slash normalized path for consistent pattern matching
+        path_str = file_path.as_posix()
+        return any(fnmatch.fnmatch(path_str, pattern) for pattern in patterns)
 
     user_dir = pathlib.Path.cwd()
     for path in paths:
@@ -163,7 +180,8 @@ def read_data(paths: list[str], recurse: bool) -> tuple[list[str], list[pd.DataF
         path = path.relative_to(user_dir, walk_up=True)
 
         if path.is_dir():
-            sub_paths, sub_data = read_data([p.as_posix() for p in path.iterdir() if p.is_file() or recurse], recurse)
+            inner_paths = [p.as_posix() for p in path.iterdir() if (p.is_file() and matches_patterns(p)) or (p.is_dir() and recurse)]
+            sub_paths, sub_data = read_data(inner_paths, recurse, patterns)
             if len(sub_data) == 0:
                 continue
 
@@ -184,6 +202,7 @@ def read_data(paths: list[str], recurse: bool) -> tuple[list[str], list[pd.DataF
         req_cols = {"prompt", "response"}
         if not req_cols.issubset(df.columns):
             logger.error(f"File {path} is missing required columns: {req_cols}. Skipping...")
+            continue
 
         path_list.append(path.as_posix())
         data_list.append(df)
@@ -430,7 +449,7 @@ def main(args: argparse.Namespace) -> None:
     output_dir = pathlib.Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    path_list, data_list = read_data(args.data_path, args.recurse)
+    path_list, data_list = read_data(args.data_path, args.recurse, args.patterns)
     if not data_list:
         logger.error("No valid datasets loaded. Exiting.")
         return
