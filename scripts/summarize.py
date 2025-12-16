@@ -1,8 +1,8 @@
 # NOTE: GPT5 Generated
 
+import shutil
 import argparse
 import fnmatch
-import json
 import pathlib
 import sys
 
@@ -27,12 +27,7 @@ logger = create_logger(__name__)
 
 def _display_width() -> int:
     """Best-effort detection of terminal width, with a safe fallback."""
-    try:
-        import shutil
-
-        return shutil.get_terminal_size().columns
-    except Exception:
-        return 120
+    return shutil.get_terminal_size((120, 24)).columns
 
 
 def _read_df(path: pathlib.Path, **kwargs) -> pd.DataFrame | None:
@@ -65,20 +60,6 @@ def _finite_only(s: pd.Series) -> pd.Series:
     return s[np.isfinite(s)]
 
 
-def _safe_name_from_path(path_str: str) -> str:
-    """
-    Turn a (relative) path like 'subdir/foo-bar.csv' into a filesystem-safe
-    name such as 'subdir__foo-bar.csv' (suitable as part of a filename).
-
-    This also helps avoid collisions when using --recurse and having files
-    with the same basename in different folders.
-    """
-    normalized = path_str.replace("\\", "/").strip("/")
-    normalized = normalized.replace("/", "__")
-    normalized = normalized.replace(" ", "_")
-    return normalized.strip()
-
-
 def _select_numeric_columns(df: pd.DataFrame, metrics: list[str] | None) -> pd.Index:
     """
     Select numeric columns from the dataframe.
@@ -104,6 +85,7 @@ def _select_numeric_columns(df: pd.DataFrame, metrics: list[str] | None) -> pd.I
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
     parser.add_argument(
         "data_path",
         type=str,
@@ -115,6 +97,7 @@ def parse_args() -> argparse.Namespace:
             "If a directory is provided, all files in the directory will be processed."
         ),
     )
+
     parser.add_argument(
         "--log_level",
         type=str,
@@ -123,12 +106,19 @@ def parse_args() -> argparse.Namespace:
         metavar="LEVEL",
         help=f"Logging level to python-logger. Available levels: {loglevel_names()}",
     )
+
     parser.add_argument(
         "--recurse",
         action="store_true",
         help="Recursively search directories for data files.",
     )
-    
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="When set, print per-file numeric summaries; otherwise only overall summary is printed.",
+    )
+
     parser.add_argument(
         "--patterns",
         type=str,
@@ -137,14 +127,7 @@ def parse_args() -> argparse.Namespace:
         metavar="PATTERN",
         help="List of filename patterns to include when searching directories.",
     )
-    
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="summaries",
-        metavar="DIR",
-        help="Directory to save numeric summary tables.",
-    )
+
     parser.add_argument(
         "--metrics",
         type=str,
@@ -219,7 +202,6 @@ def summarize_per_dataset(
     path_list: list[str],
     data_list: list[pd.DataFrame],
     width: int,
-    output_dir: pathlib.Path,
     metrics: list[str] | None,
 ) -> None:
     """
@@ -227,8 +209,7 @@ def summarize_per_dataset(
 
     For each dataset:
       - compute mean, std, median, count over finite values only
-      - print a table to stdout
-      - save a human-readable JSON file in output_dir
+    - print a table to stdout
 
     If `metrics` is not None, only those columns are considered (when present and numeric).
     """
@@ -247,12 +228,7 @@ def summarize_per_dataset(
             s = _finite_only(df[col])
             if s.empty:
                 continue
-            stats[col] = {
-                "mean": s.mean(),
-                "std": s.std(),
-                "median": s.median(),
-                "count": int(s.size),
-            }
+            stats[col] = {"mean": s.mean(), "std": s.std(), "median": s.median(), "count": int(s.size)}
 
         if not stats:
             logger.warning(f"Dataset {ds_name} has no finite numeric values for the selected columns.")
@@ -270,59 +246,20 @@ def summarize_per_dataset(
         with pd.option_context("display.width", width, "display.max_rows", 1000, "display.max_columns", 1000):
             print(summary)
 
-        safe_name = _safe_name_from_path(ds_name)
-
-        json_obj = {
-            "dataset": ds_name,
-            "metrics_filter": metrics,
-            "columns": [
-                {
-                    "column": idx,
-                    "mean": float(row["mean"]),
-                    "std": float(row["std"]),
-                    "median": float(row["median"]),
-                    "count": int(row["count"]),
-                }
-                for idx, row in summary.iterrows()
-            ],
-        }
-
-        json_path = output_dir / f"{safe_name}_summary.json"
-        try:
-            with json_path.open("w", encoding="utf-8") as f:
-                json.dump(json_obj, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to save per-dataset summary JSON for {ds_name}: {e}")
-
 
 def summarize_overall(
     path_list: list[str],
     data_list: list[pd.DataFrame],
     width: int,
-    output_dir: pathlib.Path,
     metrics: list[str] | None,
 ) -> None:
     """
-    Build a simple mean-only summary across all datasets and print/save it.
+    Build a simple mean-only summary across all datasets and print it.
 
     Final table:
       - rows: datasets (unique, based on path)
       - columns: numeric metrics
       - cells: mean over finite values only (NaN if metric not present)
-
-    Saved artifact (unchanged by display compaction):
-      - numeric_summary_overall.json
-        {
-          "metrics_filter": [...],
-          "datasets": {
-            "<dataset_id>": {
-              "metric_a": 0.1234,
-              "metric_b": null,
-              ...
-            },
-            ...
-          }
-        }
     """
     records: list[dict[str, object]] = []
 
@@ -335,13 +272,7 @@ def summarize_overall(
             s = _finite_only(df[col])
             if s.empty:
                 continue
-            records.append(
-                {
-                    "dataset": ds_name,
-                    "metric": col,
-                    "mean": s.mean(),
-                }
-            )
+            records.append({"dataset": ds_name, "metric": col, "mean": s.mean()})
 
     print()
     print("=".center(width, "="))
@@ -413,30 +344,6 @@ def summarize_overall(
 
         print(text)
 
-    # --------- JSON export (uses original wide_df, not compacted view) ---------
-    hierarchical: dict[str, dict[str, float | None]] = {}
-    for _, row in wide_df.iterrows():
-        ds: str = row["dataset"]
-        hierarchical[ds] = {}
-        for col, val in row.items():
-            if col == "dataset":
-                continue
-            else:
-                hierarchical[ds][col] = float(val)
-
-    json_obj = {
-        "metrics_filter": metrics,
-        "datasets": hierarchical,
-    }
-
-    json_path = output_dir / "numeric_summary_overall.json"
-    try:
-        with json_path.open("w", encoding="utf-8") as f:
-            json.dump(json_obj, f, indent=2)
-        logger.info(f"Saved overall numeric summary JSON to: {json_path}")
-    except Exception as e:
-        logger.error(f"Failed to save overall numeric summary JSON: {e}")
-
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -446,9 +353,6 @@ def summarize_overall(
 def main(args: argparse.Namespace) -> None:
     width = _display_width()
 
-    output_dir = pathlib.Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     path_list, data_list = read_data(args.data_path, args.recurse, args.patterns)
     if not data_list:
         logger.error("No valid datasets loaded. Exiting.")
@@ -456,19 +360,18 @@ def main(args: argparse.Namespace) -> None:
 
     metrics = args.metrics
 
-    summarize_per_dataset(
-        path_list=path_list,
-        data_list=data_list,
-        width=width,
-        output_dir=output_dir,
-        metrics=metrics,
-    )
+    if args.verbose:
+        summarize_per_dataset(
+            path_list=path_list,
+            data_list=data_list,
+            width=width,
+            metrics=metrics,
+        )
 
     summarize_overall(
         path_list=path_list,
         data_list=data_list,
         width=width,
-        output_dir=output_dir,
         metrics=metrics,
     )
 

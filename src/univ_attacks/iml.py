@@ -56,7 +56,8 @@ def cosine_similarity_loss(
     sample_losses[sample_mask] = flat_losses
     return sample_losses.sum(dim=-1) / sample_mask.sum(dim=-1)
 
-
+# TODO: IMPORTANT: we should also use the control tokens between the prompt and the target to compute the loss.
+# and even possibly some tokens of the input. this should improve the attack effectiveness significantly.
 class IML(UnivAttack):
     def __init__(
         self,
