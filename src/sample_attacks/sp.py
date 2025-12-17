@@ -13,6 +13,7 @@ from transformers.tokenization_utils_base import BatchEncoding
 from transformers.cache_utils import DynamicCache
 
 
+# TODO: implement SP-IRIS as well
 class SP(SampleAttack):
     """
     Soft Prompt Threats Attack: optimizes continuous adversarial embeddings

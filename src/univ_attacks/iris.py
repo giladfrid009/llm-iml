@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from src.univ_attacks.univ_attack import TrainPosition
 from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.adv_model import AdvModel
@@ -7,9 +9,99 @@ from src.univ_attacks.soft_prompt import SoftPrompt, ce_criterion
 from src.fgsm_optim import FGSM
 from src.metric_logger import MetricLogger
 
-from dataclasses import dataclass
 from typing import Any
 import torch
+import json
+import os
+
+
+class RefusalConfig:
+    def __init__(
+        self,
+        layer_index: int,
+        token_index: int,
+        direction_path: str | None = None,
+        direction: torch.Tensor | None = None,
+    ):
+        if direction is None and direction_path is not None:
+            direction = torch.load(direction_path, weights_only=True)
+
+        if direction is None:
+            raise ValueError("Either direction_path or direction must be provided.")
+
+        assert token_index < 0, "Token index must be negative."
+        assert direction.ndim == 1, "Direction must be a 1D tensor."
+
+        self.layer_index = layer_index
+        self.token_index = token_index
+        self.direction_path = direction_path
+        self.direction = direction
+
+    def get_hparams(self) -> dict[str, Any]:
+        return {
+            "layer_index": self.layer_index,
+            "token_index": self.token_index,
+            "direction_shape": self.direction.shape,
+            "direction_path": self.direction_path,
+        }
+
+    def save(self, path: str, include_direction: bool | None = None) -> None:
+        if include_direction is None:
+            include_direction = path.endswith(".pt") or path.endswith(".pth")
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        if include_direction:
+            if self.direction is None:
+                raise ValueError("direction is not available to save.")
+
+            data = {
+                "layer_index": self.layer_index,
+                "token_index": self.token_index,
+                "direction": self.direction.detach().cpu(),
+                "direction_path": self.direction_path,
+            }
+
+            torch.save(data, f=path)
+
+        else:
+            if self.direction_path is None:
+                raise ValueError("direction_path is not available to save.")
+
+            data = {
+                "layer_index": self.layer_index,
+                "token_index": self.token_index,
+                "direction_path": self.direction_path,
+            }
+
+            with open(path, "w") as f:
+                json.dump(data, f, indent=4)
+
+    @classmethod
+    def load(cls, path: str, include_direction: bool | None = None) -> RefusalConfig:
+        if include_direction is None:
+            include_direction = path.endswith(".pt") or path.endswith(".pth")
+
+        if include_direction:
+            data = torch.load(path)
+            if not isinstance(data, dict):
+                raise ValueError("Invalid data format in the saved file.")
+
+            return cls(
+                layer_index=data["layer_index"],
+                token_index=data["token_index"],
+                direction=data["direction"],
+                direction_path=data.get("direction_path", None),
+            )
+
+        with open(path, "r") as f:
+            data = json.load(f)
+
+        return cls(
+            layer_index=data["layer_index"],
+            token_index=data["token_index"],
+            direction_path=data["direction_path"],
+        )
 
 
 def iris_criterion(
@@ -28,47 +120,11 @@ def iris_criterion(
     """
     assert direction.ndim == 1, "Direction must be a 1D tensor."
     assert direction.size(0) == activs.size(2), "Direction size must match hidden size."
+    direction = direction.to(activs.device, dtype=activs.dtype)
 
     token_activs = activs[:, token_index]  # (B, H)
     loss = torch.square(token_activs @ direction)
     return loss
-
-
-@dataclass
-class RefusalConfig:
-    layer_index: int
-    token_index: int
-    direction: torch.Tensor
-
-    def __post_init__(self):
-        assert self.token_index < 0
-        assert self.direction.ndim == 1, "Direction must be a 1D tensor."
-
-    def save(self, path: str) -> None:
-        torch.save(
-            {
-                "layer_index": self.layer_index,
-                "token_index": self.token_index,
-                "direction": self.direction,
-            },
-            path,
-        )
-
-    @classmethod
-    def load(cls, path: str) -> "RefusalConfig":
-        data = torch.load(path)
-        return cls(
-            layer_index=data["layer_index"],
-            token_index=data["token_index"],
-            direction=data["direction"],
-        )
-
-    def get_hparams(self) -> dict[str, Any]:
-        return {
-            "layer_index": self.layer_index,
-            "token_index": self.token_index,
-            "direction_shape": self.direction.shape,
-        }
 
 
 class IRIS(SoftPrompt):
@@ -118,6 +174,9 @@ class IRIS(SoftPrompt):
         self.metric_logger.report_hparams("attack", beta=self.beta, refusal_layer=refusal_config.layer_index)
         self.metric_logger.report_hparams("refusal_config", self.refusal_config.get_hparams())
         self.metric_logger.report_hparams("activ_extractor", self.activ_extractor.get_hparams())
+
+        # move direction to device
+        self.refusal_config.direction = self.refusal_config.direction.to(self.device)
 
     def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
         self.optimizer.zero_grad()

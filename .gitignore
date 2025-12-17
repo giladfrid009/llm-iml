@@ -15,10 +15,16 @@ logs
 notebooks
 tests
 tests2
+
 run_all_llama3_rr.py
 run_all_llama2.py
 run_all_soft.py
+run_all_soft_indiv.py
 summaries
+
+# logs
+logs-indiv-softprompt
 logs-softprompt-judge-strongreject
 logs-softprompt-judge-harmbench
+
 directions
