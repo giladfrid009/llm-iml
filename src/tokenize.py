@@ -117,7 +117,7 @@ def chat_with_cache(
     # should be the same for both full and partial conversations
     const_idx = []
     for conv in input_tokens:
-        adv_idx = conv.index(adv_token_id)
+        adv_idx = conv.index(adv_token_id) # TODO: crashes if there is no adv_token_id at all.
         const_idx.append(adv_idx)
 
     # split convs before and after the constant index

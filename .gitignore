@@ -12,7 +12,10 @@ logs
 
 # Others
 .env
+
 notebooks
+!notebooks/redundancy_direction.ipynb
+
 tests
 tests2
 
@@ -28,3 +31,4 @@ logs-softprompt-judge-strongreject
 logs-softprompt-judge-harmbench
 
 directions
+
