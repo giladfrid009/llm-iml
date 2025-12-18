@@ -13,7 +13,7 @@ logs
 # Others
 .env
 
-notebooks
+notebooks/*
 !notebooks/redundancy_direction.ipynb
 
 tests
