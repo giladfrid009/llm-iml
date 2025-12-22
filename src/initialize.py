@@ -1,10 +1,15 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from tqdm.auto import tqdm
 import torch
 
-from src.sample_attacks import SampleAttack
 from src.data import TableLoader
-from src.adv_model import AdvModel
 from src.utils.logging import create_logger
+
+
+if TYPE_CHECKING:
+    from src.adv_model import AdvModel
+    from src.sample_attacks import SampleAttack
 
 
 logger = create_logger(__name__)

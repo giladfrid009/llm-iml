@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.univ_attacks.univ_attack import TrainPosition
-from src.activ_extractor import ActivationExtractor, ActivationLoss
+from src.activ_extractor import ActivationLoss
 from src.adv_model import AdvModel
 from src.eval.evaluator import Evaluator
 from src.config import GenConfig
@@ -142,7 +142,6 @@ class IRIS(SoftPrompt):
         refusal_config: RefusalConfig,
         evaluators: list[Evaluator],
         beta: float = 0.5,
-        activ_extractor: ActivationExtractor | None = None,
         eval_metric: str | None = None,
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
@@ -160,20 +159,11 @@ class IRIS(SoftPrompt):
             metric_logger=metric_logger,
         )
 
-        if activ_extractor is None:
-            activ_extractor = ActivationExtractor(
-                adv_model.model,
-                f"model.layers.{refusal_config.layer_index}",
-                capture_output=False,
-            )
-
         self.refusal_config = refusal_config
-        self.activ_extractor = activ_extractor
         self.beta = beta
 
         self.metric_logger.report_hparams("attack", beta=self.beta, refusal_layer=refusal_config.layer_index)
         self.metric_logger.report_hparams("refusal_config", self.refusal_config.get_hparams())
-        self.metric_logger.report_hparams("activ_extractor", self.activ_extractor.get_hparams())
 
         # move direction to device
         self.refusal_config.direction = self.refusal_config.direction.to(self.device)
@@ -205,21 +195,21 @@ class IRIS(SoftPrompt):
                 sample_mean=False,
             )
 
-            # use input encodings to compute activations for iris loss
-            with self.activ_extractor.capture():
-                self.adv_model.forward(
-                    input_ids=input_encodings.input_ids,
-                    attention_mask=input_encodings.attention_mask,
-                    adv_mask=input_encodings.adv_mask,
-                    adv_embeds=self.univ_embeds,
-                )
+            hidden_states: tuple[torch.Tensor] = self.adv_model.forward(
+                input_ids=input_encodings.input_ids,
+                attention_mask=input_encodings.attention_mask,
+                adv_mask=input_encodings.adv_mask,
+                adv_embeds=self.univ_embeds,
+                output_hidden_states=True,
+            ).hidden_states
 
-            activs = self.activ_extractor.get_activations()
+            # each hidden state of shape (batch_size, seq_len, hidden_size)
+            activs = {f"state-{i}": hidden_states[i] for i in range(1, len(hidden_states))}
 
             # iris loss is computed w.r.t the last tokens of the input prompt
             iris_loss = ActivationLoss(loss_fn=iris_criterion, reduction="sum-mean").forward(
                 activs,
-                token_index=self.refusal_config.token_index,
+                token_index=self.refusal_config.token_index,  # NOTE: in the paper they use "last input index"
                 direction=self.refusal_config.direction,
             )
 

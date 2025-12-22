@@ -115,14 +115,14 @@ def chat_with_cache(
 
     # find the index of the first adversarial token
     # should be the same for both full and partial conversations
-    const_idx = []
+    adv_indices = []
     for conv in input_tokens:
-        adv_idx = conv.index(adv_token_id) # TODO: crashes if there is no adv_token_id at all.
-        const_idx.append(adv_idx)
+        adv_idx = next((i for i, v in enumerate(conv) if v == adv_token_id), len(conv))
+        adv_indices.append(adv_idx)
 
     # split convs before and after the constant index
-    tokens_const = [conv[:idx] for conv, idx in zip(input_tokens, const_idx)]
-    tokens_adver = [conv[idx:] for conv, idx in zip(input_tokens, const_idx)]
+    tokens_const = [conv[:idx] for conv, idx in zip(input_tokens, adv_indices)]
+    tokens_adver = [conv[idx:] for conv, idx in zip(input_tokens, adv_indices)]
 
     # left pad const tokens, and right pad non-const tokens
     # we do that to maximize the effectivness of the kv-cache.
@@ -145,10 +145,12 @@ def chat_with_cache(
     )
 
     # construct result tensors
-    input_ids = torch.cat([data_const.input_ids, data_adver.input_ids], dim=1)
-    attn_mask = torch.cat([data_const.attention_mask, data_adver.attention_mask], dim=1)
+    input_ids = torch.cat([data_const.input_ids.to(torch.int64), data_adver.input_ids.to(torch.int64)], dim=1)
+    attn_mask = torch.cat([data_const.attention_mask.to(torch.int64), data_adver.attention_mask.to(torch.int64)], dim=1)
     adv_mask = input_ids == adv_token_id
-    const_idx = torch.tensor(const_idx, dtype=torch.long)
+
+    const_idx = torch.argmax(adv_mask.int(), dim=1)
+    const_idx[~adv_mask.any(dim=1)] = input_ids.size(1)
 
     return BatchEncoding(
         {
@@ -164,6 +166,7 @@ def chat(
     tokenizer: PreTrainedTokenizer,
     conversations: list[Conv],
     adv_token: str,
+    **kwargs,
 ) -> BatchEncoding:
     """
     Regular chat tokenization function which applies left padding to a batch of conversations.
@@ -172,6 +175,7 @@ def chat(
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
         conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
         adv_token (str): The adversarial token.
+        **kwargs: Additional keyword arguments to pass to the tokenizer.
 
     Returns:
         BatchEncoding: A dictionary containing the tokenized input with the following keys
@@ -190,6 +194,7 @@ def chat(
         return_dict=True,
         return_tensors="pt",
         enable_thinking=False,
+        **kwargs,
     )  # type: ignore
 
     adv_token_id = tokenizer.convert_tokens_to_ids(adv_token)
