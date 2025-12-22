@@ -11,6 +11,7 @@ def chat_with_targets(
     conversations: list[Conv],
     target_texts: list[str],
     adv_token: str,
+    target_controls: bool = False,
 ) -> BatchEncoding:
     """
     Tokenization function which also returns a mask indicating positions of target tokens.
@@ -21,6 +22,8 @@ def chat_with_targets(
         conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
         target_texts (list[str]): A list of target texts corresponding to each conversation.
         adv_token (str): The adversarial token to split the conversations on.
+        target_controls (bool): Whether control tokens are also marked as target tokens. Default is False.
+            Control are the tokens separating user and assistant messages in the chat template.
 
     Returns:
         BatchEncoding: A dictionary containing the tokenized input and target texts with the following keys
@@ -31,8 +34,9 @@ def chat_with_targets(
             - `target_mask` (torch.BoolTensor): A mask indicating the positions of the target tokens in the full input.
     """
     convs_partial = copy.deepcopy(conversations)
-    for conv in convs_partial:
-        conv.append({"role": "assistant", "content": ""})
+    if not target_controls:
+        for conv in convs_partial:
+            conv.append({"role": "assistant", "content": ""})
 
     encodings_partial = chat_with_cache(tokenizer, convs_partial, adv_token)
 

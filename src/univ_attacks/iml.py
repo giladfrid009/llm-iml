@@ -56,8 +56,7 @@ def cosine_similarity_loss(
     sample_losses[sample_mask] = flat_losses
     return sample_losses.sum(dim=-1) / sample_mask.sum(dim=-1)
 
-# TODO: IMPORTANT: we should also use the control tokens between the prompt and the target to compute the loss.
-# and even possibly some tokens of the input. this should improve the attack effectiveness significantly.
+
 class IML(UnivAttack):
     def __init__(
         self,
@@ -74,6 +73,7 @@ class IML(UnivAttack):
         skip_failed_attacks: bool = True,
         warmup_epochs: int = 0,
         dynamic_labels: int = -1,
+        target_controls: bool = False,  # TODO: very important ablation
         metric_logger: MetricLogger | None = None,
     ):
         super().__init__(
@@ -99,6 +99,7 @@ class IML(UnivAttack):
         self.skip_failed_attacks = skip_failed_attacks
         self.warmup_epochs = warmup_epochs
         self.dynamic_labels = dynamic_labels
+        self.target_controls = target_controls
 
         self.metric_logger.report_hparams(
             "attack",
@@ -109,6 +110,7 @@ class IML(UnivAttack):
             skip_failed_attacks=self.skip_failed_attacks,
             warmup_epochs=self.warmup_epochs,
             dynamic_labels=self.dynamic_labels,
+            target_controls=self.target_controls,
         )
 
         self.metric_logger.report_hparams("activ_extractor", activ_extractor.get_hparams())
@@ -252,7 +254,12 @@ class IML(UnivAttack):
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
-                sample_encodings = self.adv_model.tokenize(sample_result.conversations, target_texts)
+                sample_encodings = self.adv_model.tokenize(
+                    sample_result.conversations,
+                    target_texts,
+                    target_controls=self.target_controls,
+                )
+
                 with torch.inference_mode():
                     self.adv_model.forward(
                         input_ids=sample_encodings.input_ids,
@@ -263,7 +270,12 @@ class IML(UnivAttack):
                     sample_activs = self.activ_extractor.get_activations()
 
                 # compute universal activations
-                univ_encodings = self.adv_model.tokenize(input_convs, target_texts)
+                univ_encodings = self.adv_model.tokenize(
+                    input_convs,
+                    target_texts,
+                    target_controls=self.target_controls,
+                )
+
                 self.adv_model.forward(
                     input_ids=univ_encodings.input_ids,
                     attention_mask=univ_encodings.attention_mask,

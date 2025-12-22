@@ -310,6 +310,7 @@ class AdvModel(nn.Module):
         self,
         conversations: list[Conv],
         target_texts: list[str] | None = None,
+        **kwargs,
     ) -> BatchEncoding:
         """
         Tokenize the input and target texts.
@@ -317,6 +318,7 @@ class AdvModel(nn.Module):
         Args:
             conversations (list[Conv]): A batch of conversations, where each conversation is a list of messages.
             target_texts (list[str] | None): List of target texts. If None, only input texts are tokenized.
+            **kwargs: Additional keyword arguments to be passed to the tokenizer.
 
         Returns:
             BatchEncoding:
@@ -333,12 +335,14 @@ class AdvModel(nn.Module):
                 conversations=conversations,
                 target_texts=target_texts,
                 adv_token=self.adv_token,
+                **kwargs,
             )
         else:
             tokenized = tokenize.chat(
                 tokenizer=self.tokenizer,
                 conversations=conversations,
                 adv_token=self.adv_token,
+                **kwargs,
             )
 
         return tokenized.to(self.device)

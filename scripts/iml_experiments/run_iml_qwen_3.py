@@ -4,7 +4,7 @@ import sys
 import pathlib
 
 # set pythonpath to the main module directory
-module_dir = pathlib.Path(__file__).parent.resolve().parent
+module_dir = pathlib.Path(__file__).resolve().parent.parent.parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
@@ -15,18 +15,19 @@ from src.adv_model import AdvModel
 from src.activ_extractor import ActivationExtractor
 
 
-class IML_Phi3_CAPO_Experiment(IML_Experiment):
+class Exp(IML_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         super().add_arguments(parser)
 
         parser.set_defaults(
-            model="ContinuousAT/Phi-CAPO",
-            layers=["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
+            model="Qwen/Qwen3-4B-Instruct-2507",
+            layers=["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
             lr=1e-2,
             skip_fooled="true",
             skip_failed="true",
             dynamic_labels=40,
-            warmup_epochs=4,
+            warmup_epochs=0,
+            target_controls="false",
         )
 
     def initialize_attack(
@@ -88,4 +89,4 @@ class IML_Phi3_CAPO_Experiment(IML_Experiment):
 
 
 if __name__ == "__main__":
-    IML_Phi3_CAPO_Experiment().main()
+    Exp().main()

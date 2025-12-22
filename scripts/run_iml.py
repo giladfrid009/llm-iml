@@ -78,6 +78,15 @@ class IML_Experiment(Experiment):
             metavar="NUM",
             help="Number of warmup epochs.",
         )
+        
+        iml_args.add_argument(
+            "--target_controls",
+            type=str,
+            default="false",
+            choices=["true", "false"],
+            metavar="BOOL",
+            help="Whether control tokens are also marked as target tokens.",
+        )
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model, tokenizer, num_tokens=self.args().num_tokens, add_spaces=False, adv_suffix=True)
@@ -132,6 +141,7 @@ class IML_Experiment(Experiment):
             skip_failed_attacks=args.skip_failed == "true",
             warmup_epochs=args.warmup_epochs,
             dynamic_labels=args.dynamic_labels,
+            target_controls=args.target_controls == "true",
         )
 
 
