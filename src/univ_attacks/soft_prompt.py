@@ -3,7 +3,7 @@ from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack, TrainPosition
 from src.fgsm_optim import FGSM
-from src.metric_logger import MetricLogger
+from src.utils.trackers import MetricTracker
 
 from typing import Any
 import torch
@@ -47,7 +47,7 @@ class SoftPrompt(UnivAttack):
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
-        metric_logger: MetricLogger | None = None,
+        metric_tracker: MetricTracker | None = None,
     ):
         super().__init__(
             adv_model=adv_model,
@@ -56,13 +56,13 @@ class SoftPrompt(UnivAttack):
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
-            metric_logger=metric_logger,
+            metric_tracker=metric_tracker,
         )
 
         self.optimizer = optimizer
 
-        self.metric_logger.report_hparams("attack", optimizer=type(self.optimizer).__name__)
-        self.metric_logger.report_hparams("optim", optimizer.state_dict()["param_groups"][0], name=type(self.optimizer).__name__)
+        self.metric_tracker.report_hparams("attack", optimizer=type(self.optimizer).__name__)
+        self.metric_tracker.report_hparams("optim", optimizer.state_dict()["param_groups"][0], name=type(self.optimizer).__name__)
 
     def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
         self.optimizer.zero_grad()

@@ -14,7 +14,7 @@ from src.config import GenConfig
 from src.sample_attacks import SP
 from src.initialize import Initializer
 from src.fgsm_optim import FGSM
-from src.metric_logger import MetricLogger
+from src.utils.trackers import MetricTracker
 
 from scripts.utils.load_model import SUPPORTED_MODELS, load_model
 from scripts.utils.load_dataset import SUPPORTED_DATASETS, load_dataset
@@ -404,11 +404,12 @@ class SoftIndivRunner:
             logger.error("No GPU available. Exiting.")
             sys.exit(1)
 
-        with MetricLogger(
+        with MetricTracker.create(
             self.args().run_name,
+            kind="wandb",
             root_dir=f"logs/{args.model.split('/')[-1]}/{args.dataset}",
             project="LLM-IML",
-        ) as metric_logger:
+        ) as metric_tracker:
             logger.info(f"Loading dataset: {args.dataset}")
             ds_train, ds_val, ds_test = load_dataset(args.dataset)
             dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=False)
@@ -440,7 +441,7 @@ class SoftIndivRunner:
             eval_metric_name: str = args.eval_metric or judge_evaluator.default_metric
             logger.info(f"Using evaluation metric: {eval_metric_name}")
 
-            metric_logger.set_tags(
+            metric_tracker.set_tags(
                 model=args.model,
                 num_tokens=adv_model.num_tokens,
                 attack="SP_Sample",
@@ -455,7 +456,7 @@ class SoftIndivRunner:
                 train_succ, train_tot = self.attack_dataset(
                     dl_train,
                     "train",
-                    metric_logger,
+                    metric_tracker,
                     adv_model,
                     gen_config,
                     judge_evaluator,
@@ -468,7 +469,7 @@ class SoftIndivRunner:
                 val_succ, val_tot = self.attack_dataset(
                     dl_val,
                     "val",
-                    metric_logger,
+                    metric_tracker,
                     adv_model,
                     gen_config,
                     judge_evaluator,
@@ -480,7 +481,7 @@ class SoftIndivRunner:
             test_succ, test_tot = self.attack_dataset(
                 dl_test,
                 "test",
-                metric_logger,
+                metric_tracker,
                 adv_model,
                 gen_config,
                 judge_evaluator,
@@ -489,7 +490,7 @@ class SoftIndivRunner:
             total_succ += test_succ
             total_tot += test_tot
 
-            metric_logger.report_globals(
+            metric_tracker.report_globals(
                 {
                     "final_asr": total_succ / total_tot if total_tot > 0 else 0,
                     "num_success": total_succ,
@@ -506,7 +507,7 @@ class SoftIndivRunner:
             for ev in evaluators:
                 ev.close()
 
-    def attack_dataset(self, dl, split_name, metric_logger, adv_model, gen_config, judge_evaluator, eval_metric_name):
+    def attack_dataset(self, dl, split_name, metric_tracker, adv_model, gen_config, judge_evaluator, eval_metric_name):
         args = self.args()
         num_success = 0
         num_total = 0
@@ -595,7 +596,7 @@ class SoftIndivRunner:
                     batch_asr=f"{best_metric.sum().item() / len(input_texts):.4f}",
                 )
 
-        if log_dir := metric_logger.log_dir:
+        if log_dir := metric_tracker.log_dir:
             dl.df.to_csv(f"{log_dir}/{split_name}_results.csv", index=False)
             logger.info(f"Saved {split_name} results to '{log_dir}/'.")
 

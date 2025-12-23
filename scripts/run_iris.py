@@ -70,7 +70,7 @@ class IRIS_Experiment(Experiment):
         eval_freq,
         mixed_precision,
         gen_config,
-        metric_logger,
+        metric_tracker,
     ) -> UnivAttack:
         """
         Creates a IRIS universal adversarial attack instance.
@@ -89,7 +89,7 @@ class IRIS_Experiment(Experiment):
             eval_freq=eval_freq,
             gen_config=gen_config,
             mixed_precision=mixed_precision,
-            metric_logger=metric_logger,
+            metric_tracker=metric_tracker,
         )
 
 

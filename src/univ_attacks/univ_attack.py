@@ -1,7 +1,7 @@
 from src.adv_model import AdvModel
 from src.data import TableLoader
 from src.eval.evaluator import Evaluator
-from src.metric_logger import MetricLogger
+from src.utils.trackers import MetricTracker
 from src.config import GenConfig, StopCriteria
 from src.utils.logging import create_logger
 from src.utils.torch import clear_memory
@@ -41,7 +41,7 @@ class UnivAttack:
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
-        metric_logger: MetricLogger | None = None,
+        metric_tracker: MetricTracker | None = None,
     ):
         """
         Args:
@@ -53,7 +53,7 @@ class UnivAttack:
                 - if float, evaluates every `round(eval_freq * len(dl_train))` batches.
             mixed_precision (bool): Whether to use mixed precision training.
             gen_config (GenConfig  | None): Default generation configuration.
-            metric_logger (MetricLogger | None): Metric logger for logging experiment data and metrics.
+            metric_tracker (BaseTracker | None): Metric logger for logging experiment data and metrics.
         """
         if eval_metric is None:
             eval_metric = evaluators[0].default_metric
@@ -86,16 +86,17 @@ class UnivAttack:
         self.best_embeds = self.univ_embeds.clone().detach()
 
         # logging
-        if metric_logger is None:
-            metric_logger = MetricLogger(
+        if metric_tracker is None:
+            metric_tracker = MetricTracker.create(
                 time.strftime("%Y-%m-%d_%H-%M-%S"),
                 project="LLM-IML",
                 root_dir="logs",
+                kind="wandb",
             )
 
-        self.metric_logger = metric_logger
+        self.metric_tracker = metric_tracker
 
-        self.metric_logger.report_hparams(
+        self.metric_tracker.report_hparams(
             "attack",
             model_name=adv_model.model.name_or_path,
             num_tokens=self.num_tokens,
@@ -103,22 +104,22 @@ class UnivAttack:
             eval_freq=self.eval_freq,
             evaluators=[e.name for e in self.evaluators],
             eval_metric=self.eval_metric,
-            log_dir=self.metric_logger.root_dir,
+            log_dir=self.metric_tracker.root_dir,
         )
 
-        self.metric_logger.report_hparams(
+        self.metric_tracker.report_hparams(
             "hf_model",
             model_config=adv_model.model.config.to_dict(),
             generation_config=adv_model.model.generation_config.to_dict(),  # type: ignore
             name=adv_model.model.name_or_path,
         )
 
-        self.metric_logger.report_hparams("logger", self.metric_logger.get_hparams())
-        self.metric_logger.report_hparams("adv_model", adv_model.get_hparams())
-        self.metric_logger.report_hparams("gen_config", self.gen_config.get_hparams())
-        self.metric_logger.report_hparams("grad_scaler", self.grad_scaler.state_dict())
+        self.metric_tracker.report_hparams("logger", self.metric_tracker.get_hparams())
+        self.metric_tracker.report_hparams("adv_model", adv_model.get_hparams())
+        self.metric_tracker.report_hparams("gen_config", self.gen_config.get_hparams())
+        self.metric_tracker.report_hparams("grad_scaler", self.grad_scaler.state_dict())
         for ev in self.evaluators:
-            self.metric_logger.report_hparams(f"evaluators/{ev.name}", ev.get_hparams())
+            self.metric_tracker.report_hparams(f"evaluators/{ev.name}", ev.get_hparams())
 
     @property
     def univ_embeds(self) -> torch.Tensor:
@@ -137,11 +138,11 @@ class UnivAttack:
         return self.adv_model.device
 
     def save_checkpoint(self, file_name: str = "best_embeds.pt"):
-        if self.metric_logger.log_dir is None:
+        if self.metric_tracker.log_dir is None:
             logger.warning("Log dir is None, cannot save checkpoint.")
             return
 
-        torch.save(self.best_embeds, pathlib.Path(self.metric_logger.log_dir) / file_name)
+        torch.save(self.best_embeds, pathlib.Path(self.metric_tracker.log_dir) / file_name)
 
     @torch.inference_mode()
     def predict(
@@ -245,9 +246,9 @@ class UnivAttack:
         should_stop = stop_criteria.should_stop()
 
         # log relevant stats
-        self.metric_logger.report_hparams("stop", stop_criteria.get_hparams())
-        self.metric_logger.report_hparams("data/train", dl_train.get_hparams())
-        self.metric_logger.report_hparams("data/eval", dl_eval.get_hparams())
+        self.metric_tracker.report_hparams("stop", stop_criteria.get_hparams())
+        self.metric_tracker.report_hparams("data/train", dl_train.get_hparams())
+        self.metric_tracker.report_hparams("data/eval", dl_eval.get_hparams())
 
         with tqdm(range(stop_criteria.max_epochs), desc="Epochs") as epoch_pbar:
             # initial evaluation
@@ -255,8 +256,8 @@ class UnivAttack:
             clear_memory()
 
             self.save_checkpoint()
-            self.metric_logger.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step=-1)
-            self.metric_logger.report_scalars(eval_metrics, step=-1)
+            self.metric_tracker.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step=-1)
+            self.metric_tracker.report_scalars(eval_metrics, step=-1)
             epoch_pbar.set_postfix(eval_metrics)
 
             # main training loop
@@ -273,7 +274,7 @@ class UnivAttack:
                         position = TrainPosition(epoch_num, batch_num, step)
                         batch_metrics = self.optim_step(batch_data, position)
                         stop_criteria.update(epoch_num, None)
-                        self.metric_logger.report_scalars(batch_metrics, step)
+                        self.metric_tracker.report_scalars(batch_metrics, step)
                         batch_pbar.set_postfix(batch_metrics)
                         should_stop = stop_criteria.should_stop()
 
@@ -285,8 +286,8 @@ class UnivAttack:
                             clear_memory()
 
                             self.save_checkpoint()
-                            self.metric_logger.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step)
-                            self.metric_logger.report_scalars(eval_metrics, step)
+                            self.metric_tracker.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step)
+                            self.metric_tracker.report_scalars(eval_metrics, step)
                             epoch_pbar.set_postfix(eval_metrics)
 
                         step += 1

@@ -38,21 +38,21 @@ class Exp(IML_Experiment):
         eval_freq,
         mixed_precision,
         gen_config,
-        metric_logger,
+        metric_tracker,
     ) -> UnivAttack:
         def sample_attack_factory(adv_model: AdvModel, epoch: int):
             if epoch < args.warmup_epochs:
                 return SP(
                     adv_model,
                     optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
-                    steps=150,
+                    steps=45,
                     target_matching=False,
                 )
 
             return SP(
                 adv_model,
                 optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
-                steps=150,
+                steps=15,
                 target_matching=False,
             )
 
@@ -79,7 +79,7 @@ class Exp(IML_Experiment):
             eval_freq=eval_freq,
             gen_config=gen_config,
             mixed_precision=mixed_precision,
-            metric_logger=metric_logger,
+            metric_tracker=metric_tracker,
             # specialized args
             skip_already_fooled=args.skip_fooled == "true",
             skip_failed_attacks=args.skip_failed == "true",

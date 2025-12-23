@@ -4,7 +4,7 @@ from src.activ_extractor import ActivationExtractor, ActivationLoss
 from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack, TrainPosition
-from src.metric_logger import MetricLogger
+from src.utils.trackers import MetricTracker
 
 import inspect
 from typing import Any, Callable
@@ -74,7 +74,7 @@ class IML(UnivAttack):
         warmup_epochs: int = 0,
         dynamic_labels: int = -1,
         target_controls: bool = False,  # TODO: very important ablation
-        metric_logger: MetricLogger | None = None,
+        metric_tracker: MetricTracker | None = None,
     ):
         super().__init__(
             adv_model=adv_model,
@@ -83,7 +83,7 @@ class IML(UnivAttack):
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
-            metric_logger=metric_logger,
+            metric_tracker=metric_tracker,
         )
 
         if callable(inner_attack):
@@ -101,7 +101,7 @@ class IML(UnivAttack):
         self.dynamic_labels = dynamic_labels
         self.target_controls = target_controls
 
-        self.metric_logger.report_hparams(
+        self.metric_tracker.report_hparams(
             "attack",
             inner_attack=type(self.inner_attack).__name__,
             attack_builder=inspect.getsource(self.attack_builder_func) if self.attack_builder_func else None,
@@ -113,9 +113,9 @@ class IML(UnivAttack):
             target_controls=self.target_controls,
         )
 
-        self.metric_logger.report_hparams("activ_extractor", activ_extractor.get_hparams())
-        self.metric_logger.report_hparams("inner_attack", self.inner_attack.get_hparams())
-        self.metric_logger.report_hparams("optim", optimizer.state_dict()["param_groups"][0], name=type(self.optimizer).__name__)
+        self.metric_tracker.report_hparams("activ_extractor", activ_extractor.get_hparams())
+        self.metric_tracker.report_hparams("inner_attack", self.inner_attack.get_hparams())
+        self.metric_tracker.report_hparams("optim", optimizer.state_dict()["param_groups"][0], name=type(self.optimizer).__name__)
 
     @property
     def judge_evaluator(self) -> Evaluator:

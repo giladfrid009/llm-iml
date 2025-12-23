@@ -18,7 +18,7 @@ from src.utils.logging import create_logger, setup_logging, loglevel_names
 from src.data import TableLoader
 from src.univ_attacks import UnivAttack
 from src.adv_model import AdvModel
-from src.metric_logger import MetricLogger
+from src.utils.trackers import MetricTracker
 
 from scripts.utils.load_model import SUPPORTED_MODELS, load_model
 from scripts.utils.load_dataset import SUPPORTED_DATASETS, load_dataset
@@ -215,10 +215,7 @@ class Generator:
         dl_eval = TableLoader(ds_val, batch_size=args.batch_size, shuffle=False)
         dl_test = TableLoader(ds_test, batch_size=args.batch_size, shuffle=False)
 
-        logger.info(
-            f"Loaded datasets with sample counts: "
-            f"(train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)})."
-        )
+        logger.info(f"Loaded datasets with sample counts: (train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)}).")
 
         logger.info(f"Loading model: {args.model}")
         model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
@@ -247,7 +244,7 @@ class Generator:
             adv_model=adv_model,
             evaluators=[KeywordMatching()],
             eval_metric="Matching/GCG1",
-            metric_logger=MetricLogger(project="none", disabled=True),
+            metric_tracker=MetricTracker.create(kind="clearml", project="none", disabled=True),
             gen_config=gen_config,
         )
 

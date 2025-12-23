@@ -13,7 +13,7 @@ from src.univ_attacks import UnivAttack
 from src.adv_model import AdvModel
 from src.config import GenConfig, StopCriteria
 from src.eval import Evaluator
-from src.metric_logger import MetricLogger
+from src.utils.trackers import MetricTracker
 
 from scripts.utils.load_model import SUPPORTED_MODELS, load_model
 from scripts.utils.load_dataset import SUPPORTED_DATASETS, load_dataset
@@ -257,13 +257,13 @@ class Experiment(ABC):
         eval_freq: float,
         mixed_precision: bool,
         gen_config: GenConfig,
-        metric_logger: MetricLogger,
+        metric_tracker: MetricTracker,
     ) -> UnivAttack:
         pass
 
-    def final_evaluation(self, univ_attack: UnivAttack, evaluators: list[Evaluator], metric_logger: MetricLogger):
+    def final_evaluation(self, univ_attack: UnivAttack, evaluators: list[Evaluator], metric_tracker: MetricTracker):
         args = self.args()
-        log_dir = metric_logger.log_dir
+        log_dir = metric_tracker.log_dir
 
         if log_dir is None:
             logger.warning("No log directory found. Skipping final evaluation.")
@@ -284,7 +284,7 @@ class Experiment(ABC):
 
             if ds_name == args.dataset:
                 # report main dataset results
-                metric_logger.report_globals(test_metrics)
+                metric_tracker.report_globals(test_metrics)
 
             dl_test.df.to_csv(f"{log_dir}/{ds_name}_results.csv", index=False)
             logger.info(f"Saved evaluation results to '{log_dir}/'.")
@@ -296,12 +296,13 @@ class Experiment(ABC):
             logger.error("No GPU available. Exiting.")
             sys.exit(1)
 
-        with MetricLogger(
+        with MetricTracker.create(
             self.args().run_name,
+            kind="wandb",
             root_dir=f"logs/{args.model.split('/')[-1]}/{args.dataset}",
             project="LLM-IML",
             disabled=args.test_run,
-        ) as metric_logger:
+        ) as metric_tracker:
             logger.info(f"Loading dataset: {args.dataset}")
             ds_train, ds_val, ds_test = load_dataset(args.dataset)
             dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True)
@@ -337,10 +338,10 @@ class Experiment(ABC):
                 eval_freq=args.eval_freq,
                 mixed_precision=args.use_amp.lower() == "true",
                 gen_config=gen_config,
-                metric_logger=metric_logger,
+                metric_tracker=metric_tracker,
             )
 
-            metric_logger.set_tags(
+            metric_tracker.set_tags(
                 model=args.model,
                 num_tokens=adv_model.num_tokens,
                 attack=type(univ_attack).__name__,
@@ -349,9 +350,9 @@ class Experiment(ABC):
             )
 
             if main_file := getattr(sys.modules.get("__main__"), "__file__", None):
-                metric_logger.upload_code(main_file)
+                metric_tracker.upload_code(main_file)
             if expr_file := getattr(sys.modules.get(__name__), "__file__", None):
-                metric_logger.upload_code(expr_file)
+                metric_tracker.upload_code(expr_file)
 
             stop = StopCriteria(
                 max_epochs=args.max_epochs if not args.test_run else 1,
@@ -364,7 +365,7 @@ class Experiment(ABC):
             adv_model = univ_attack.fit(dl_train, dl_eval, stop_criteria=stop)
 
             logger.info("Running final evaluation...")
-            self.final_evaluation(univ_attack, evaluators, metric_logger)
+            self.final_evaluation(univ_attack, evaluators, metric_tracker)
 
         for ev in evaluators:
             ev.close()

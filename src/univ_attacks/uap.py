@@ -3,7 +3,7 @@ from src.adv_model import AdvModel
 from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.univ_attack import UnivAttack, TrainPosition
-from src.metric_logger import MetricLogger
+from src.utils.trackers import MetricTracker
 
 import inspect
 from typing import Any, Callable
@@ -31,7 +31,7 @@ class UAP(UnivAttack):
         gen_config: GenConfig | None = None,
         skip_already_fooled: bool = True,
         skip_failed_attacks: bool = True,
-        metric_logger: MetricLogger | None = None,
+        metric_tracker: MetricTracker | None = None,
     ):
         super().__init__(
             adv_model=adv_model,
@@ -40,7 +40,7 @@ class UAP(UnivAttack):
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
-            metric_logger=metric_logger,
+            metric_tracker=metric_tracker,
         )
 
         if callable(inner_attack):
@@ -53,7 +53,7 @@ class UAP(UnivAttack):
         self.skip_already_fooled = skip_already_fooled
         self.skip_failed_attacks = skip_failed_attacks
 
-        self.metric_logger.report_hparams(
+        self.metric_tracker.report_hparams(
             "attack",
             inner_attack=type(self.inner_attack).__name__,
             attack_builder=inspect.getsource(self.attack_builder_func) if self.attack_builder_func else None,
@@ -61,7 +61,7 @@ class UAP(UnivAttack):
             skip_failed_attacks=self.skip_failed_attacks,
         )
 
-        self.metric_logger.report_hparams("inner_attack", self.inner_attack.get_hparams())
+        self.metric_tracker.report_hparams("inner_attack", self.inner_attack.get_hparams())
 
     @property
     def judge_evaluator(self) -> Evaluator:

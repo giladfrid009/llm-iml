@@ -7,7 +7,7 @@ from src.eval.evaluator import Evaluator
 from src.config import GenConfig
 from src.univ_attacks.soft_prompt import SoftPrompt, ce_criterion
 from src.fgsm_optim import FGSM
-from src.metric_logger import MetricLogger
+from src.utils.trackers import MetricTracker
 
 from typing import Any
 import torch
@@ -146,7 +146,7 @@ class IRIS(SoftPrompt):
         eval_freq: int | float = 1,
         mixed_precision: bool = False,
         gen_config: GenConfig | None = None,
-        metric_logger: MetricLogger | None = None,
+        metric_tracker: MetricTracker | None = None,
     ):
         super().__init__(
             adv_model=adv_model,
@@ -156,14 +156,14 @@ class IRIS(SoftPrompt):
             eval_freq=eval_freq,
             mixed_precision=mixed_precision,
             gen_config=gen_config,
-            metric_logger=metric_logger,
+            metric_tracker=metric_tracker,
         )
 
         self.refusal_config = refusal_config
         self.beta = beta
 
-        self.metric_logger.report_hparams("attack", beta=self.beta, refusal_layer=refusal_config.layer_index)
-        self.metric_logger.report_hparams("refusal_config", self.refusal_config.get_hparams())
+        self.metric_tracker.report_hparams("attack", beta=self.beta, refusal_layer=refusal_config.layer_index)
+        self.metric_tracker.report_hparams("refusal_config", self.refusal_config.get_hparams())
 
         # move direction to device
         self.refusal_config.direction = self.refusal_config.direction.to(self.device)
