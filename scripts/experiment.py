@@ -116,6 +116,14 @@ class Experiment(ABC):
             metavar="LEVEL",
             help=f"Logging level to python-logger. Available levels: {loglevel_names()}",
         )
+        
+        parser.add_argument(
+            "--project_name",
+            type=str,
+            default="LLM-IML",
+            metavar="NAME",
+            help="The name of the project for logging purposes.",
+        )
 
         parser.add_argument(
             "--test_run",
@@ -300,7 +308,7 @@ class Experiment(ABC):
             self.args().run_name,
             kind="wandb",
             root_dir=f"logs/{args.model.split('/')[-1]}/{args.dataset}",
-            project="LLM-IML",
+            project=args.project_name,
             disabled=args.test_run,
         ) as metric_tracker:
             logger.info(f"Loading dataset: {args.dataset}")

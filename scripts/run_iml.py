@@ -78,7 +78,7 @@ class IML_Experiment(Experiment):
             metavar="NUM",
             help="Number of warmup epochs.",
         )
-        
+
         iml_args.add_argument(
             "--target_controls",
             type=str,
@@ -86,6 +86,87 @@ class IML_Experiment(Experiment):
             choices=["true", "false"],
             metavar="BOOL",
             help="Whether control tokens are also marked as target tokens.",
+        )
+        
+        inner_params = parser.add_argument_group("Inner Attack Parameters")
+
+        inner_params.add_argument(
+            "--warmup_attack_lr",
+            type=float,
+            default=5e-3,
+            metavar="FLOAT",
+            help="Learning rate for the inner attack during warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--main_attack_lr",
+            type=float,
+            default=5e-3,
+            metavar="FLOAT",
+            help="Learning rate for the inner attack after warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--warmup_attack_steps",
+            type=int,
+            default=45,
+            metavar="INT",
+            help="Number of steps for the inner attack during warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--main_attack_steps",
+            type=int,
+            default=15,
+            metavar="INT",
+            help="Number of steps for the inner attack after warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--warmup_attack_target_matching",
+            type=str,
+            default="false",
+            choices=["true", "false"],
+            metavar="BOOL",
+            help="Whether to use target matching for the inner attack during warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--main_attack_target_matching",
+            type=str,
+            default="false",
+            choices=["true", "false"],
+            metavar="BOOL",
+            help="Whether to use target matching for the inner attack after warmup epochs.",
+        )
+        
+        inner_params.add_argument(
+            "--kv_caching",
+            type=str,
+            default="true",
+            choices=["true", "false"],
+            metavar="BOOL",
+            help="Whether to use kv-caching for the inner attack.",
+        )
+
+        parser.set_defaults(
+            project_name="IML",
+            model="meta-llama/Llama-2-7b-chat-hf",
+            layers=["lm_head"],
+            lr=1e-2,
+            skip_fooled="true",
+            skip_failed="true",
+            dynamic_labels=40,
+            warmup_epochs=2,
+            target_controls="false",
+            # inner-attack params
+            kv_caching="true",
+            warmup_attack_lr=5e-3,
+            warmup_attack_steps=45,
+            warmup_attack_target_matching="false",
+            main_attack_lr=5e-3,
+            main_attack_steps=15,
+            main_attack_target_matching="false",
         )
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
@@ -104,19 +185,29 @@ class IML_Experiment(Experiment):
         gen_config,
         metric_tracker,
     ) -> UnivAttack:
-        args = self.args()
+        def sample_attack_factory(adv_model: AdvModel, epoch: int):
+            if epoch < args.warmup_epochs:
+                return SP(
+                    adv_model,
+                    optim_factory=lambda params: optim.AdamW(params, lr=args.warmup_attack_lr),
+                    steps=args.warmup_attack_steps,
+                    target_matching=args.warmup_attack_target_matching == "true",
+                    kv_caching=args.kv_caching == "true",
+                )
 
-        inner_attack = SP(
-            adv_model,
-            optim_factory=lambda params: optim.AdamW(params, lr=1e-2),
-            steps=25,
-            target_matching=True,
-        )
+            return SP(
+                adv_model,
+                optim_factory=lambda params: optim.AdamW(params, lr=args.main_attack_lr),
+                steps=args.main_attack_steps,
+                target_matching=args.main_attack_target_matching == "true",
+                kv_caching=args.kv_caching == "true",
+            )
+
+        args = self.args()
 
         optimizer = optim.Adam(
             adv_model.parameters(),
             lr=args.lr,
-            weight_decay=0,
         )
 
         activ_extractor = ActivationExtractor(
@@ -127,7 +218,7 @@ class IML_Experiment(Experiment):
 
         return IML(
             adv_model=adv_model,
-            inner_attack=inner_attack,
+            inner_attack=sample_attack_factory,
             optimizer=optimizer,
             activ_extractor=activ_extractor,
             evaluators=evaluators,
@@ -139,9 +230,9 @@ class IML_Experiment(Experiment):
             # specialized args
             skip_already_fooled=args.skip_fooled == "true",
             skip_failed_attacks=args.skip_failed == "true",
+            target_controls=args.target_controls == "true",
             warmup_epochs=args.warmup_epochs,
             dynamic_labels=args.dynamic_labels,
-            target_controls=args.target_controls == "true",
         )
 
 

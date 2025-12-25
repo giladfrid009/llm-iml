@@ -37,6 +37,7 @@ class SoftPrompt_Experiment(Experiment):
         parser.set_defaults(
             train_batch=16,
             max_epochs=2000,
+            project_name="Soft-Prompt",
         )
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:

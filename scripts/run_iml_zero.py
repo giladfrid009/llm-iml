@@ -20,6 +20,7 @@ class IML_Zero_Experiment(IML_Experiment):
         super().add_arguments(parser)
 
         parser.set_defaults(
+            project_name="IML-Zero",
             model="meta-llama/Llama-2-7b-chat-hf",
             layers=["lm_head"],
             lr=5e-3,
