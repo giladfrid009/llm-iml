@@ -19,6 +19,58 @@ class Exp(IML_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         super().add_arguments(parser)
 
+        inner_params = parser.add_argument_group("Inner Attack Parameters")
+
+        inner_params.add_argument(
+            "--warmup_attack_lr",
+            type=float,
+            default=5e-3,
+            metavar="FLOAT",
+            help="Learning rate for the inner attack during warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--main_attack_lr",
+            type=float,
+            default=5e-3,
+            metavar="FLOAT",
+            help="Learning rate for the inner attack after warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--warmup_attack_steps",
+            type=int,
+            default=45,
+            metavar="INT",
+            help="Number of steps for the inner attack during warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--main_attack_steps",
+            type=int,
+            default=15,
+            metavar="INT",
+            help="Number of steps for the inner attack after warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--warmup_attack_target_matching",
+            type=str,
+            default="false",
+            choices=["true", "false"],
+            metavar="BOOL",
+            help="Whether to use target matching for the inner attack during warmup epochs.",
+        )
+
+        inner_params.add_argument(
+            "--main_attack_target_matching",
+            type=str,
+            default="false",
+            choices=["true", "false"],
+            metavar="BOOL",
+            help="Whether to use target matching for the inner attack after warmup epochs.",
+        )
+
         parser.set_defaults(
             model="Qwen/Qwen3-4B-Instruct-2507",
             layers=["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
@@ -28,6 +80,13 @@ class Exp(IML_Experiment):
             dynamic_labels=40,
             warmup_epochs=0,
             target_controls="false",
+            # inner-attack params
+            warmup_attack_lr=5e-3,
+            warmup_attack_steps=45,
+            warmup_attack_target_matching="false",
+            main_attack_lr=5e-3,
+            main_attack_steps=15,
+            main_attack_target_matching="false",
         )
 
     def initialize_attack(
@@ -44,16 +103,16 @@ class Exp(IML_Experiment):
             if epoch < args.warmup_epochs:
                 return SP(
                     adv_model,
-                    optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
-                    steps=45,
-                    target_matching=False,
+                    optim_factory=lambda params: optim.AdamW(params, lr=args.warmup_attack_lr),
+                    steps=args.warmup_attack_steps,
+                    target_matching=args.warmup_attack_target_matching == "true",
                 )
 
             return SP(
                 adv_model,
-                optim_factory=lambda params: optim.AdamW(params, lr=5e-3),
-                steps=15,
-                target_matching=False,
+                optim_factory=lambda params: optim.AdamW(params, lr=args.main_attack_lr),
+                steps=args.main_attack_steps,
+                target_matching=args.main_attack_target_matching == "true",
             )
 
         args = self.args()
