@@ -97,6 +97,13 @@ class WandbTracker(MetricTracker):
             logger.debug("Tracker is disabled. Skipping.")
             return
 
+        table = wandb.Table(columns=["Metric", "Value"], log_mode="INCREMENTAL")
+        for k, v in metrics.items():
+            table.add_data(k, float(v))
+
+        self.wandb_run.log({"Global-Metrics": table})
+
+        metrics = {f"Global/{k}": v for k, v in metrics.items()}
         self.wandb_run.summary.update(metrics)
 
     def report_scalars(self, scalers: dict[str, int | float] | dict[str, int | float | None], step: int, skip_infinite: bool = True):
