@@ -102,10 +102,8 @@ class WandbTracker(MetricTracker):
             table.add_data(k, float(v))
 
         self.wandb_run.log({"Global-Metrics": table})
-
         metrics = {f"Global/{k}": v for k, v in metrics.items()}
         self.wandb_run.summary.update(metrics)
-        self.report_scalars(metrics, step=1)
 
     def report_scalars(self, scalers: dict[str, int | float] | dict[str, int | float | None], step: int, skip_infinite: bool = True):
         if self.wandb_run is None or self.disabled:
