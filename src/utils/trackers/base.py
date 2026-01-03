@@ -50,7 +50,7 @@ class MetricTracker(ABC):
         self.log_dir: str | None = None
 
         if not disabled:
-            self.log_dir = self._create_directory(root_dir, *names)
+            self.log_dir = self._create_directory(root_dir, project, *names)
 
     def get_hparams(self) -> dict[str, Any]:
         return {
