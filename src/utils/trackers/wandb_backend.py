@@ -105,14 +105,19 @@ class WandbTracker(MetricTracker):
 
         metrics = {f"Global/{k}": v for k, v in metrics.items()}
         self.wandb_run.summary.update(metrics)
+        self.report_scalars(metrics, step=1)
 
     def report_scalars(self, scalers: dict[str, int | float] | dict[str, int | float | None], step: int, skip_infinite: bool = True):
         if self.wandb_run is None or self.disabled:
             logger.debug("Tracker is disabled. Skipping.")
             return
 
-        for key, value in scalers.items():
-            self.report_scalar(key, value, step, skip_infinite)
+        if skip_infinite:
+            scalers = {k: v for k, v in scalers.items() if v is not None and np.isfinite(v)}
+
+        scalers = {k: (v if v is not None else float("nan")) for k, v in scalers.items()}
+
+        self.wandb_run.log(data=scalers, step=step)
 
     def report_scalar(self, tag: str, value: int | float | None, step: int, skip_infinite: bool = True):
         if self.wandb_run is None or self.disabled:
