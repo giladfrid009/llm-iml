@@ -116,13 +116,21 @@ class Experiment(ABC):
             metavar="LEVEL",
             help=f"Logging level to python-logger. Available levels: {loglevel_names()}",
         )
-        
+
         parser.add_argument(
             "--project_name",
             type=str,
             default="LLM-IML",
             metavar="NAME",
             help="The name of the project for logging purposes.",
+        )
+
+        parser.add_argument(
+            "--log_dir",
+            type=str,
+            default="logs",
+            metavar="PATH",
+            help="Directory to save logs and results.",
         )
 
         parser.add_argument(
@@ -288,11 +296,10 @@ class Experiment(ABC):
             dl_test = TableLoader(ds_test, batch_size=args.eval_batch, shuffle=False)
             logger.info(f"Loaded test dataset: {ds_name} with {len(ds_test)} samples.")
             logger.info(f"Evaluating on test dataset: {ds_name}")
-            test_metrics = univ_attack.evaluate(evaluators, dl_test)
 
-            if ds_name == args.dataset:
-                # report main dataset results
-                metric_tracker.report_globals(test_metrics)
+            test_metrics = univ_attack.evaluate(evaluators, dl_test)
+            test_metrics = {f"{ds_name}/{k}": v for k, v in test_metrics.items()}
+            metric_tracker.report_globals(test_metrics)
 
             dl_test.df.to_csv(f"{log_dir}/{ds_name}_results.csv", index=False)
             logger.info(f"Saved evaluation results to '{log_dir}/'.")
@@ -305,9 +312,11 @@ class Experiment(ABC):
             sys.exit(1)
 
         with MetricTracker.create(
+            args.model.split("/")[-1],
+            args.dataset,
             self.args().run_name,
             kind="wandb",
-            root_dir=f"logs/{args.model.split('/')[-1]}/{args.dataset}",
+            root_dir=self.args().log_dir,
             project=args.project_name,
             disabled=args.test_run,
         ) as metric_tracker:

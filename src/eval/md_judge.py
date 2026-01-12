@@ -11,10 +11,6 @@ from vllm.sampling_params import GuidedDecodingParams
 logger = create_logger(__name__)
 
 
-# https://arxiv.org/pdf/2406.18495 - reports very good results for MD-Judge (also recommends WildGuard)
-# 4K downloads in HF last month
-
-
 # TODO: currently broken, doesnt follow the guided decoding properly.
 class MDJudge(Evaluator):
     """

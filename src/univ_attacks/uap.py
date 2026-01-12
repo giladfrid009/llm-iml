@@ -81,6 +81,7 @@ class UAP(UnivAttack):
             return self.inner_attack
         return self.attack_builder_func(self.adv_model, epoch_num)
 
+    @torch.no_grad()
     def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
         # create new instance of inner attack for each epoch
         if position.epoch > 0 and position.batch == 0:
@@ -103,24 +104,24 @@ class UAP(UnivAttack):
                         config=self.gen_config,
                     )
 
-                    eval_result = self.judge_evaluator.eval_batch(input_texts, init_responses)
-                    eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
-                    fooled_mask = eval_metric >= 1.0
+                eval_result = self.judge_evaluator.eval_batch(input_texts, init_responses)
+                eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
+                fooled_mask = eval_metric >= 1.0
 
-                    not_fooled_ratio = 1 - fooled_mask.float().mean().item()
-                    METRICS["UAP/not_fooled_ratio"] = not_fooled_ratio
+                not_fooled_ratio = 1 - fooled_mask.float().mean().item()
+                METRICS["UAP/not_fooled_ratio"] = not_fooled_ratio
 
-                    if fooled_mask.all():  # all samples already fooled
-                        METRICS["UAP/effective_batch_ratio"] = 0.0
-                        METRICS["loss"] = None
-                        return METRICS
+                if fooled_mask.all():  # all samples already fooled
+                    METRICS["UAP/effective_batch_ratio"] = 0.0
+                    METRICS["loss"] = None
+                    return METRICS
 
-                    input_texts = [txt for txt, m in zip(input_texts, fooled_mask) if not m]
-                    input_convs = [conv for conv, m in zip(input_convs, fooled_mask) if not m]
-                    target_texts = [tgt for tgt, m in zip(target_texts, fooled_mask) if not m]
+                input_texts = [txt for txt, m in zip(input_texts, fooled_mask) if not m]
+                input_convs = [conv for conv, m in zip(input_convs, fooled_mask) if not m]
+                target_texts = [tgt for tgt, m in zip(target_texts, fooled_mask) if not m]
 
             # run per-sample attack
-            with torch.autocast(device_type=self.device.type, enabled=False):
+            with torch.autocast(device_type=self.device.type, enabled=False), torch.enable_grad():
                 init_embeds = self.univ_embeds.repeat(len(input_convs), 1, 1)
                 clean_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
                 sample_result = self.inner_attack.fit(clean_convs, target_texts, init_embeds=init_embeds)
@@ -137,21 +138,21 @@ class UAP(UnivAttack):
                         config=self.gen_config,
                     )
 
-                    eval_result = self.judge_evaluator.eval_batch(input_texts, sample_responses)
-                    eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
-                    success_mask = eval_metric >= 1.0
+                eval_result = self.judge_evaluator.eval_batch(input_texts, sample_responses)
+                eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
+                success_mask = eval_metric >= 1.0
 
-                    sample_asr = success_mask.float().mean().item()
-                    METRICS["UAP/sample_attack_success_ratio"] = sample_asr
+                sample_asr = success_mask.float().mean().item()
+                METRICS["UAP/sample_attack_success_ratio"] = sample_asr
 
-                    if not success_mask.any():  # all attacks failed
-                        METRICS["UAP/effective_batch_ratio"] = 0.0
-                        METRICS["loss"] = None
-                        return METRICS
+                if not success_mask.any():  # all attacks failed
+                    METRICS["UAP/effective_batch_ratio"] = 0.0
+                    METRICS["loss"] = None
+                    return METRICS
 
-                    input_convs = [conv for conv, m in zip(input_convs, success_mask) if m]
-                    target_texts = [tgt for tgt, m in zip(target_texts, success_mask) if m]
-                    sample_result = sample_result.masked_select(success_mask)
+                input_convs = [conv for conv, m in zip(input_convs, success_mask) if m]
+                target_texts = [tgt for tgt, m in zip(target_texts, success_mask) if m]
+                sample_result = sample_result.masked_select(success_mask)
 
             batch_ratio = len(input_convs) / len(data["prompt"])
             METRICS["UAP/effective_batch_ratio"] = batch_ratio
@@ -160,7 +161,7 @@ class UAP(UnivAttack):
             raise ValueError("Inner attack did not return adversarial embeddings.")
 
         # update universal perturbation
-        delta = torch.sum(sample_result.adv_embeds - init_embeds, dim=0, keepdim=True)
+        delta = torch.sum(sample_result.adv_embeds.detach() - init_embeds, dim=0, keepdim=True)
         self.univ_embeds.add_(delta)
 
         METRICS["loss"] = delta.abs().mean().item()

@@ -1,29 +1,29 @@
-from src.sample_attacks import SampleAttack
-from src.adv_model import AdvModel
-from src.activ_extractor import ActivationExtractor, ActivationLoss
-from src.eval.evaluator import Evaluator
-from src.config import GenConfig
-from src.univ_attacks.univ_attack import UnivAttack, TrainPosition
-from src.utils.trackers import MetricTracker
+from src.activ_extractor import ActivationLoss
+from src.univ_attacks.iml import IML
+from src.univ_attacks.univ_attack import TrainPosition
 
-import inspect
-from typing import Any, Callable
+from typing import Any
 import torch
 
 
-def cosine_similarity_loss(
+def ila_loss(
     univ_activ: torch.Tensor,
     sample_activ: torch.Tensor,
+    clean_activ: torch.Tensor,
     univ_mask: torch.Tensor,
     sample_mask: torch.Tensor,
+    clean_mask: torch.Tensor,
     sample_mean: bool = True,
+    normalized: bool = True,
 ) -> torch.Tensor:
     """
     Args:
         univ_activ (torch.Tensor): Universal activations of shape (batch_size, seq1, hidden_dim).
         sample_activ (torch.Tensor): Sample activations of shape (batch_size, seq2, hidden_dim).
+        clean_activ (torch.Tensor): Clean activations of shape (batch_size, seq3, hidden_dim).
         univ_mask (torch.Tensor): Mask indicating univ tokens are targets, of shape (batch_size, seq1).
         sample_mask (torch.Tensor): Mask indicating sample tokens are targets, of shape (batch_size, seq2).
+        clean_mask (torch.Tensor): Mask indicating clean tokens are targets, of shape (batch_size, seq3).
         sample_mean (bool): Averaging method of the loss
             - If True, first average over all target tokens for each sample, then average over samples.
             - If False, overall loss is average over all target tokens across all samples.
@@ -33,19 +33,30 @@ def cosine_similarity_loss(
     """
     univ_mask = univ_mask.bool()
     sample_mask = sample_mask.bool()
+    clean_mask = clean_mask.bool()
 
     # align masks and activations
     univ_mask = univ_mask[:, 1:]  # remove BOS token
     sample_mask = sample_mask[:, 1:]  # remove BOS token
+    clean_mask = clean_mask[:, 1:]  # remove BOS token
     univ_activ = univ_activ[:, :-1]  # remove new token
     sample_activ = sample_activ[:, :-1]  # remove new token
+    clean_activ = clean_activ[:, :-1]  # remove new token
 
     # extract only targets
     univ_targets = univ_activ[univ_mask].reshape(-1, univ_activ.size(-1))
     sample_targets = sample_activ[sample_mask].reshape(-1, sample_activ.size(-1))
+    clean_targets = clean_activ[clean_mask].reshape(-1, clean_activ.size(-1))
+
+    # subtract clean activations from both univ and sample activations to get deltas
+    univ_targets = univ_targets - clean_targets
+    sample_targets = sample_targets - clean_targets
 
     # compute token-wise loss
-    flat_losses = 1 - torch.cosine_similarity(univ_targets, sample_targets, dim=-1)
+    if normalized:
+        flat_losses = 1 - torch.cosine_similarity(univ_targets, sample_targets, dim=-1)
+    else:
+        flat_losses = -torch.sum(univ_targets * sample_targets, dim=-1)  # negative dot-product
 
     if not sample_mean:
         scalar_loss = flat_losses.mean()
@@ -57,95 +68,12 @@ def cosine_similarity_loss(
     return sample_losses.sum(dim=-1) / sample_mask.sum(dim=-1)
 
 
-class IML(UnivAttack):
-    def __init__(
-        self,
-        adv_model: AdvModel,
-        inner_attack: SampleAttack | Callable[[AdvModel, int], SampleAttack],
-        optimizer: torch.optim.Optimizer,
-        activ_extractor: ActivationExtractor,
-        evaluators: list[Evaluator],
-        eval_metric: str | None = None,
-        eval_freq: int | float = 1,
-        mixed_precision: bool = False,
-        gen_config: GenConfig | None = None,
-        skip_already_fooled: bool = True,
-        skip_failed_attacks: bool = True,
-        warmup_epochs: int = 0,
-        dynamic_labels: int = -1,
-        target_controls: bool = False,
-        metric_tracker: MetricTracker | None = None,
-    ):
-        super().__init__(
-            adv_model=adv_model,
-            evaluators=evaluators,
-            eval_metric=eval_metric,
-            eval_freq=eval_freq,
-            mixed_precision=mixed_precision,
-            gen_config=gen_config,
-            metric_tracker=metric_tracker,
-        )
+class UILA(IML):
+    def __init__(self, *args, normalized_loss: bool = True, **kwargs):
+        super().__init__(*args, **kwargs)
 
-        if callable(inner_attack):
-            self.attack_builder_func = inner_attack
-            self.inner_attack = self.attack_builder_func(adv_model, 0)
-        else:
-            self.attack_builder_func = None
-            self.inner_attack = inner_attack
-
-        self.activ_extractor = activ_extractor
-        self.optimizer = optimizer
-        self.skip_already_fooled = skip_already_fooled
-        self.skip_failed_attacks = skip_failed_attacks
-        self.warmup_epochs = warmup_epochs
-        self.dynamic_labels = dynamic_labels
-        self.target_controls = target_controls
-
-        self.metric_tracker.report_hparams(
-            "attack",
-            inner_attack=type(self.inner_attack).__name__,
-            attack_builder=inspect.getsource(self.attack_builder_func) if self.attack_builder_func else None,
-            optimizer=type(self.optimizer).__name__,
-            skip_already_fooled=self.skip_already_fooled,
-            skip_failed_attacks=self.skip_failed_attacks,
-            warmup_epochs=self.warmup_epochs,
-            dynamic_labels=self.dynamic_labels,
-            target_controls=self.target_controls,
-        )
-
-        self.metric_tracker.report_hparams("activ_extractor", activ_extractor.get_hparams())
-        self.metric_tracker.report_hparams("inner_attack", self.inner_attack.get_hparams())
-        self.metric_tracker.report_hparams("optim", optimizer.state_dict()["param_groups"][0], name=type(self.optimizer).__name__)
-
-    @property
-    def judge_evaluator(self) -> Evaluator:
-        """
-        Returns the evaluator used for judging the success of the attack.
-        """
-        for ev in self.evaluators:
-            if self.eval_metric in ev.metric_names:
-                return ev
-
-        raise ValueError(
-            f"Judge metric {self.eval_metric} not found in any evaluator. Available metrics: {[ev.metric_names for ev in self.evaluators]}"
-        )
-
-    def make_attack(self, epoch_num: int) -> SampleAttack:
-        if self.attack_builder_func is None:
-            return self.inner_attack
-        return self.attack_builder_func(self.adv_model, epoch_num)
-
-    def truncate_tokens(self, sequences: list[str], n: int) -> list[str]:
-        encoding = self.adv_model.tokenizer(
-            sequences,
-            add_special_tokens=False,
-            truncation=True,
-            max_length=n,
-        )
-        return self.adv_model.tokenizer.batch_decode(
-            encoding.input_ids,
-            skip_special_tokens=True,
-        )
+        self.normalized_loss = normalized_loss
+        self.metric_tracker.report_hparams("attack", normalized_loss=self.normalized_loss)
 
     def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
         # create new instance of inner attack for each epoch
@@ -175,10 +103,10 @@ class IML(UnivAttack):
                     fooled_mask = eval_metric >= 1.0
 
                     not_fooled_ratio = 1 - fooled_mask.float().mean().item()
-                    METRICS["IML/not_fooled_ratio"] = not_fooled_ratio
+                    METRICS["U-ILA/not_fooled_ratio"] = not_fooled_ratio
 
                     if fooled_mask.all():  # all samples already fooled
-                        METRICS["IML/effective_batch_ratio"] = 0.0
+                        METRICS["U-ILA/effective_batch_ratio"] = 0.0
                         METRICS["loss"] = None
                         return METRICS
 
@@ -197,7 +125,7 @@ class IML(UnivAttack):
                 sample_result = self.inner_attack.fit(clean_convs, target_texts, init_embeds=init_embeds)
 
                 if sample_losses := sample_result.logs.get("loss"):
-                    METRICS["IML/initial_sample_attack_loss"] = sample_losses[0]
+                    METRICS["U-ILA/initial_sample_attack_loss"] = sample_losses[0]
 
             # skip failed per-sample attacks
             if self.skip_failed_attacks:
@@ -213,10 +141,10 @@ class IML(UnivAttack):
                     success_mask = eval_metric >= 1.0
 
                     sample_asr = success_mask.float().mean().item()
-                    METRICS["IML/sample_attack_success_ratio"] = sample_asr
+                    METRICS["U-ILA/sample_attack_success_ratio"] = sample_asr
 
                     if not success_mask.any():  # all attacks failed
-                        METRICS["IML/effective_batch_ratio"] = 0.0
+                        METRICS["U-ILA/effective_batch_ratio"] = 0.0
                         METRICS["loss"] = None
                         return METRICS
 
@@ -226,6 +154,7 @@ class IML(UnivAttack):
 
                     input_convs = [conv for conv, m in zip(input_convs, success_mask) if m]
                     target_texts = [tgt for tgt, m in zip(target_texts, success_mask) if m]
+                    clean_convs = [conv for conv, m in zip(clean_convs, success_mask) if m]
                     sample_result = sample_result.masked_select(success_mask)
 
             elif self.dynamic_labels > 0 and (not self.skip_failed_attacks):
@@ -241,7 +170,7 @@ class IML(UnivAttack):
                 target_texts = self.truncate_tokens(sample_responses, self.dynamic_labels)
 
             batch_ratio = len(input_convs) / len(data["prompt"])
-            METRICS["IML/effective_batch_ratio"] = batch_ratio
+            METRICS["U-ILA/effective_batch_ratio"] = batch_ratio
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
@@ -260,6 +189,21 @@ class IML(UnivAttack):
                     )
                     sample_activs = self.activ_extractor.get_activations()
 
+                # compute clean activations
+                clean_encodings = self.adv_model.tokenize(
+                    clean_convs,
+                    target_texts,
+                    target_controls=self.target_controls,
+                )
+
+                with torch.inference_mode():
+                    self.adv_model.forward(
+                        input_ids=clean_encodings.input_ids,
+                        attention_mask=clean_encodings.attention_mask,
+                        adv_mask=None,
+                    )
+                    clean_activs = self.activ_extractor.get_activations()
+
                 # compute universal activations
                 univ_encodings = self.adv_model.tokenize(
                     input_convs,
@@ -274,16 +218,19 @@ class IML(UnivAttack):
                     adv_embeds=self.univ_embeds,
                 )
                 univ_activs = self.activ_extractor.get_activations()
-
-            # compute loss
-            criterion = ActivationLoss(loss_fn=cosine_similarity_loss, reduction="sum-mean")
+            
+            criterion = ActivationLoss(loss_fn=ila_loss, reduction="sum-mean")
             loss = criterion.forward(
                 univ_activs,
                 sample_activs,
+                clean_activs,
                 univ_mask=univ_encodings.target_mask,
                 sample_mask=sample_encodings.target_mask,
-                sample_mean=False,  # NOTE: when sample_mean=True it performs worse
+                clean_mask=clean_encodings.target_mask,
+                sample_mean=False,
+                normalized=self.normalized_loss,
             )
+            
 
         # grad step
         self.grad_scaler.scale(loss).backward()

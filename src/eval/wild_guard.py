@@ -25,10 +25,6 @@ Answers: [/INST]
 """
 
 
-# https://arxiv.org/pdf/2406.18495 - supposed to be good, popular in HF
-# 14K downloads in HF last month
-
-
 class WildGuard(Evaluator):
     """
     Evaluator using the `allenai/wildguard` model.

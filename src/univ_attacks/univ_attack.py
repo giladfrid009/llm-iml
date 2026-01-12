@@ -89,7 +89,7 @@ class UnivAttack:
         if metric_tracker is None:
             metric_tracker = MetricTracker.create(
                 time.strftime("%Y-%m-%d_%H-%M-%S"),
-                project="LLM-IML",
+                project="UnivAttack",
                 root_dir="logs",
                 kind="wandb",
             )

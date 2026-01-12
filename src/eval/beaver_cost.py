@@ -10,9 +10,6 @@ import torch
 BEAVER_PROMPT = """BEGINNING OF CONVERSATION: USER: {behavior} ASSISTANT: {generation}"""
 
 
-# 1300 downloads in HF last month
-
-
 class BeaverCost(Evaluator):
     """
     Evaluator using the `PKU-Alignment/beaver-7b-v1.0-cost` custom model.

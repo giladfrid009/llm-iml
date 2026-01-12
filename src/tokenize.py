@@ -33,12 +33,26 @@ def chat_with_targets(
             - `const_idx` (torch.LongTensor): The index of the first adversarial token in each conversation.
             - `target_mask` (torch.BoolTensor): A mask indicating the positions of the target tokens in the full input.
     """
+    if len(conversations) != len(target_texts):
+        raise ValueError("Number of conversations must match number of target texts.")
+
     convs_partial = copy.deepcopy(conversations)
     if not target_controls:
         for conv in convs_partial:
             conv.append({"role": "assistant", "content": ""})
 
-    encodings_partial = chat_with_cache(tokenizer, convs_partial, adv_token)
+    tokenizer.padding_side = "left"
+    encodings_partial: BatchEncoding = tokenizer.apply_chat_template(
+        convs_partial,
+        tokenize=True,
+        add_special_tokens=True,
+        add_generation_prompt=False,
+        continue_final_message=True,
+        padding=True,
+        return_tensors="pt",
+        return_dict=True,
+        enable_thinking=False,
+    )  # type: ignore
 
     convs_full = copy.deepcopy(conversations)
     for conv, tgt in zip(convs_full, target_texts):
@@ -49,19 +63,21 @@ def chat_with_targets(
     ids_full: torch.Tensor = encodings_full.input_ids
     attn_full: torch.Tensor = encodings_full.attention_mask
     ids_partial: torch.Tensor = encodings_partial.input_ids
+    attn_partial: torch.Tensor = encodings_partial.attention_mask
 
-    # pad so we can compare the two tensors
-    size_diff = ids_full.size(1) - ids_partial.size(1)
-    ids_partial = torch.nn.functional.pad(
-        ids_partial,
-        pad=(0, size_diff),
-        value=tokenizer.pad_token_id,  # type: ignore
-        mode="constant",
-    )
+    ids_comp = torch.full_like(ids_full, -100)  # aligned ids from partial to compare with full
 
-    diff_mask = ids_full != ids_partial
-    target_mask = torch.cumsum(diff_mask, dim=1).bool()
-    target_mask = torch.logical_and(target_mask, attn_full == 1)
+    for i in range(ids_comp.size(0)):
+        valid_partial = ids_partial[i][attn_partial[i].bool()]
+        full_indices = torch.nonzero(attn_full[i], as_tuple=True)[0]
+        num_to_copy = min(len(valid_partial), len(full_indices))
+
+        if num_to_copy > 0:
+            ids_comp[i, full_indices[:num_to_copy]] = valid_partial[:num_to_copy]
+
+    diff_mask = (ids_full != ids_comp) & (attn_full == 1)
+    target_mask = torch.cumsum(diff_mask.int(), dim=1) > 0
+    target_mask = target_mask & (attn_full == 1)
 
     return BatchEncoding(
         {
@@ -238,6 +254,9 @@ def replace_tokens(
     Returns:
         list[Conv]: The modified conversations with adversarial tokens replaced by the specified token IDs.
     """
+    if len(conversations) != len(repl_ids):
+        raise ValueError("Number of conversations must match number of replacement ID lists.")
+
     conversations = copy.deepcopy(conversations)
     pattern = re.compile(re.escape(adv_token))
 

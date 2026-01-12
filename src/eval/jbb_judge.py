@@ -33,7 +33,7 @@ class JBBJudge(Evaluator):
     """
     Evaluator model of JailbreakBench.
     Model used is `meta-llama/Meta-Llama-3-70B-Instruct`.
-    
+
     reference: https://github.com/JailbreakBench/jailbreakbench/blob/23dbdf6b19650521604456229bc1d9c4156c85c1/src/jailbreakbench/classifier.py/
     """
 
