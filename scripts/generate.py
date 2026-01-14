@@ -127,7 +127,9 @@ class Generator:
 
         gen_args.add_argument(
             "--do_sample",
-            action="store_true",
+            choices=["true", "false"],
+            metavar="BOOL",
+            default="true",
             help="Whether to use sampling for generation.",
         )
 
@@ -234,7 +236,7 @@ class Generator:
 
         gen_config = GenConfig(
             max_new_tokens=self.args().max_new_tokens,
-            do_sample=self.args().do_sample,
+            do_sample=self.args().do_sample == "true",
             temperature=self.args().temperature,
             top_p=self.args().top_p,
             remove_invalid_values=True,

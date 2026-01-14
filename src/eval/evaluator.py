@@ -48,6 +48,12 @@ class Evaluator(ABC):
         """
         return self.metric_names[0]
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     @abstractmethod
     def get_hparams(self) -> dict:
         """

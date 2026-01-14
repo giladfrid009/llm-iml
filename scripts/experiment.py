@@ -5,6 +5,7 @@ import argparse
 import sys
 import time
 from transformers import PreTrainedModel, PreTrainedTokenizer  # pyright: ignore[reportPrivateImportUsage]
+from contextlib import ExitStack
 
 from src.utils import env
 from src.utils.logging import create_logger, setup_logging, loglevel_names
@@ -14,6 +15,7 @@ from src.adv_model import AdvModel
 from src.config import GenConfig, StopCriteria
 from src.eval import Evaluator
 from src.utils.trackers import MetricTracker
+from src.utils.torch import clear_memory
 
 from scripts.utils.load_model import SUPPORTED_MODELS, load_model
 from scripts.utils.load_dataset import SUPPORTED_DATASETS, load_dataset
@@ -297,6 +299,7 @@ class Experiment(ABC):
             logger.info(f"Loaded test dataset: {ds_name} with {len(ds_test)} samples.")
             logger.info(f"Evaluating on test dataset: {ds_name}")
 
+            clear_memory()
             test_metrics = univ_attack.evaluate(evaluators, dl_test)
             test_metrics = {f"{ds_name}/{k}": v for k, v in test_metrics.items()}
             metric_tracker.report_globals(test_metrics)
@@ -311,15 +314,19 @@ class Experiment(ABC):
             logger.error("No GPU available. Exiting.")
             sys.exit(1)
 
-        with MetricTracker.create(
-            args.model.split("/")[-1],
-            args.dataset,
-            self.args().run_name,
-            kind="wandb",
-            root_dir=self.args().log_dir,
-            project=args.project_name,
-            disabled=args.test_run,
-        ) as metric_tracker:
+        with ExitStack() as stack:
+            metric_tracker = MetricTracker.create(
+                args.model.split("/")[-1],
+                args.dataset,
+                self.args().run_name,
+                kind="wandb",
+                root_dir=self.args().log_dir,
+                project=args.project_name,
+                disabled=args.test_run,
+            )
+
+            metric_tracker = stack.enter_context(metric_tracker)
+
             logger.info(f"Loading dataset: {args.dataset}")
             ds_train, ds_val, ds_test = load_dataset(args.dataset)
             dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True)
@@ -332,6 +339,7 @@ class Experiment(ABC):
             gpus = [] if device_count <= 1 else list(range(device_count))[1:]
             logger.info(f"GPUs available for evaluators: {gpus}")
             evaluators = load_evaluators(args.evaluator, gpus=gpus)
+            evaluators = [stack.enter_context(ev) for ev in evaluators]
 
             logger.info(f"Loading model: {args.model}")
             model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
@@ -383,9 +391,6 @@ class Experiment(ABC):
 
             logger.info("Running final evaluation...")
             self.final_evaluation(univ_attack, evaluators, metric_tracker)
-
-        for ev in evaluators:
-            ev.close()
 
     def main(self):
         try:

@@ -1,5 +1,6 @@
 from enum import Enum
 from src.utils.logging import create_logger
+from src.utils.torch import clear_memory
 from gserve.configs import ServeConfig, LLMConfig
 
 from src.eval import (
@@ -100,8 +101,7 @@ def _align_gpus(names: list[str], gpus: list[int]) -> list[int]:
         else:
             if not available_gpus:
                 raise ValueError(
-                    f"Not enough GPUs ({gpus}) for the requested evaluators ({names}); "
-                    f"Please reduce the number of evaluators or add more GPUs."
+                    f"Not enough GPUs ({gpus}) for the requested evaluators ({names}); Please reduce the number of evaluators or add more GPUs."
                 )
 
             gpu_id = available_gpus.pop(0)
@@ -117,12 +117,14 @@ def load_evaluators(names: list[str], gpus: int | list[int] = 1) -> list[Evaluat
     # adds fictitious GPU (-1) for non-GPU evaluators
     gpus = _align_gpus(names, gpus)
 
+    clear_memory()
+
     evaluators = []
     for name, gpu in zip(names, gpus):
         serve_config = ServeConfig(
             gpu_ids=[gpu],
             startup_timeout=20 * 60,
-            client_timeout=60,
+            client_timeout=2 * 60,
         )
         evaluator = load_single_evaluator(name, serve_config)
         evaluators.append(evaluator)

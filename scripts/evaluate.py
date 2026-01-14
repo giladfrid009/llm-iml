@@ -28,7 +28,7 @@ logger = create_logger(__name__)
 
 def _create_serve(gpu_id: int, loglevel: str) -> ServeConfig:
     verbose = parse_log_level(loglevel) <= logging.DEBUG
-    return ServeConfig(gpu_ids=[gpu_id], startup_timeout=20 * 60, client_timeout=60, verbose=verbose)
+    return ServeConfig(gpu_ids=[gpu_id], startup_timeout=20 * 60, client_timeout=2 * 60, verbose=verbose)
 
 
 def _display_width() -> int:
