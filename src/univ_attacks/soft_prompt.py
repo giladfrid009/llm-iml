@@ -31,9 +31,10 @@ def ce_criterion(
         return flat_losses.mean()
 
     # scatter losses back to the original shape and compute sample-mean
-    loss_matrix = torch.zeros_like(target_mask, dtype=flat_losses.dtype)
-    loss_matrix[target_mask] = flat_losses
-    loss = torch.mean(loss_matrix.sum(dim=-1) / target_mask.sum(dim=-1))
+    loss_grid = torch.zeros_like(target_mask, dtype=flat_losses.dtype)
+    loss_grid[target_mask] = flat_losses
+    counts = target_mask.sum(dim=-1).float().clamp_min(1.0)
+    loss = torch.mean(loss_grid.sum(dim=-1) / counts)
     return loss
 
 

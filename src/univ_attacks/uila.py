@@ -63,9 +63,10 @@ def ila_loss(
         return scalar_loss.expand(sample_mask.size(0))  # expand to batch size
 
     # scatter losses back to the original shape and compute sample-mean
-    sample_losses = torch.zeros_like(sample_mask, dtype=flat_losses.dtype)
-    sample_losses[sample_mask] = flat_losses
-    return sample_losses.sum(dim=-1) / sample_mask.sum(dim=-1)
+    loss_grid = torch.zeros_like(sample_mask, dtype=flat_losses.dtype)
+    loss_grid[sample_mask] = flat_losses
+    counts = sample_mask.sum(dim=-1).float().clamp_min(1.0)
+    return loss_grid.sum(dim=-1) / counts
 
 
 class UILA(IML):

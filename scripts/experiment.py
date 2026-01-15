@@ -102,6 +102,14 @@ class Experiment(ABC):
             metavar="SIZE",
             help="The evaluation batch size.",
         )
+        
+        parser.add_argument(
+            "--drop_last",
+            choices=["true", "false"],
+            metavar="BOOL",
+            default="false",
+            help="Whether to drop the last incomplete batch from the training data."
+        )
 
         parser.add_argument(
             "--seed",
@@ -329,7 +337,7 @@ class Experiment(ABC):
 
             logger.info(f"Loading dataset: {args.dataset}")
             ds_train, ds_val, ds_test = load_dataset(args.dataset)
-            dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True)
+            dl_train = TableLoader(ds_train, batch_size=args.train_batch, shuffle=True, drop_last=args.drop_last)
             dl_eval = TableLoader(ds_val, batch_size=args.eval_batch, shuffle=False)
 
             logger.info(f"Loaded datasets with sample counts: (train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)}).")
