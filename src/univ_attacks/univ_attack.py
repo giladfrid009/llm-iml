@@ -137,12 +137,15 @@ class UnivAttack:
     def device(self) -> torch.device:
         return self.adv_model.device
 
-    def save_checkpoint(self, file_name: str = "best_embeds.pt"):
+    def save_checkpoint(self, embeds: torch.Tensor | None = None, file_name: str = "best_embeds.pt"):
         if self.metric_tracker.log_dir is None:
             logger.warning("Log dir is None, cannot save checkpoint.")
             return
 
-        torch.save(self.best_embeds, pathlib.Path(self.metric_tracker.log_dir) / file_name)
+        if embeds is None:
+            embeds = self.best_embeds
+
+        torch.save(embeds, pathlib.Path(self.metric_tracker.log_dir) / file_name)
 
     @torch.inference_mode()
     def predict(
@@ -255,7 +258,7 @@ class UnivAttack:
             eval_metrics = self.evaluate(self.evaluators, dl_eval, update_best=True)
             clear_memory()
 
-            self.save_checkpoint()
+            self.save_checkpoint(self.best_embeds)
             self.metric_tracker.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step=-1)
             self.metric_tracker.report_scalars(eval_metrics, step=-1)
             epoch_pbar.set_postfix(eval_metrics)
@@ -285,7 +288,7 @@ class UnivAttack:
                             stop_criteria.update(epoch_num, eval_metrics[self.eval_metric])
                             clear_memory()
 
-                            self.save_checkpoint()
+                            self.save_checkpoint(self.best_embeds)
                             self.metric_tracker.report_scalar(f"{self.eval_metric} (best)", self.best_metric, step)
                             self.metric_tracker.report_scalars(eval_metrics, step)
                             epoch_pbar.set_postfix(eval_metrics)
