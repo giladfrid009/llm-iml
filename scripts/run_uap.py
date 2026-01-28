@@ -90,6 +90,14 @@ class UAP_Experiment(Experiment):
             metavar="BOOL",
             help="Whether to use kv-caching for the inner attack.",
         )
+        
+        inner_params.add_argument(
+            "--pert_path",
+            type=str,
+            default=None,
+            metavar="PATH",
+            help="Path to initial perturbation embeddings (optional).",
+        )
 
         parser.set_defaults(
             project_name="UAP",
@@ -107,7 +115,12 @@ class UAP_Experiment(Experiment):
 
     def create_adversarial_model(self, model, tokenizer) -> AdvModel:
         adv_model = AdvModel(model, tokenizer, num_tokens=self.args().num_tokens, add_spaces=False, adv_suffix=True)
-        embeds = Initializer.random_normal(adv_model, std=0.1)
+        
+        if self.args().pert_path is not None:
+            embeds = Initializer.load(adv_model, self.args().pert_path, batch_size=1)
+        else:
+            embeds = Initializer.random_normal(adv_model, std=0.1)
+        
         adv_model.set_embeddings(embeds)
         return adv_model
 

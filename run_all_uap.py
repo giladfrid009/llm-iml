@@ -14,11 +14,12 @@ SCRIPT_PATH = "scripts/run_uap.py"
 
 # Default Arguments shared across all runs unless overridden
 DEFAULT_RUN_ARGS = {
-    "log_dir": "logs-uap-judge-garmbench",
+    "log_dir": "logs-uap-judge-strongreject",
     "dataset": "advbench",
     "test_datasets": ["advbench", "harmbench-std"],
-    "evaluator": ["hb-judge", "keyword-matching"],
+    "evaluator": ["strong-reject", "keyword-matching"],
     "eval_freq": 0.2,
+    "eval_batch": 10,
 }
 
 # =============================================================================
@@ -124,14 +125,16 @@ MODELS = {
     },
     "gemma_2": {
         "nick": "uap-gemma-2",
-        "experiments": {"setup5": EXP_SETUP_5},
+        # "experiments": {"setup5": EXP_SETUP_5},
+        "experiments": {"setup5": EXP_SETUP_12}, # NOTE: FOR HARMBENCH
         # CLI Arguments
         "model": "google/gemma-2-2b-it",
         "kv_caching": "false",
     },
     "qwen_3": {
         "nick": "uap-qwen-3",
-        "experiments": {"setup8": EXP_SETUP_8},
+        # "experiments": {"setup8": EXP_SETUP_8},
+        "experiments": {"setup5": EXP_SETUP_12}, # NOTE: FOR HARMBENCH
         # CLI Arguments
         "model": "Qwen/Qwen3-4B-Instruct-2507",
     },

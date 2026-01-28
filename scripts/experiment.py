@@ -67,6 +67,7 @@ class Experiment(ABC):
             nargs="+",
             default=[],
             metavar="DATASET",
+            help=f"Additional datasets for final evaluation. Available datasets: {SUPPORTED_DATASETS}",
         )
 
         parser.add_argument(
@@ -328,7 +329,7 @@ class Experiment(ABC):
                 args.dataset,
                 self.args().run_name,
                 kind="wandb",
-                root_dir=self.args().log_dir,
+                root_dir=args.log_dir,
                 project=args.project_name,
                 disabled=args.test_run,
             )

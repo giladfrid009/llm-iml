@@ -28,4 +28,6 @@ logs-softprompt-judge-strongreject
 logs-softprompt-judge-harmbench
 
 directions
+analysis/**
+images/**
 

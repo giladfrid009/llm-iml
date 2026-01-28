@@ -15,10 +15,10 @@ SCRIPT_PATH = "scripts/run_iml.py"
 
 # Default Arguments shared across all runs unless overridden
 DEFAULT_RUN_ARGS = {
-    "log_dir": "logs-iml-judge-harmbench",
+    "log_dir": "logs-iml-judge-strongreject-ablation",
     "dataset": "advbench",
     "test_datasets": ["advbench", "harmbench-std"],
-    "evaluator": ["hb-judge", "keyword-matching"],
+    "evaluator": ["strong-reject", "keyword-matching"],
     "lr": 1e-2,
 }
 
@@ -138,6 +138,7 @@ EXP_SETUP_12 = dict(
 MODELS = {
     "llama_2": {
         "nick": "iml-ablation-llama2",
+        # "experiments": {"setup8": EXP_SETUP_8},
         "experiments": {"setup8": EXP_SETUP_8},
         # CLI Arguments
         "model": "meta-llama/Llama-2-7b-chat-hf",
@@ -160,6 +161,7 @@ MODELS = {
     "gemma_2": {
         "nick": "iml-ablation-gemma-2",
         "experiments": {"setup5": EXP_SETUP_5},
+        # "experiments": {"setup12": EXP_SETUP_12}, # TODO: NEW SETUP FOR HARMBENCH
         # CLI Arguments
         "model": "google/gemma-2-2b-it",
         "layers": ["model.layers.10", "model.layers.15", "model.layers.21", "lm_head"],
@@ -168,6 +170,8 @@ MODELS = {
     "qwen_3": {
         "nick": "iml-ablation-qwen-3",
         "experiments": {"setup8": EXP_SETUP_8},
+        # "experiments": {"setup12": EXP_SETUP_12}, # TODO: NEW SETUP FOR HARMBENCH
+
         # CLI Arguments
         "model": "Qwen/Qwen3-4B-Instruct-2507",
         "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
@@ -195,14 +199,14 @@ MODELS = {
     },
     "llama_3_lat": {
         "nick": "iml-ablation-llama3-lat",
-        "experiments": {"setup_placeholder": EXP_SETUP_12},
+        "experiments": {"setup12": EXP_SETUP_12},
         # CLI Arguments
         "model": "LLM-LAT/robust-llama3-8b-instruct",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "phi_3_capo": {
         "nick": "iml-ablation-phi-3-capo",
-        "experiments": {"setup_placeholder": EXP_SETUP_6},
+        "experiments": {"setup6": EXP_SETUP_6},
         # CLI Arguments
         "model": "ContinuousAT/Phi-CAPO",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
