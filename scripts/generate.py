@@ -59,8 +59,9 @@ class Generator:
         parser.add_argument(
             "--dataset",
             type=str,
+            nargs="+",
             choices=SUPPORTED_DATASETS,
-            default="advbench",
+            default=["advbench"],
             metavar="DATASET",
             help=f"The datasets to use. Available datasets: {SUPPORTED_DATASETS}",
         )
@@ -98,6 +99,12 @@ class Generator:
             metavar="FMT",
             default="{model}_{dataset}_{split}.csv",
             help="Format string for naming the results files. Must include [{model}, {dataset}, {split}] placeholders.",
+        )
+        
+        parser.add_argument(
+            "--overwrite",
+            action="store_true",
+            help="Whether to overwrite existing results files. If not set, the script will raise an error if a results file already exists for a given model/dataset/split.",
         )
 
         parser.add_argument(
@@ -186,12 +193,12 @@ class Generator:
         env.prepare_environment()
         env.set_seed(seed)
 
-    def results_path(self, split: str) -> str:
+    def results_path(self, dataset: str, split: str) -> str:
         args = self.args()
         folder = pathlib.Path(args.embeds_path).parent / "generations"
 
         model_name = args.model.split("/")[-1].lower()
-        dataset_name = args.dataset.lower()
+        dataset_name = dataset.lower()
         file_name = args.name_format.format(model=model_name, dataset=dataset_name, split=split)
         full_path: pathlib.Path = folder / file_name
 
@@ -199,7 +206,7 @@ class Generator:
             full_path.parent.mkdir(parents=True, exist_ok=True)
             logger.info(f"Created results directory at: {full_path.parent.as_posix()}")
 
-        if full_path.exists():
+        if full_path.exists() and not args.overwrite:
             raise FileExistsError(f"Results file already exists: {full_path.as_posix()}")
 
         return full_path.as_posix()
@@ -210,14 +217,6 @@ class Generator:
         if not torch.cuda.is_available():
             logger.error("No GPU available. Exiting.")
             sys.exit(1)
-
-        logger.info(f"Loading dataset: {args.dataset}")
-        ds_train, ds_val, ds_test = load_dataset(args.dataset)
-        dl_train = TableLoader(ds_train, batch_size=args.batch_size, shuffle=False)
-        dl_eval = TableLoader(ds_val, batch_size=args.batch_size, shuffle=False)
-        dl_test = TableLoader(ds_test, batch_size=args.batch_size, shuffle=False)
-
-        logger.info(f"Loaded datasets with sample counts: (train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)}).")
 
         logger.info(f"Loading model: {args.model}")
         model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
@@ -250,25 +249,35 @@ class Generator:
             gen_config=gen_config,
         )
 
-        if args.include_train:
-            logger.info("Generating on training set...")
-            univ_attack.predict(dl_train)
-            result_path = self.results_path("train")
-            dl_train.df.to_csv(result_path, index=False)
-            logger.info(f"Saved training generations to {result_path}")
+        for dataset in args.dataset:
 
-        if args.include_eval:
-            logger.info("Generating on evaluation set...")
-            univ_attack.predict(dl_eval)
-            result_path = self.results_path("eval")
-            dl_eval.df.to_csv(result_path, index=False)
-            logger.info(f"Saved evaluation generations to {result_path}")
+            logger.info(f"Loading dataset: {dataset}")
+            ds_train, ds_val, ds_test = load_dataset(dataset)
+            dl_train = TableLoader(ds_train, batch_size=args.batch_size, shuffle=False)
+            dl_eval = TableLoader(ds_val, batch_size=args.batch_size, shuffle=False)
+            dl_test = TableLoader(ds_test, batch_size=args.batch_size, shuffle=False)
 
-        logger.info("Generating on test set...")
-        univ_attack.predict(dl_test)
-        result_path = self.results_path("test")
-        dl_test.df.to_csv(result_path, index=False)
-        logger.info(f"Saved test generations to {result_path}")
+            logger.info(f"Loaded dataset {dataset} with sample counts: (train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)}).")
+
+            if args.include_train:
+                logger.info("Generating on training set...")
+                univ_attack.predict(dl_train)
+                result_path = self.results_path(dataset, "train")
+                dl_train.df.to_csv(result_path, index=False)
+                logger.info(f"Saved training generations to {result_path}")
+
+            if args.include_eval:
+                logger.info("Generating on evaluation set...")
+                univ_attack.predict(dl_eval)
+                result_path = self.results_path(dataset, "eval")
+                dl_eval.df.to_csv(result_path, index=False)
+                logger.info(f"Saved evaluation generations to {result_path}")
+
+            logger.info("Generating on test set...")
+            univ_attack.predict(dl_test)
+            result_path = self.results_path(dataset, "test")
+            dl_test.df.to_csv(result_path, index=False)
+            logger.info(f"Saved test generations to {result_path}")
 
     def main(self):
         try:
