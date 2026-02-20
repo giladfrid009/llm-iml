@@ -10,14 +10,18 @@ import gc
 # Global Constants & Configuration
 # =============================================================================
 
-PROJECT_NAME = "Soft-Prompt"
+PROJECT_NAME = "HB-Soft-Prompt"
 SCRIPT_PATH = "scripts/run_soft.py"
 
 # Default Arguments shared across all runs unless overridden
 DEFAULT_RUN_ARGS = {
-    "dataset": "advbench",
+    "dataset": "harmbench-std",
     "test_datasets": ["advbench", "harmbench-std"],
-    "evaluator": ["strong-reject", "keyword-matching"],
+    "evaluator": ["hb-judge", "keyword-matching"],
+    "log_dir": "logs-hb/logs-softprompt-judge-harmbench",
+    "eval_freq": 2,
+    "max_epochs": 100,
+    "max_time": 60,
 }
 
 # =============================================================================
@@ -44,6 +48,7 @@ EXP_SETUP = dict(
 #       - "nick": (Required) Used for run_name generation
 #       - "experiments": (Required) Dict of {experiment_suffix: specific_args_dict}
 #       - ...Any other key represents a CLI argument for the script
+
 
 MODELS = {
     "llama_2": {

@@ -10,16 +10,17 @@ import gc
 # Global Constants & Configuration
 # =============================================================================
 
-PROJECT_NAME = "HB-IML"
+PROJECT_NAME = "IML-EXTRA-EXPERIMENT"
 SCRIPT_PATH = "scripts/run_iml.py"
 
 # Default Arguments shared across all runs unless overridden
 DEFAULT_RUN_ARGS = {
-    "log_dir": "hb-logs/logs-iml-judge-strongreject-ablation",
-    "dataset": "harmbench-std",
-    "test_datasets": ["advbench", "harmbench-std"],
+    "log_dir": "logs-iml-judge-strongreject-extra-experiment",
+    "dataset": "advbench",
+    "test_datasets": ["advbench"],
     "evaluator": ["strong-reject", "keyword-matching"],
     "lr": 1e-2,
+    "max_time": 4 * 60,
 }
 
 # =============================================================================
@@ -30,11 +31,8 @@ DEFAULT_RUN_ARGS = {
 # Using clear names for standard setups.
 # These dictionaries are essentially just sets of CLI arguments.
 
-EXP_SETUP_PLACEHOLDER = dict(
-    illegal_arg="value",  # Placeholder for structure
-)
 
-EXP_SETUP_2 = dict(
+EXP_SETUP = dict(
     skip_fooled="true",
     skip_failed="true",
     dynamic_labels=40,
@@ -45,82 +43,6 @@ EXP_SETUP_2 = dict(
     # Inner attack params
     warmup_attack_steps=45,
     warmup_attack_target_matching="false",
-    main_attack_steps=50,
-    main_attack_target_matching="false",
-)
-
-EXP_SETUP_3 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=150,
-    warmup_attack_target_matching="false",
-    main_attack_steps=100,
-    main_attack_target_matching="true",
-)
-
-EXP_SETUP_5 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=150,
-    warmup_attack_target_matching="false",
-    main_attack_steps=150,
-    main_attack_target_matching="false",
-)
-
-EXP_SETUP_6 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=75,
-    warmup_attack_target_matching="false",
-    main_attack_steps=75,
-    main_attack_target_matching="false",
-)
-
-EXP_SETUP_8 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=45,
-    warmup_attack_target_matching="false",
-    main_attack_steps=7,
-    main_attack_target_matching="false",
-)
-
-EXP_SETUP_12 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=45,
-    warmup_attack_target_matching="false",
-    main_attack_steps=35,
     main_attack_target_matching="false",
 )
 
@@ -139,74 +61,51 @@ MODELS = {
     "llama_2": {
         "nick": "iml-ablation-llama2",
         # "experiments": {"setup8": EXP_SETUP_8},
-        "experiments": {"setup8": EXP_SETUP_8},
+        "experiments": {
+            "steps-1": {**EXP_SETUP, "main_attack_steps": 1},
+            "steps-2": {**EXP_SETUP, "main_attack_steps": 2},
+            "steps-4": {**EXP_SETUP, "main_attack_steps": 4},
+            "steps-8": {**EXP_SETUP, "main_attack_steps": 8},
+            "steps-16": {**EXP_SETUP, "main_attack_steps": 16},
+            "steps-32": {**EXP_SETUP, "main_attack_steps": 32},
+            "steps-64": {**EXP_SETUP, "main_attack_steps": 64},
+            "steps-128": {**EXP_SETUP, "main_attack_steps": 128},
+            "steps-256": {**EXP_SETUP, "main_attack_steps": 256},
+        },
         # CLI Arguments
         "model": "meta-llama/Llama-2-7b-chat-hf",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
-    "llama_32": {
-        "nick": "iml-ablation-llama-32",
-        "experiments": {"setup2": EXP_SETUP_2},
-        # CLI Arguments
-        "model": "meta-llama/Llama-3.2-3B-Instruct",
-        "layers": ["model.layers.11", "model.layers.16", "model.layers.23", "lm_head"],
-    },
-    "phi_4": {
-        "nick": "iml-ablation-phi-4",
-        "experiments": {"setup2": EXP_SETUP_2},
-        # CLI Arguments
-        "model": "microsoft/Phi-4-mini-instruct",
-        "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
-    },
-    "gemma_2": {
-        "nick": "iml-ablation-gemma-2",
-        "experiments": {"setup5": EXP_SETUP_5},
-        # "experiments": {"setup12": EXP_SETUP_12}, # TODO: NEW SETUP FOR HB JUDGE
-        # CLI Arguments
-        "model": "google/gemma-2-2b-it",
-        "layers": ["model.layers.10", "model.layers.15", "model.layers.21", "lm_head"],
-        "kv_caching": "false",
-    },
-    "qwen_3": {
-        "nick": "iml-ablation-qwen-3",
-        "experiments": {"setup8": EXP_SETUP_8},
-        # "experiments": {"setup12": EXP_SETUP_12}, # TODO: NEW SETUP FOR HB JUDGE
-
-        # CLI Arguments
-        "model": "Qwen/Qwen3-4B-Instruct-2507",
-        "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
-    },
     "llama_2_cat": {
         "nick": "iml-ablation-llama2-cat",
-        "experiments": {"setup_placeholder": EXP_SETUP_8},
+        "experiments": {
+            "steps-1": {**EXP_SETUP, "main_attack_steps": 1},
+            "steps-2": {**EXP_SETUP, "main_attack_steps": 2},
+            "steps-4": {**EXP_SETUP, "main_attack_steps": 4},
+            "steps-8": {**EXP_SETUP, "main_attack_steps": 8},
+            "steps-16": {**EXP_SETUP, "main_attack_steps": 16},
+            "steps-32": {**EXP_SETUP, "main_attack_steps": 32},
+            "steps-64": {**EXP_SETUP, "main_attack_steps": 64},
+            "steps-128": {**EXP_SETUP, "main_attack_steps": 128},
+            "steps-256": {**EXP_SETUP, "main_attack_steps": 256},
+        },
         # CLI Arguments
         "model": "ContinuousAT/Llama-2-7B-CAT",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
-    "mistral_r2d2": {
-        "nick": "iml-ablation-mistral-r2d2",
-        "experiments": {"setup3": EXP_SETUP_3},
-        # CLI Arguments
-        "model": "cais/zephyr_7b_r2d2",
-        "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
-    },
-    "llama_3_rr": {
-        "nick": "iml-ablation-llama3-rr",
-        "experiments": {"setup12": EXP_SETUP_12},
-        # CLI Arguments
-        "model": "GraySwanAI/Llama-3-8B-Instruct-RR",
-        "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
-    },
-    "llama_3_lat": {
-        "nick": "iml-ablation-llama3-lat",
-        "experiments": {"setup12": EXP_SETUP_12},
-        # CLI Arguments
-        "model": "LLM-LAT/robust-llama3-8b-instruct",
-        "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
-    },
     "phi_3_capo": {
         "nick": "iml-ablation-phi-3-capo",
-        "experiments": {"setup6": EXP_SETUP_6},
+        "experiments": {
+            "steps-1": {**EXP_SETUP, "main_attack_steps": 1},
+            "steps-2": {**EXP_SETUP, "main_attack_steps": 2},
+            "steps-4": {**EXP_SETUP, "main_attack_steps": 4},
+            "steps-8": {**EXP_SETUP, "main_attack_steps": 8},
+            "steps-16": {**EXP_SETUP, "main_attack_steps": 16},
+            "steps-32": {**EXP_SETUP, "main_attack_steps": 32},
+            "steps-64": {**EXP_SETUP, "main_attack_steps": 64},
+            "steps-128": {**EXP_SETUP, "main_attack_steps": 128},
+            "steps-256": {**EXP_SETUP, "main_attack_steps": 256},
+        },
         # CLI Arguments
         "model": "ContinuousAT/Phi-CAPO",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
