@@ -10,7 +10,7 @@ import gc
 # Global Constants & Configuration
 # =============================================================================
 
-PROJECT_NAME = "HB-IML"
+PROJECT_NAME = "HB-IML-ablations"
 SCRIPT_PATH = "scripts/run_iml.py"
 
 # Default Arguments shared across all runs unless overridden
@@ -138,29 +138,56 @@ EXP_SETUP_12 = dict(
 MODELS = {
     "llama_2": {
         "nick": "iml-ablation-llama2",
-        # "experiments": {"setup8": EXP_SETUP_8},
-        "experiments": {"setup8": EXP_SETUP_8},
+        "experiments": {
+            "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            # "setup8": EXP_SETUP_8,
+            "setup12": EXP_SETUP_12,
+        },
         # CLI Arguments
         "model": "meta-llama/Llama-2-7b-chat-hf",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_32": {
         "nick": "iml-ablation-llama-32",
-        "experiments": {"setup2": EXP_SETUP_2},
+        "experiments": {
+            # "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            "setup8": EXP_SETUP_8,
+            "setup12": EXP_SETUP_12,
+        },
         # CLI Arguments
         "model": "meta-llama/Llama-3.2-3B-Instruct",
         "layers": ["model.layers.11", "model.layers.16", "model.layers.23", "lm_head"],
     },
     "phi_4": {
         "nick": "iml-ablation-phi-4",
-        "experiments": {"setup2": EXP_SETUP_2},
+        "experiments": {
+            # "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            "setup8": EXP_SETUP_8,
+            "setup12": EXP_SETUP_12,
+        },
         # CLI Arguments
         "model": "microsoft/Phi-4-mini-instruct",
         "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
     },
     "gemma_2": {
         "nick": "iml-ablation-gemma-2",
-        "experiments": {"setup5": EXP_SETUP_5},
+        "experiments": {
+            "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            # "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            "setup8": EXP_SETUP_8,
+            "setup12": EXP_SETUP_12,
+        },
         # "experiments": {"setup12": EXP_SETUP_12}, # TODO: NEW SETUP FOR HB JUDGE
         # CLI Arguments
         "model": "google/gemma-2-2b-it",
@@ -169,45 +196,84 @@ MODELS = {
     },
     "qwen_3": {
         "nick": "iml-ablation-qwen-3",
-        "experiments": {"setup8": EXP_SETUP_8},
+        "experiments": {
+            # "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            "setup8": EXP_SETUP_8,
+            "setup12": EXP_SETUP_12,
+        },
         # "experiments": {"setup12": EXP_SETUP_12}, # TODO: NEW SETUP FOR HB JUDGE
-
         # CLI Arguments
         "model": "Qwen/Qwen3-4B-Instruct-2507",
         "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
     },
     "llama_2_cat": {
         "nick": "iml-ablation-llama2-cat",
-        "experiments": {"setup_placeholder": EXP_SETUP_8},
+        "experiments": {
+            "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            # "setup8": EXP_SETUP_8,
+            "setup12": EXP_SETUP_12,
+        },
         # CLI Arguments
         "model": "ContinuousAT/Llama-2-7B-CAT",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "mistral_r2d2": {
         "nick": "iml-ablation-mistral-r2d2",
-        "experiments": {"setup3": EXP_SETUP_3},
+        "experiments": {
+            # "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            "setup8": EXP_SETUP_8,
+            "setup12": EXP_SETUP_12,
+        },
         # CLI Arguments
         "model": "cais/zephyr_7b_r2d2",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_3_rr": {
         "nick": "iml-ablation-llama3-rr",
-        "experiments": {"setup12": EXP_SETUP_12},
+        "experiments": {
+            "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            "setup8": EXP_SETUP_8,
+            # "setup12": EXP_SETUP_12,
+        },
         # CLI Arguments
         "model": "GraySwanAI/Llama-3-8B-Instruct-RR",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_3_lat": {
         "nick": "iml-ablation-llama3-lat",
-        "experiments": {"setup12": EXP_SETUP_12},
-        # CLI Arguments
+        "experiments": {
+            "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            "setup6": EXP_SETUP_6,
+            "setup8": EXP_SETUP_8,
+            # "setup12": EXP_SETUP_12,
+        },  # CLI Arguments
         "model": "LLM-LAT/robust-llama3-8b-instruct",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "phi_3_capo": {
         "nick": "iml-ablation-phi-3-capo",
-        "experiments": {"setup6": EXP_SETUP_6},
-        # CLI Arguments
+        "experiments": {
+            "setup2": EXP_SETUP_2,
+            # "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
+            # "setup6": EXP_SETUP_6,
+            "setup8": EXP_SETUP_8,
+            "setup12": EXP_SETUP_12,
+        },  # CLI Arguments
         "model": "ContinuousAT/Phi-CAPO",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },

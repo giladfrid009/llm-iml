@@ -74,7 +74,6 @@ MODELS = {
         "experiments": {"setup": EXP_SETUP},
         # CLI Arguments
         "model": "google/gemma-2-2b-it",
-        "kv_caching": "false",
     },
     "qwen_3": {
         "nick": "soft-qwen-3",

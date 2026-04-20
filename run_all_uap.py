@@ -9,17 +9,17 @@ import gc
 # Global Constants & Configuration
 # =============================================================================
 
-PROJECT_NAME = "UAP"
+PROJECT_NAME = "HB-UAP"
 SCRIPT_PATH = "scripts/run_uap.py"
 
 # Default Arguments shared across all runs unless overridden
 DEFAULT_RUN_ARGS = {
-    "log_dir": "logs-uap-judge-strongreject",
-    "dataset": "advbench",
+    "log_dir": "logs-uap-judge-harmbench",
+    "dataset": "harmbench-std",
     "test_datasets": ["advbench", "harmbench-std"],
-    "evaluator": ["strong-reject", "keyword-matching"],
-    "eval_freq": 0.2,
-    "eval_batch": 10,
+    "evaluator": ["hb-judge", "keyword-matching"],
+    "eval_freq": 1,
+    # "eval_batch": 10,
 }
 
 # =============================================================================
@@ -107,13 +107,13 @@ EXP_SETUP_12 = dict(
 MODELS = {
     "llama_2": {
         "nick": "uap-llama2",
-        "experiments": {"setup8": EXP_SETUP_8},
+        "experiments": {"setup8": EXP_SETUP_12},
         # CLI Arguments
         "model": "meta-llama/Llama-2-7b-chat-hf",
     },
     "llama_32": {
         "nick": "uap-llama-32",
-        "experiments": {"setup1": EXP_SETUP_2},
+        "experiments": {"setup1": EXP_SETUP_5},
         # CLI Arguments
         "model": "meta-llama/Llama-3.2-3B-Instruct",
     },
@@ -125,40 +125,39 @@ MODELS = {
     },
     "gemma_2": {
         "nick": "uap-gemma-2",
-        # "experiments": {"setup5": EXP_SETUP_5},
-        "experiments": {"setup5": EXP_SETUP_12}, # NOTE: FOR HARMBENCH
+        "experiments": {"setup5": EXP_SETUP_5},
+        # "experiments": {"setup5": EXP_SETUP_12},
         # CLI Arguments
         "model": "google/gemma-2-2b-it",
         "kv_caching": "false",
     },
     "qwen_3": {
         "nick": "uap-qwen-3",
-        # "experiments": {"setup8": EXP_SETUP_8},
-        "experiments": {"setup5": EXP_SETUP_12}, # NOTE: FOR HARMBENCH
+        "experiments": {"setup8": EXP_SETUP_6},
         # CLI Arguments
         "model": "Qwen/Qwen3-4B-Instruct-2507",
     },
     "llama_2_cat": {
         "nick": "uap-llama2-cat",
-        "experiments": {"setup8": EXP_SETUP_8},
+        "experiments": {"setup8": EXP_SETUP_5},
         # CLI Arguments
         "model": "ContinuousAT/Llama-2-7B-CAT",
     },
     "mistral_r2d2": {
         "nick": "uap-mistral-r2d2",
-        "experiments": {"setup3": EXP_SETUP_3},
+        "experiments": {"setup3": EXP_SETUP_8},
         # CLI Arguments
         "model": "cais/zephyr_7b_r2d2",
     },
     "llama_3_rr": {
         "nick": "uap-llama3-rr",
-        "experiments": {"setup12": EXP_SETUP_12},
+        "experiments": {"setup12": EXP_SETUP_6},
         # CLI Arguments
         "model": "GraySwanAI/Llama-3-8B-Instruct-RR",
     },
     "llama_3_lat": {
         "nick": "uap-llama3-lat",
-        "experiments": {"setup12": EXP_SETUP_12},
+        "experiments": {"setup12": EXP_SETUP_8},
         # CLI Arguments
         "model": "LLM-LAT/robust-llama3-8b-instruct",
     },
