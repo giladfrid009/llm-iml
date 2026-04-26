@@ -54,3 +54,7 @@ Example (`repeats` is the amount of times the experiment will be repeated, `name
 ```bash
 python run_all_upd.py --models phi_3_capo --repeats 4 --name_suffix "test_run"
 ```
+
+## License
+
+This work is licensed under the MIT license. Please see For more info see the [License File](LICENSE)
