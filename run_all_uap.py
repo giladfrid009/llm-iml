@@ -267,7 +267,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run consolidated UAP experiments.")
     parser.add_argument("--models", nargs="+", default=["all"], choices=list(MODELS.keys()) + ["all"], help="List of model keys to run, or 'all'")
     parser.add_argument("--name_suffix", type=str, default="", help="Suffix to append to experiment names.")
-    parser.add_argument("--iters", type=int, default=1, help="Number of iterations to run each experiment.")
+    parser.add_argument("--repeats", type=int, default=1, help="Number of iterations to run each experiment.")
 
     args = parser.parse_args()
 
@@ -277,6 +277,6 @@ if __name__ == "__main__":
     print(f"📋 Global Default Args: {DEFAULT_RUN_ARGS}")
 
     for model_key in target_models:
-        for iteration in range(1, args.iters + 1):
-            print(f"\n--- Iteration {iteration} / {args.iters} ---")
-            run_experiment(model_key, iteration, args.iters, args.name_suffix)
+        for iteration in range(1, args.repeats + 1):
+            print(f"\n--- Iteration {iteration} / {args.repeats} ---")
+            run_experiment(model_key, iteration, args.repeats, args.name_suffix)

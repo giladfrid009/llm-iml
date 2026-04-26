@@ -140,10 +140,10 @@ MODELS = {
         "nick": "upd-ablation-llama2",
         "experiments": {
             "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
-            # "setup8": EXP_SETUP_8,
+            "setup8": EXP_SETUP_8,
             "setup12": EXP_SETUP_12,
         },
         # CLI Arguments
@@ -153,8 +153,8 @@ MODELS = {
     "llama_32": {
         "nick": "upd-ablation-llama-32",
         "experiments": {
-            # "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup2": EXP_SETUP_2,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
             "setup8": EXP_SETUP_8,
@@ -167,8 +167,8 @@ MODELS = {
     "phi_4": {
         "nick": "upd-ablation-phi-4",
         "experiments": {
-            # "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup2": EXP_SETUP_2,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
             "setup8": EXP_SETUP_8,
@@ -182,8 +182,8 @@ MODELS = {
         "nick": "upd-ablation-gemma-2",
         "experiments": {
             "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
-            # "setup5": EXP_SETUP_5,
+            "setup3": EXP_SETUP_3,
+            "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
             "setup8": EXP_SETUP_8,
             "setup12": EXP_SETUP_12,
@@ -197,8 +197,8 @@ MODELS = {
     "qwen_3": {
         "nick": "upd-ablation-qwen-3",
         "experiments": {
-            # "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup2": EXP_SETUP_2,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
             "setup8": EXP_SETUP_8,
@@ -213,10 +213,10 @@ MODELS = {
         "nick": "upd-ablation-llama2-cat",
         "experiments": {
             "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
-            # "setup8": EXP_SETUP_8,
+            "setup8": EXP_SETUP_8,
             "setup12": EXP_SETUP_12,
         },
         # CLI Arguments
@@ -226,8 +226,8 @@ MODELS = {
     "mistral_r2d2": {
         "nick": "upd-ablation-mistral-r2d2",
         "experiments": {
-            # "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup2": EXP_SETUP_2,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
             "setup8": EXP_SETUP_8,
@@ -241,11 +241,11 @@ MODELS = {
         "nick": "upd-ablation-llama3-rr",
         "experiments": {
             "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
             "setup8": EXP_SETUP_8,
-            # "setup12": EXP_SETUP_12,
+            "setup12": EXP_SETUP_12,
         },
         # CLI Arguments
         "model": "GraySwanAI/Llama-3-8B-Instruct-RR",
@@ -255,11 +255,11 @@ MODELS = {
         "nick": "upd-ablation-llama3-lat",
         "experiments": {
             "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
             "setup6": EXP_SETUP_6,
             "setup8": EXP_SETUP_8,
-            # "setup12": EXP_SETUP_12,
+            "setup12": EXP_SETUP_12,
         },  # CLI Arguments
         "model": "LLM-LAT/robust-llama3-8b-instruct",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
@@ -268,9 +268,9 @@ MODELS = {
         "nick": "upd-ablation-phi-3-capo",
         "experiments": {
             "setup2": EXP_SETUP_2,
-            # "setup3": EXP_SETUP_3,
+            "setup3": EXP_SETUP_3,
             "setup5": EXP_SETUP_5,
-            # "setup6": EXP_SETUP_6,
+            "setup6": EXP_SETUP_6,
             "setup8": EXP_SETUP_8,
             "setup12": EXP_SETUP_12,
         },  # CLI Arguments
@@ -377,7 +377,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run consolidated UPD experiments.")
     parser.add_argument("--models", nargs="+", default=["all"], choices=list(MODELS.keys()) + ["all"], help="List of model keys to run, or 'all'")
     parser.add_argument("--name_suffix", type=str, default="", help="Suffix to append to experiment names.")
-    parser.add_argument("--iters", type=int, default=1, help="Number of iterations to run each experiment.")
+    parser.add_argument("--repeats", type=int, default=1, help="Number of iterations to run each experiment.")
 
     args = parser.parse_args()
 
@@ -387,6 +387,6 @@ if __name__ == "__main__":
     print(f"📋 Global Default Args: {DEFAULT_RUN_ARGS}")
 
     for model_key in target_models:
-        for iteration in range(1, args.iters + 1):
-            print(f"\n--- Iteration {iteration} / {args.iters} ---")
-            run_experiment(model_key, iteration, args.iters, args.name_suffix)
+        for iteration in range(1, args.repeats + 1):
+            print(f"\n--- Iteration {iteration} / {args.repeats} ---")
+            run_experiment(model_key, iteration, args.repeats, args.name_suffix)
