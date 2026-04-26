@@ -8,7 +8,7 @@ module_dir = pathlib.Path(__file__).parent.resolve().parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
-from scripts.run_iml import IML_Experiment
+from scripts.run_upd import UPD_Experiment
 from src.sample_attacks import SP
 from src.univ_attacks import UnivAttack
 from src.univ_attacks.uila import UILA
@@ -16,7 +16,7 @@ from src.adv_model import AdvModel
 from src.activ_extractor import ActivationExtractor
 
 
-class UILA_Experiment(IML_Experiment):
+class UILA_Experiment(UPD_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         super().add_arguments(parser)
 

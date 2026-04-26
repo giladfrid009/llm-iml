@@ -1,5 +1,5 @@
 from src.activ_extractor import ActivationLoss
-from src.univ_attacks.iml import IML
+from src.univ_attacks.upd import UPD
 from src.univ_attacks.univ_attack import TrainPosition
 
 from typing import Any
@@ -69,7 +69,7 @@ def ila_loss(
     return loss_grid.sum(dim=-1) / counts
 
 
-class UILA(IML):
+class UILA(UPD):
     """
     Universal variant of Intermediate-Level Attack (ILA), adapted for LLMs. 
     - Enhancing Adversarial Example Transferability with an Intermediate Level Attack [https://arxiv.org/abs/1907.10823]

@@ -10,12 +10,12 @@ import gc
 # Global Constants & Configuration
 # =============================================================================
 
-PROJECT_NAME = "HB-IML-ablations"
-SCRIPT_PATH = "scripts/run_iml.py"
+PROJECT_NAME = "HB-UPD-ablations"
+SCRIPT_PATH = "scripts/run_upd.py"
 
 # Default Arguments shared across all runs unless overridden
 DEFAULT_RUN_ARGS = {
-    "log_dir": "hb-logs/logs-iml-judge-strongreject-ablation",
+    "log_dir": "hb-logs/logs-upd-judge-strongreject-ablation",
     "dataset": "harmbench-std",
     "test_datasets": ["advbench", "harmbench-std"],
     "evaluator": ["strong-reject", "keyword-matching"],
@@ -137,7 +137,7 @@ EXP_SETUP_12 = dict(
 
 MODELS = {
     "llama_2": {
-        "nick": "iml-ablation-llama2",
+        "nick": "upd-ablation-llama2",
         "experiments": {
             "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -151,7 +151,7 @@ MODELS = {
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_32": {
-        "nick": "iml-ablation-llama-32",
+        "nick": "upd-ablation-llama-32",
         "experiments": {
             # "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -165,7 +165,7 @@ MODELS = {
         "layers": ["model.layers.11", "model.layers.16", "model.layers.23", "lm_head"],
     },
     "phi_4": {
-        "nick": "iml-ablation-phi-4",
+        "nick": "upd-ablation-phi-4",
         "experiments": {
             # "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -179,7 +179,7 @@ MODELS = {
         "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
     },
     "gemma_2": {
-        "nick": "iml-ablation-gemma-2",
+        "nick": "upd-ablation-gemma-2",
         "experiments": {
             "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -195,7 +195,7 @@ MODELS = {
         "kv_caching": "false",
     },
     "qwen_3": {
-        "nick": "iml-ablation-qwen-3",
+        "nick": "upd-ablation-qwen-3",
         "experiments": {
             # "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -210,7 +210,7 @@ MODELS = {
         "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
     },
     "llama_2_cat": {
-        "nick": "iml-ablation-llama2-cat",
+        "nick": "upd-ablation-llama2-cat",
         "experiments": {
             "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -224,7 +224,7 @@ MODELS = {
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "mistral_r2d2": {
-        "nick": "iml-ablation-mistral-r2d2",
+        "nick": "upd-ablation-mistral-r2d2",
         "experiments": {
             # "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -238,7 +238,7 @@ MODELS = {
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_3_rr": {
-        "nick": "iml-ablation-llama3-rr",
+        "nick": "upd-ablation-llama3-rr",
         "experiments": {
             "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -252,7 +252,7 @@ MODELS = {
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_3_lat": {
-        "nick": "iml-ablation-llama3-lat",
+        "nick": "upd-ablation-llama3-lat",
         "experiments": {
             "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -265,7 +265,7 @@ MODELS = {
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "phi_3_capo": {
-        "nick": "iml-ablation-phi-3-capo",
+        "nick": "upd-ablation-phi-3-capo",
         "experiments": {
             "setup2": EXP_SETUP_2,
             # "setup3": EXP_SETUP_3,
@@ -374,7 +374,7 @@ def run_experiment(model_key: str, iteration: int, total_iters: int, name_suffix
 # =============================================================================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run consolidated IML experiments.")
+    parser = argparse.ArgumentParser(description="Run consolidated UPD experiments.")
     parser.add_argument("--models", nargs="+", default=["all"], choices=list(MODELS.keys()) + ["all"], help="List of model keys to run, or 'all'")
     parser.add_argument("--name_suffix", type=str, default="", help="Suffix to append to experiment names.")
     parser.add_argument("--iters", type=int, default=1, help="Number of iterations to run each experiment.")
@@ -383,7 +383,7 @@ if __name__ == "__main__":
 
     target_models = list(MODELS.keys()) if "all" in args.models else args.models
 
-    print(f"🚀 Starting IML Runs for models: {target_models}")
+    print(f"🚀 Starting UPD Runs for models: {target_models}")
     print(f"📋 Global Default Args: {DEFAULT_RUN_ARGS}")
 
     for model_key in target_models:

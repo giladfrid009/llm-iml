@@ -11,17 +11,17 @@ if str(module_dir) not in sys.path:
 from scripts.experiment import Experiment
 from src.sample_attacks import SP
 from src.univ_attacks import UnivAttack
-from src.univ_attacks.iml_extra import IML_Extra
+from src.univ_attacks.upd_extra import UPD_Extra
 from src.adv_model import AdvModel
 from src.initialize import Initializer
 from src.activ_extractor import ActivationExtractor
 
 
-class IML_Experiment(Experiment):
+class UPD_Experiment(Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
-        iml_args = parser.add_argument_group("IML Attack Parameters")
+        upd_args = parser.add_argument_group("UPD Attack Parameters")
 
-        iml_args.add_argument(
+        upd_args.add_argument(
             "--num_tokens",
             type=int,
             default=20,
@@ -29,7 +29,7 @@ class IML_Experiment(Experiment):
             help="Number of tokens in the adversarial trigger.",
         )
 
-        iml_args.add_argument(
+        upd_args.add_argument(
             "--lr",
             type=float,
             default=1e-2,
@@ -37,7 +37,7 @@ class IML_Experiment(Experiment):
             help="Learning rate for the adversarial trigger optimization.",
         )
 
-        iml_args.add_argument(
+        upd_args.add_argument(
             "--layers",
             type=str,
             nargs="+",
@@ -46,7 +46,7 @@ class IML_Experiment(Experiment):
             help="Names of the layers to extract activations from.",
         )
 
-        iml_args.add_argument(
+        upd_args.add_argument(
             "--skip_fooled",
             type=str,
             default="true",
@@ -55,7 +55,7 @@ class IML_Experiment(Experiment):
             help="Whether to skip samples that are already fooled by the universal trigger.",
         )
 
-        iml_args.add_argument(
+        upd_args.add_argument(
             "--skip_failed",
             type=str,
             default="true",
@@ -64,15 +64,15 @@ class IML_Experiment(Experiment):
             help="Whether to skip samples that the inner attack failed to attack.",
         )
 
-        iml_args.add_argument(
+        upd_args.add_argument(
             "--dynamic_labels",
             type=int,
             default=40,
             metavar="N",
-            help="Number of dynamic labels to use for each sample during IML training. If 0 no dynamic labels are used.",
+            help="Number of dynamic labels to use for each sample during UPD training. If 0 no dynamic labels are used.",
         )
 
-        iml_args.add_argument(
+        upd_args.add_argument(
             "--warmup_epochs",
             type=int,
             default=2,
@@ -80,7 +80,7 @@ class IML_Experiment(Experiment):
             help="Number of warmup epochs.",
         )
 
-        iml_args.add_argument(
+        upd_args.add_argument(
             "--target_controls",
             type=str,
             default="false",
@@ -151,7 +151,7 @@ class IML_Experiment(Experiment):
         )
 
         parser.set_defaults(
-            project_name="IML",
+            project_name="UPD",
             model="meta-llama/Llama-2-7b-chat-hf",
             layers=["lm_head"],
             lr=1e-2,
@@ -217,7 +217,7 @@ class IML_Experiment(Experiment):
             capture_output=False,
         )
 
-        return IML_Extra(
+        return UPD_Extra(
             adv_model=adv_model,
             inner_attack=sample_attack_factory,
             optimizer=optimizer,
@@ -238,4 +238,4 @@ class IML_Experiment(Experiment):
 
 
 if __name__ == "__main__":
-    IML_Experiment().main()
+    UPD_Experiment().main()

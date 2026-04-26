@@ -9,6 +9,117 @@ from src.utils.trackers import MetricTracker
 import inspect
 from typing import Any, Callable
 import torch
+import torch.nn.functional as F
+
+
+def compute_iap_uap_sim(
+    univ_activs: dict[str, torch.Tensor],
+    sample_activs: dict[str, torch.Tensor],
+    univ_mask: torch.Tensor,
+    sample_mask: torch.Tensor,
+) -> float:
+    # Slicing to remove BOS
+    u_mask = univ_mask[:, 1:].bool()
+    s_mask = sample_mask[:, 1:].bool()
+
+    iap_uap_sims = []
+
+    for layer_name in univ_activs:
+        u_act = univ_activs[layer_name][:, :-1]
+        s_act = sample_activs[layer_name][:, :-1]
+
+        u_flat = u_act[u_mask].reshape(-1, u_act.size(-1))
+        s_flat = s_act[s_mask].reshape(-1, s_act.size(-1))
+
+        tok_sims = torch.cosine_similarity(u_flat, s_flat, dim=-1)
+
+        grid = torch.zeros(s_mask.shape, device=s_mask.device, dtype=tok_sims.dtype)
+        grid[s_mask] = tok_sims
+
+        counts = s_mask.sum(dim=-1).float().clamp(min=1.0)
+        sample_avg_sim = grid.sum(dim=-1) / counts
+        iap_uap_sims.append(sample_avg_sim)
+
+    if not iap_uap_sims:
+        return 0.0
+
+    # Avg over layers for each sample, then avg over samples
+    return torch.stack(iap_uap_sims).mean(dim=0).mean().item()
+
+
+def compute_iap_iap_sim(
+    sample_activs: dict[str, torch.Tensor],
+    sample_mask: torch.Tensor,
+) -> float:
+    # Slicing to remove BOS
+    s_mask = sample_mask[:, 1:].bool()
+
+    iap_iap_sims = []
+
+    for layer_name in sample_activs:
+        s_act = sample_activs[layer_name][:, :-1]
+
+        # Mean pool per sample
+        counts = s_mask.sum(dim=-1).float().clamp(min=1.0)
+        s_grid = torch.zeros(s_mask.shape + (s_act.size(-1),), device=s_act.device, dtype=s_act.dtype)
+        s_grid[s_mask] = s_act[s_mask]  # flatten assignment
+        s_means = s_grid.sum(dim=1) / counts.unsqueeze(-1)
+
+        s_norm = F.normalize(s_means, p=2, dim=1)
+        sim_mat = torch.mm(s_norm, s_norm.t())
+
+        B = sim_mat.size(0)
+        if B > 1:
+            off_diag = ~torch.eye(B, device=sim_mat.device, dtype=torch.bool)
+            iap_iap_sims.append(sim_mat[off_diag].mean().item())
+        else:
+            iap_iap_sims.append(0.0)
+
+    # Aggregate (Avg over layers)
+    if not iap_iap_sims:
+        return 0.0
+
+    return sum(iap_iap_sims) / len(iap_iap_sims)
+
+
+def compute_similarity_metrics(
+    univ_activs: dict[str, torch.Tensor],
+    sample_activs: dict[str, torch.Tensor],
+    univ_mask: torch.Tensor,
+    sample_mask: torch.Tensor,
+    sample_success_mask: torch.Tensor,
+    prefix: str = "UPD",
+) -> dict[str, float]:
+    metrics = {}
+
+    # --- 1. IAP vs UAP ---
+    # A. All samples
+    metrics[f"{prefix}/iap_uap_sim_all"] = compute_iap_uap_sim(univ_activs, sample_activs, univ_mask, sample_mask)
+
+    # B. Successful samples
+    if sample_success_mask.any():
+        # filter inputs
+        u_activs_succ = {k: v[sample_success_mask] for k, v in univ_activs.items()}
+        s_activs_succ = {k: v[sample_success_mask] for k, v in sample_activs.items()}
+        u_mask_succ = univ_mask[sample_success_mask]
+        s_mask_succ = sample_mask[sample_success_mask]
+
+        metrics[f"{prefix}/iap_uap_sim_success"] = compute_iap_uap_sim(u_activs_succ, s_activs_succ, u_mask_succ, s_mask_succ)
+
+    # --- 2. IAP vs IAP ---
+    # A. All samples
+    metrics[f"{prefix}/iap_iap_sim_all"] = compute_iap_iap_sim(sample_activs, sample_mask)
+
+    # B. Successful samples
+    if sample_success_mask.sum() > 1:
+        s_activs_succ = {k: v[sample_success_mask] for k, v in sample_activs.items()}
+        s_mask_succ = sample_mask[sample_success_mask]
+
+        metrics[f"{prefix}/iap_iap_sim_success"] = compute_iap_iap_sim(s_activs_succ, s_mask_succ)
+    elif sample_success_mask.any():
+        metrics[f"{prefix}/iap_iap_sim_success"] = 0.0
+
+    return metrics
 
 
 def cosine_similarity_loss(
@@ -52,13 +163,15 @@ def cosine_similarity_loss(
         return scalar_loss.expand(sample_mask.size(0))  # expand to batch size
 
     # scatter losses back to the original shape and compute sample-mean
-    loss_grid = torch.zeros_like(sample_mask, dtype=flat_losses.dtype)
-    loss_grid[sample_mask] = flat_losses
-    counts = sample_mask.sum(dim=-1).float().clamp_min(1.0)
-    return loss_grid.sum(dim=-1) / counts
+    sample_losses = torch.zeros_like(sample_mask, dtype=flat_losses.dtype)
+    sample_losses[sample_mask] = flat_losses
+    return sample_losses.sum(dim=-1) / sample_mask.sum(dim=-1)
 
 
-class IML(UnivAttack):
+class UPD_Extra(UnivAttack):
+    """
+    UPD with additional similarity metrics.
+    """
     def __init__(
         self,
         adv_model: AdvModel,
@@ -161,6 +274,9 @@ class IML(UnivAttack):
         input_convs = [[{"role": "user", "content": prm}] for prm in input_texts]
         input_convs = self.adv_model.inject_tokens(input_convs)
 
+        fooled_mask = torch.zeros(len(input_convs), dtype=torch.bool, device=self.device)
+        sample_success_mask = torch.ones(len(input_convs), dtype=torch.bool, device=self.device)
+
         with torch.autocast(device_type=self.device.type, enabled=self.mixed_precision):
             # skip already successfully fooled samples
             if self.skip_already_fooled:
@@ -176,16 +292,17 @@ class IML(UnivAttack):
                     fooled_mask = eval_metric >= 1.0
 
                     not_fooled_ratio = 1 - fooled_mask.float().mean().item()
-                    METRICS["IML/not_fooled_ratio"] = not_fooled_ratio
+                    METRICS["UPD/not_fooled_ratio"] = not_fooled_ratio
+                    METRICS["UPD/fooled_ratio"] = 1.0 - not_fooled_ratio
 
-                    if fooled_mask.all():  # all samples already fooled
-                        METRICS["IML/effective_batch_ratio"] = 0.0
-                        METRICS["loss"] = None
-                        return METRICS
+                    # if fooled_mask.all():  # all samples already fooled
+                    #     METRICS["UPD/effective_batch_ratio"] = 0.0
+                    #     METRICS["loss"] = None
+                    #     return METRICS
 
-                    input_texts = [txt for txt, m in zip(input_texts, fooled_mask) if not m]
-                    input_convs = [conv for conv, m in zip(input_convs, fooled_mask) if not m]
-                    target_texts = [tgt for tgt, m in zip(target_texts, fooled_mask) if not m]
+                    # input_texts = [txt for txt, m in zip(input_texts, fooled_mask) if not m]
+                    # input_convs = [conv for conv, m in zip(input_convs, fooled_mask) if not m]
+                    # target_texts = [tgt for tgt, m in zip(target_texts, fooled_mask) if not m]
 
             # run per-sample attack
             with torch.autocast(device_type=self.device.type, enabled=False):
@@ -198,8 +315,8 @@ class IML(UnivAttack):
                 sample_result = self.inner_attack.fit(clean_convs, target_texts, init_embeds=init_embeds)
 
                 if sample_losses := sample_result.logs.get("loss"):
-                    METRICS["IML/initial_sample_attack_loss"] = sample_losses[0]
-                    METRICS["IML/final_sample_attack_loss"] = sample_losses[-1]
+                    METRICS["UPD/initial_sample_attack_loss"] = sample_losses[0]
+                    METRICS["UPD/final_sample_attack_loss"] = sample_losses[-1]
 
             # skip failed per-sample attacks
             if self.skip_failed_attacks:
@@ -212,23 +329,23 @@ class IML(UnivAttack):
 
                     eval_result = self.judge_evaluator.eval_batch(input_texts, sample_responses)
                     eval_metric = torch.tensor(eval_result[self.eval_metric], device=self.device)
-                    success_mask = eval_metric >= 1.0
+                    sample_success_mask = eval_metric >= 1.0
 
-                    sample_asr = success_mask.float().mean().item()
-                    METRICS["IML/sample_attack_success_ratio"] = sample_asr
+                    sample_asr = sample_success_mask.float().mean().item()
+                    METRICS["UPD/sample_attack_success_ratio"] = sample_asr
 
-                    if not success_mask.any():  # all attacks failed
-                        METRICS["IML/effective_batch_ratio"] = 0.0
-                        METRICS["loss"] = None
-                        return METRICS
+                    # if not sample_success_mask.any():  # all attacks failed
+                    #     METRICS["UPD/effective_batch_ratio"] = 0.0
+                    #     METRICS["loss"] = None
+                    #     return METRICS
 
                     if self.dynamic_labels > 0:
                         # set target texts to generated sample responses
                         target_texts = self.truncate_tokens(sample_responses, self.dynamic_labels)
 
-                    input_convs = [conv for conv, m in zip(input_convs, success_mask) if m]
-                    target_texts = [tgt for tgt, m in zip(target_texts, success_mask) if m]
-                    sample_result = sample_result.masked_select(success_mask)
+                    # input_convs = [conv for conv, m in zip(input_convs, sample_success_mask) if m]
+                    # target_texts = [tgt for tgt, m in zip(target_texts, sample_success_mask) if m]
+                    # sample_result = sample_result.masked_select(sample_success_mask)
 
             elif self.dynamic_labels > 0 and (not self.skip_failed_attacks):
                 # explicitly use all sample responses as new target texts
@@ -242,8 +359,10 @@ class IML(UnivAttack):
                 # set target texts to generated responses
                 target_texts = self.truncate_tokens(sample_responses, self.dynamic_labels)
 
-            batch_ratio = len(input_convs) / len(data["prompt"])
-            METRICS["IML/effective_batch_ratio"] = batch_ratio
+            global_mask = torch.logical_not(fooled_mask) & sample_success_mask
+
+            batch_ratio = global_mask.float().mean().item()
+            METRICS["UPD/effective_batch_ratio"] = batch_ratio
 
             with self.activ_extractor.capture():
                 # compute per-sample activations
@@ -277,13 +396,32 @@ class IML(UnivAttack):
                 )
                 univ_activs = self.activ_extractor.get_activations()
 
+            # COMPUTE VARIOUS METRICS
+            with torch.no_grad():
+                sim_metrics = compute_similarity_metrics(
+                    univ_activs,
+                    sample_activs,
+                    univ_encodings.target_mask,
+                    sample_encodings.target_mask,
+                    sample_success_mask,
+                )
+                METRICS.update(sim_metrics)
+
+            # filter activations to only effective samples
+            for key in univ_activs.keys():
+                univ_activs[key] = univ_activs[key][global_mask]
+                sample_activs[key] = sample_activs[key][global_mask]
+
+            univ_mask = univ_encodings.target_mask[global_mask]
+            sample_mask = sample_encodings.target_mask[global_mask]
+
             # compute loss
             criterion = ActivationLoss(loss_fn=cosine_similarity_loss, reduction="sum-mean")
             loss = criterion.forward(
                 univ_activs,
                 sample_activs,
-                univ_mask=univ_encodings.target_mask,
-                sample_mask=sample_encodings.target_mask,
+                univ_mask=univ_mask,
+                sample_mask=sample_mask,
                 sample_mean=False,  # NOTE: when sample_mean=True it performs worse
             )
 

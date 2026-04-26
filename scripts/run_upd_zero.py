@@ -8,19 +8,19 @@ module_dir = pathlib.Path(__file__).parent.resolve().parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
-from scripts.run_iml import IML_Experiment
+from scripts.run_upd import UPD_Experiment
 from src.sample_attacks import SPZ
-from src.univ_attacks import UnivAttack, IML
+from src.univ_attacks import UnivAttack, UPD
 from src.adv_model import AdvModel
 from src.activ_extractor import ActivationExtractor
 
 
-class IML_Zero_Experiment(IML_Experiment):
+class UPD_Zero_Experiment(UPD_Experiment):
     def add_arguments(self, parser: ArgumentParser) -> None:
         super().add_arguments(parser)
 
         parser.set_defaults(
-            project_name="IML-Zero",
+            project_name="UPD-Zero",
             model="meta-llama/Llama-2-7b-chat-hf",
             layers=["lm_head"],
             lr=5e-3,
@@ -61,7 +61,7 @@ class IML_Zero_Experiment(IML_Experiment):
             capture_output=False,
         )
 
-        return IML(
+        return UPD(
             adv_model=adv_model,
             inner_attack=inner_attack,
             optimizer=optimizer,
@@ -81,4 +81,4 @@ class IML_Zero_Experiment(IML_Experiment):
 
 
 if __name__ == "__main__":
-    IML_Zero_Experiment().main()
+    UPD_Zero_Experiment().main()

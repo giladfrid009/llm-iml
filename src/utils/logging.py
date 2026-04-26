@@ -5,7 +5,7 @@ import logging
 
 LOG_FORMAT = "%(levelname)s %(asctime)s [%(name)s:%(lineno)d] %(message)s"
 LOG_DATEFMT = "%m-%d %H:%M:%S"
-LOG_LEVEL_ENV = "IML_LOG_LEVEL"
+LOG_LEVEL_ENV = "UPD_LOG_LEVEL"
 
 
 def loglevel_names() -> list[str]:

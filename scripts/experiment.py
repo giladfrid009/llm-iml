@@ -131,7 +131,7 @@ class Experiment(ABC):
         parser.add_argument(
             "--project_name",
             type=str,
-            default="LLM-IML",
+            default="LLM-UPD",
             metavar="NAME",
             help="The name of the project for logging purposes.",
         )
