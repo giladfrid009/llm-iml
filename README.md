@@ -58,3 +58,7 @@ python run_all_upd.py --models phi_3_capo --repeats 4 --name_suffix "test_run"
 ## License
 
 This work is licensed under the MIT license. Please see the [License File](LICENSE)
+
+### Disclaimer
+
+This project may lead to attacks on LLMs and is intended for academic research use only. It is prohibited for illegal purposes.
