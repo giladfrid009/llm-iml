@@ -39,6 +39,10 @@ def ce_criterion(
 
 
 class SoftPrompt(UnivAttack):
+    """
+    Universal variant of the Soft Prompt attack.
+    - Soft Prompt Threats: Attacking Safety Alignment and Unlearning in Open-Source LLMs through the Embedding Space [https://arxiv.org/abs/2402.09063]
+    """
     def __init__(
         self,
         adv_model: AdvModel,

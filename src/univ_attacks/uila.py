@@ -70,6 +70,11 @@ def ila_loss(
 
 
 class UILA(IML):
+    """
+    Universal variant of Intermediate-Level Attack (ILA), adapted for LLMs. 
+    - Enhancing Adversarial Example Transferability with an Intermediate Level Attack [https://arxiv.org/abs/1907.10823]
+    """
+    
     def __init__(self, *args, normalized_loss: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
 

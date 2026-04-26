@@ -169,6 +169,9 @@ def cosine_similarity_loss(
 
 
 class IML_Extra(UnivAttack):
+    """
+    IML with additional similarity metrics.
+    """
     def __init__(
         self,
         adv_model: AdvModel,
