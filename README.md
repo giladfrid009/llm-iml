@@ -68,7 +68,9 @@ All snippets assume the environment is activated and the working directory is th
 ```python
 import torch
 from scripts.utils.load_model import load_model
+from src.utils import env
 
+env.set_seed(41)
 torch.set_float32_matmul_precision("high")
 
 model, tokenizer = load_model("GraySwanAI/Llama-3-8B-Instruct-RR", torch_dtype="bfloat16")
@@ -80,6 +82,7 @@ model, tokenizer = load_model("GraySwanAI/Llama-3-8B-Instruct-RR", torch_dtype="
 
 * **`num_tokens`** - the length of the perturbation, in tokens.
 * **`adv_suffix`** - whether the perturbation is appended to the user message (`True`) or prepended to it (`False`).
+* We also support more fine-grained control of the perturbation location, see docs and code source for more info
 
 ```python
 from src.adv_model import AdvModel
@@ -94,13 +97,11 @@ adv_model = AdvModel(
 
 ### 3. Initialize the Perturbation
 
-The `Initializer` class provides the starting point of the optimization. Besides `random_normal`, it offers `full`, `random_uniform`, `from_mean`, `from_mean_std`, `from_covariance`, `from_string`, `from_random_ids`, `CRI` and `load` (to resume from a saved perturbation).
+The `Initializer` class provides the starting point of the optimization.   
+You may also load a pre-existing perturbation via `Initializer.load()`.
 
 ```python
-from src.utils import env
 from src.initialize import Initializer
-
-env.set_seed(41)
 
 embeds = Initializer.random_normal(adv_model)
 adv_model.set_embeddings(embeds)
@@ -108,7 +109,7 @@ adv_model.set_embeddings(embeds)
 
 ### 4. Load the Data
 
-`load_dataset` returns train / validation / test splits as pandas DataFrames, each with a `prompt` column and a `target` column. `TableLoader` batches them for the attack. Supported names include `advbench`, `harmbench`, `jailbreak-bench`, `malicious-instruct` and others - see `DatasetName` in [`scripts/utils/load_dataset.py`](scripts/utils/load_dataset.py).
+`load_dataset` returns train / validation / test splits as pandas DataFrames, each with a `prompt` column and a `target` column. `TableLoader` batches them for the attack. see `DatasetName` in [`scripts/utils/load_dataset.py`](scripts/utils/load_dataset.py) for supported datasets.
 
 ```python
 from scripts.utils.load_dataset import load_dataset
@@ -123,9 +124,7 @@ dl_eval = TableLoader(ds_val, batch_size=50)
 ### 5. Set up the Judges
 
 Evaluators score the model responses during training and decide which perturbation is the best one.
-
-* **`StrongReject`** - an LLM judge served locally through vLLM. Give it its own GPU via `ServeConfig(gpu_ids=[...])`, and allow a generous `startup_timeout` for the first load.
-* **`KeywordMatching`** - a cheap refusal-string heuristic, useful as a secondary metric.
+They are used to evaluate the attack success. 
 
 ```python
 from src.eval import StrongReject, KeywordMatching
@@ -135,13 +134,13 @@ sr_judge = StrongReject(ServeConfig(gpu_ids=[1], startup_timeout=20 * 60), verbo
 kw_judge = KeywordMatching(verbose=False)
 ```
 
-### 6. Run a SoftPrompt Attack
+### 6. Run an Attack
 
 The `SoftPrompt` attack optimizes the universal perturbation directly against the training targets, using the sign-gradient optimizer `FGSM`.
 
 * **`eval_metric`** - which of the evaluators' metrics selects the best perturbation. It must be one of the metrics exposed by the passed evaluators.
 * **`eval_freq`** - as a float, the fraction of an epoch between evaluations (`0.5` = twice per epoch); as an int, the number of epochs.
-* **`metric_tracker`** - optional. When omitted, a Weights & Biases run is created automatically under `logs/`.
+* **`metric_tracker`** - optional logging backend. When omitted, a Weights & Biases run is created automatically under `logs/`.
 
 ```python
 from src.univ_attacks import SoftPrompt
@@ -174,9 +173,7 @@ adv_model = univ_attack.fit(dl_train=dl_train, dl_eval=dl_eval)
 UPD works in two stages: an inner per-sample attack crafts an individual perturbation for each prompt, and the universal perturbation is then optimized to reproduce the internal activations that these individual perturbations induce.
 
 * **`inner_attack`** - the per-sample attack. Either a `SampleAttack` instance, or a `(adv_model, epoch_num) -> SampleAttack` factory for schedules that change over epochs.
-* **`activ_extractor`** - which layer's activations serve as the distillation target. `capture_output=False` captures the *input* of the given layer.
-* **`dynamic_labels`** - the number of samples whose activation targets are refreshed each step.
-* **`warmup_epochs`** - number of epochs to train with the SoftPrompt objective before switching to UPD (cold-start initialization).
+* **`activ_extractor`** - extracts activatios of selected layers during model forward pass. `capture_output=False` captures the *input* of the given layer.
 
 ```python
 from torch import optim
@@ -223,6 +220,8 @@ adv_model = univ_attack.fit(dl_train=dl_train, dl_eval=dl_eval)
 
 ### 8. Use the Perturbed Model
 
+
+After running an attack via `.fit()`, we have an attacked mode. 
 `AdvModel` accepts conversations in the standard chat format and injects the perturbation automatically.
 
 ```python
