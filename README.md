@@ -168,7 +168,7 @@ adv_model = univ_attack.fit(dl_train=dl_train, dl_eval=dl_eval)
 
 `fit` checkpoints the best perturbation to `best_embeds.pt` in the log directory, and on return the `AdvModel` already holds those best embeddings.
 
-### 7. Run a UPD Attack
+#### Extra Example: Run a UPD Attack
 
 UPD works in two stages: an inner per-sample attack crafts an individual perturbation for each prompt, and the universal perturbation is then optimized to reproduce the internal activations that these individual perturbations induce.
 
@@ -218,7 +218,7 @@ univ_attack = UPD(
 adv_model = univ_attack.fit(dl_train=dl_train, dl_eval=dl_eval)
 ```
 
-### 8. Use the Perturbed Model
+### 7. Use the Perturbed Model
 
 
 After running an attack via `.fit()`, we have an attacked mode. 
