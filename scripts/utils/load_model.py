@@ -23,6 +23,8 @@ SUPPORTED_MODELS = [
     "meta-llama/Llama-3.2-1B-Instruct",
     "meta-llama/Llama-3.2-3B-Instruct",
     "meta-llama/Llama-2-7b-chat-hf",
+    "meta-llama/Llama-2-13b-hf",
+    "meta-llama/Llama-2-70b-hf",
     "lmsys/vicuna-7b-v1.5",
     "mistralai/Mistral-7B-Instruct-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.3",
@@ -37,6 +39,8 @@ SUPPORTED_MODELS = [
     "HuggingFaceH4/zephyr-7b-beta",
     "google/gemma-2b-it",
     "google/gemma-2-2b-it",
+    "google/gemma-2-9b-it",
+    "google/gemma-2-27b-it",
     # "google/gemma-3-1b-it", # NOTE: broken due to HF bug see https://github.com/google-deepmind/gemma/issues/169
     "apple/OpenELM-1_1B-Instruct",
     # robust models
@@ -64,7 +68,7 @@ def load_model(
     config = kwargs.copy()
 
     if model_name not in SUPPORTED_MODELS:
-        raise ValueError(f"Model '{model_name}' is not supported. Supported models are: {SUPPORTED_MODELS}")
+        logger.warning(f"Model '{model_name}' is not directly supported; attempting to load default model configuration.")
 
     # Model-Dependent configurations
 

@@ -74,7 +74,7 @@ class UPD_Experiment(Experiment):
         upd_args.add_argument(
             "--warmup_epochs",
             type=int,
-            default=2,
+            default=0,
             metavar="NUM",
             help="Number of warmup epochs.",
         )
@@ -157,7 +157,7 @@ class UPD_Experiment(Experiment):
             skip_fooled="true",
             skip_failed="true",
             dynamic_labels=40,
-            warmup_epochs=2,
+            warmup_epochs=0,
             target_controls="false",
             # inner-attack params
             kv_caching="true",

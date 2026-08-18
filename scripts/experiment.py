@@ -45,10 +45,9 @@ class Experiment(ABC):
         parser.add_argument(
             "--model",
             type=str,
-            choices=SUPPORTED_MODELS,
             default="meta-llama/Llama-2-7b-chat-hf",
             metavar="MODEL",
-            help=f"The model name to attack. Available models: {SUPPORTED_MODELS}",
+            help=f"The model name to attack. Supported models: {SUPPORTED_MODELS}",
         )
 
         parser.add_argument(
