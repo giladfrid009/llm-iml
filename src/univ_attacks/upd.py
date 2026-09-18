@@ -62,7 +62,7 @@ class UPD(UnivAttack):
     def __init__(
         self,
         adv_model: AdvModel,
-        inner_attack: SampleAttack | Callable[[AdvModel, int], SampleAttack],
+        inner_attack: SampleAttack | Callable[[AdvModel, TrainPosition], SampleAttack],
         optimizer: torch.optim.Optimizer,
         activ_extractor: ActivationExtractor,
         evaluators: list[Evaluator],
@@ -75,6 +75,7 @@ class UPD(UnivAttack):
         warmup_epochs: int = 0,
         dynamic_labels: int = -1,
         target_controls: bool = False,
+        grad_accum: int = 1,
         metric_tracker: MetricTracker | None = None,
     ):
         super().__init__(
@@ -89,18 +90,21 @@ class UPD(UnivAttack):
 
         if callable(inner_attack):
             self.attack_builder_func = inner_attack
-            self.inner_attack = self.attack_builder_func(adv_model, 0)
+            self.inner_attack = self.attack_builder_func(adv_model, TrainPosition(epoch=0, batch=0, step=0))
         else:
             self.attack_builder_func = None
             self.inner_attack = inner_attack
 
         self.activ_extractor = activ_extractor
         self.optimizer = optimizer
+        self.grad_accum = grad_accum
         self.skip_already_fooled = skip_already_fooled
         self.skip_failed_attacks = skip_failed_attacks
         self.warmup_epochs = warmup_epochs
         self.dynamic_labels = dynamic_labels
         self.target_controls = target_controls
+
+        self._accum_samples = 0
 
         self.metric_tracker.report_hparams(
             "attack",
@@ -112,6 +116,7 @@ class UPD(UnivAttack):
             warmup_epochs=self.warmup_epochs,
             dynamic_labels=self.dynamic_labels,
             target_controls=self.target_controls,
+            grad_accum=self.grad_accum,
         )
 
         self.metric_tracker.report_hparams("activ_extractor", activ_extractor.get_hparams())
@@ -131,10 +136,10 @@ class UPD(UnivAttack):
             f"Judge metric {self.eval_metric} not found in any evaluator. Available metrics: {[ev.metric_names for ev in self.evaluators]}"
         )
 
-    def make_attack(self, epoch_num: int) -> SampleAttack:
+    def make_attack(self, position: TrainPosition) -> SampleAttack:
         if self.attack_builder_func is None:
             return self.inner_attack
-        return self.attack_builder_func(self.adv_model, epoch_num)
+        return self.attack_builder_func(self.adv_model, position)
 
     def truncate_tokens(self, sequences: list[str], n: int) -> list[str]:
         encoding = self.adv_model.tokenizer(
@@ -148,13 +153,36 @@ class UPD(UnivAttack):
             skip_special_tokens=True,
         )
 
-    def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
-        # create new instance of inner attack for each epoch
-        if position.epoch > 0 and position.batch == 0:
-            self.inner_attack = self.make_attack(position.epoch)
+    def _backward_step(self, loss: torch.Tensor, sample_count: int) -> None:
+        if self.grad_accum == 1:
+            self.optimizer.zero_grad()
+            self.grad_scaler.scale(loss).backward()
+            self.grad_scaler.step(self.optimizer)
+            self.grad_scaler.update()
+            return
 
+        if self._accum_samples == 0:
+            self.optimizer.zero_grad()
+
+        self.grad_scaler.scale(loss * sample_count).backward()
+        self._accum_samples += sample_count
+        if self._accum_samples < self.grad_accum:
+            return
+
+        self.grad_scaler.unscale_(self.optimizer)
+        for param_group in self.optimizer.param_groups:
+            for param in param_group["params"]:
+                if param.grad is not None:
+                    param.grad.div_(self._accum_samples)
+
+        self.grad_scaler.step(self.optimizer)
+        self.grad_scaler.update()
+        self._accum_samples = 0
+
+    def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
+        # create new instance of inner attack for each step
+        self.inner_attack = self.make_attack(position)
         METRICS = {}
-        self.optimizer.zero_grad()
 
         # construct input conversations
         input_texts, target_texts = data["prompt"], data["target"]
@@ -169,6 +197,7 @@ class UPD(UnivAttack):
                         conversations=input_convs,
                         adv_embeds=self.univ_embeds,
                         config=self.gen_config,
+                        do_sample=False,
                     )
 
                     eval_result = self.judge_evaluator.eval_batch(input_texts, init_responses)
@@ -208,6 +237,7 @@ class UPD(UnivAttack):
                         conversations=sample_result.conversations,
                         adv_embeds=sample_result.adv_embeds,
                         config=self.gen_config,
+                        do_sample=False,
                     )
 
                     eval_result = self.judge_evaluator.eval_batch(input_texts, sample_responses)
@@ -287,10 +317,6 @@ class UPD(UnivAttack):
                 sample_mean=False,  # NOTE: when sample_mean=True it performs worse
             )
 
-        # grad step
-        self.grad_scaler.scale(loss).backward()
-        self.grad_scaler.step(self.optimizer)
-        self.grad_scaler.update()
-
+        self._backward_step(loss, len(input_convs))
         METRICS["loss"] = loss.item()
         return METRICS

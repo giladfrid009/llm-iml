@@ -408,4 +408,4 @@ class Experiment(ABC):
             self.run()
         except KeyboardInterrupt:
             logger.info("Training interrupted by user.")
-            sys.exit(0)
+            sys.exit(130)

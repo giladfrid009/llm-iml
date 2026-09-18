@@ -19,6 +19,7 @@ notebooks/*
 
 tests
 tests2
+*.zip
 
 summaries
 
@@ -30,4 +31,8 @@ logs-softprompt-judge-harmbench
 directions
 analysis/**
 images/**
+subspace_decomposition
+transfer_results
 
+# LoRA experiment artifacts (scripts and documentation under lora/ stay tracked)
+lora/runs/

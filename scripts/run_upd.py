@@ -37,6 +37,14 @@ class UPD_Experiment(Experiment):
         )
 
         upd_args.add_argument(
+            "--grad_accum",
+            type=int,
+            default=1,
+            metavar="NUM",
+            help="Minimum number of effective training samples to accumulate before an optimizer step.",
+        )
+
+        upd_args.add_argument(
             "--layers",
             type=str,
             nargs="+",
@@ -139,7 +147,7 @@ class UPD_Experiment(Experiment):
             metavar="BOOL",
             help="Whether to use target matching for the inner attack after warmup epochs.",
         )
-        
+
         inner_params.add_argument(
             "--kv_caching",
             type=str,
@@ -185,8 +193,8 @@ class UPD_Experiment(Experiment):
         gen_config,
         metric_tracker,
     ) -> UnivAttack:
-        def sample_attack_factory(adv_model: AdvModel, epoch: int):
-            if epoch < args.warmup_epochs:
+        def sample_attack_factory(adv_model: AdvModel, position):
+            if position.epoch < args.warmup_epochs:
                 return SP(
                     adv_model,
                     optim_factory=lambda params: optim.AdamW(params, lr=args.warmup_attack_lr),
@@ -233,6 +241,7 @@ class UPD_Experiment(Experiment):
             target_controls=args.target_controls == "true",
             warmup_epochs=args.warmup_epochs,
             dynamic_labels=args.dynamic_labels,
+            grad_accum=args.grad_accum,
         )
 
 

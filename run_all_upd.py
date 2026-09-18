@@ -10,119 +10,32 @@ import gc
 # Global Constants & Configuration
 # =============================================================================
 
-PROJECT_NAME = "HB-UPD-ablations"
+PROJECT_NAME = "llm-iml-rebuttal"
 SCRIPT_PATH = "scripts/run_upd.py"
 
-# Default Arguments shared across all runs unless overridden
+# UPD/IML configuration reported for AdvBench with the StrongREJECT judge.
 DEFAULT_RUN_ARGS = {
-    "log_dir": "hb-logs/logs-upd-judge-strongreject-ablation",
-    "dataset": "harmbench-std",
-    "test_datasets": ["advbench", "harmbench-std"],
-    "evaluator": ["strong-reject", "keyword-matching"],
+    "log_dir": "neurips-rebuttal/sr-logs/logs-upd-judge-strongreject",
+    "dataset": "advbench",
+    "test_datasets": ["advbench"],
+    "evaluator": ["strong-reject"],
+    "train_batch": 50,
+    "eval_freq": 1,
+    "max_time": 120,
+    "max_epochs": 100,
+    "patience": 10,
+    "num_tokens": 20,
     "lr": 1e-2,
+    "do_sample": "true",
+    "max_new_tokens": 512,
+    "skip_fooled": "true",
+    "skip_failed": "true",
+    "dynamic_labels": 40,
+    "target_controls": "false",
+    "main_attack_lr": 5e-3,
+    "warmup_epochs": 0,
+    "main_attack_target_matching": "false",
 }
-
-# =============================================================================
-# Experiment Setups
-# =============================================================================
-
-# Define reusable experiment configurations
-# Using clear names for standard setups.
-# These dictionaries are essentially just sets of CLI arguments.
-
-EXP_SETUP_PLACEHOLDER = dict(
-    illegal_arg="value",  # Placeholder for structure
-)
-
-EXP_SETUP_2 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=45,
-    warmup_attack_target_matching="false",
-    main_attack_steps=50,
-    main_attack_target_matching="false",
-)
-
-EXP_SETUP_3 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=150,
-    warmup_attack_target_matching="false",
-    main_attack_steps=100,
-    main_attack_target_matching="true",
-)
-
-EXP_SETUP_5 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=150,
-    warmup_attack_target_matching="false",
-    main_attack_steps=150,
-    main_attack_target_matching="false",
-)
-
-EXP_SETUP_6 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=75,
-    warmup_attack_target_matching="false",
-    main_attack_steps=75,
-    main_attack_target_matching="false",
-)
-
-EXP_SETUP_8 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=45,
-    warmup_attack_target_matching="false",
-    main_attack_steps=7,
-    main_attack_target_matching="false",
-)
-
-EXP_SETUP_12 = dict(
-    skip_fooled="true",
-    skip_failed="true",
-    dynamic_labels=40,
-    target_controls="false",
-    warmup_attack_lr=5e-3,
-    main_attack_lr=5e-3,
-    warmup_epochs=0,
-    # Inner attack params
-    warmup_attack_steps=45,
-    warmup_attack_target_matching="false",
-    main_attack_steps=35,
-    main_attack_target_matching="false",
-)
 
 
 # =============================================================================
@@ -134,146 +47,74 @@ EXP_SETUP_12 = dict(
 #       - "nick": (Required) Used for run_name generation
 #       - "experiments": (Required) Dict of {experiment_suffix: specific_args_dict}
 #       - ...Any other key represents a CLI argument for the script
+# Layer sets reproduce the W&B metadata of the SR/AdvBench runs selected in
+# evaluate_selected_upd_cross_judges.sh, including discrepancies with the paper table.
 
 MODELS = {
     "llama_2": {
-        "nick": "upd-ablation-llama2",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },
-        # CLI Arguments
+        "nick": "upd--llama2",
+        "experiments": {"paper": {"main_attack_steps": 7}},
         "model": "meta-llama/Llama-2-7b-chat-hf",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_32": {
-        "nick": "upd-ablation-llama-32",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },
-        # CLI Arguments
+        "nick": "upd--llama-32",
+        "experiments": {"paper": {"main_attack_steps": 50}},
         "model": "meta-llama/Llama-3.2-3B-Instruct",
         "layers": ["model.layers.11", "model.layers.16", "model.layers.23", "lm_head"],
     },
     "phi_4": {
-        "nick": "upd-ablation-phi-4",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },
-        # CLI Arguments
+        "nick": "upd--phi-4",
+        "experiments": {"paper": {"main_attack_steps": 50}},
         "model": "microsoft/Phi-4-mini-instruct",
         "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
     },
     "gemma_2": {
-        "nick": "upd-ablation-gemma-2",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },
-        # "experiments": {"setup12": EXP_SETUP_12}, # TODO: NEW SETUP FOR HB JUDGE
-        # CLI Arguments
+        "nick": "upd--gemma-2",
+        "experiments": {"paper": {"main_attack_steps": 150}},
         "model": "google/gemma-2-2b-it",
         "layers": ["model.layers.10", "model.layers.15", "model.layers.21", "lm_head"],
         "kv_caching": "false",
     },
     "qwen_3": {
-        "nick": "upd-ablation-qwen-3",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },
-        # "experiments": {"setup12": EXP_SETUP_12}, # TODO: NEW SETUP FOR HB JUDGE
-        # CLI Arguments
+        "nick": "upd--qwen-3",
+        "experiments": {"paper": {"main_attack_steps": 15}},
         "model": "Qwen/Qwen3-4B-Instruct-2507",
         "layers": ["model.layers.15", "model.layers.20", "model.layers.28", "lm_head"],
+        "warmup_epochs": 2,
     },
     "llama_2_cat": {
-        "nick": "upd-ablation-llama2-cat",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },
-        # CLI Arguments
+        "nick": "upd--llama2-cat",
+        "experiments": {"paper": {"main_attack_steps": 7}},
         "model": "ContinuousAT/Llama-2-7B-CAT",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "mistral_r2d2": {
-        "nick": "upd-ablation-mistral-r2d2",
+        "nick": "upd--mistral-r2d2",
         "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
+            "paper": {
+                "main_attack_steps": 100,
+                "main_attack_target_matching": "true",
+            }
         },
-        # CLI Arguments
         "model": "cais/zephyr_7b_r2d2",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_3_rr": {
-        "nick": "upd-ablation-llama3-rr",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },
-        # CLI Arguments
+        "nick": "upd--llama3-rr",
+        "experiments": {"paper": {"main_attack_steps": 35}},
         "model": "GraySwanAI/Llama-3-8B-Instruct-RR",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "llama_3_lat": {
-        "nick": "upd-ablation-llama3-lat",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },  # CLI Arguments
+        "nick": "upd--llama3-lat",
+        "experiments": {"paper": {"main_attack_steps": 35}},
         "model": "LLM-LAT/robust-llama3-8b-instruct",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },
     "phi_3_capo": {
-        "nick": "upd-ablation-phi-3-capo",
-        "experiments": {
-            "setup2": EXP_SETUP_2,
-            "setup3": EXP_SETUP_3,
-            "setup5": EXP_SETUP_5,
-            "setup6": EXP_SETUP_6,
-            "setup8": EXP_SETUP_8,
-            "setup12": EXP_SETUP_12,
-        },  # CLI Arguments
+        "nick": "upd--phi-3-capo",
+        "experiments": {"paper": {"main_attack_steps": 150}},
         "model": "ContinuousAT/Phi-CAPO",
         "layers": ["model.layers.12", "model.layers.17", "model.layers.25", "lm_head"],
     },

@@ -200,9 +200,7 @@ class AdvModel(nn.Module):
             strict (bool): If True, number of adversarial tokens must match to `self.num_tokens`.
         """
         assert adv_embeds.ndim == 3, "Adversarial embeddings must be a 3D tensor (batch_size, num_tokens, embed_dim)"
-        assert adv_embeds.size(2) == self.adv_embedder.embed_dim, (
-            "Adversarial embeddings must match the embed_dim of the model"
-        )
+        assert adv_embeds.size(2) == self.adv_embedder.embed_dim, "Adversarial embeddings must match the embed_dim of the model"
 
         num_tokens = adv_embeds.size(1)
         if num_tokens != self.num_tokens and strict:
@@ -417,6 +415,9 @@ class AdvModel(nn.Module):
         if config is None:
             config = GenConfig()
 
+        # override config with kwargs
+        config = GenConfig(**{**config.get_hparams(), **kwargs})
+
         # use default adv_embeds if they should be used but not provided
         if adv_embeds is None and adv_mask is not None and torch.any(adv_mask):
             adv_embeds = self.adv_embeds
@@ -434,11 +435,8 @@ class AdvModel(nn.Module):
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             generation_config=generation_config,
-            bos_token_id=self.tokenizer.bos_token_id,
-            eos_token_id=self.tokenizer.eos_token_id,
             pad_token_id=self.tokenizer.pad_token_id,
             use_model_defaults=False,
-            **kwargs,
         )  # type: ignore
 
     @torch.inference_mode()
@@ -457,6 +455,7 @@ class AdvModel(nn.Module):
             adv_embeds (torch.Tensor | None): The adversarial embeddings to be used during generation.
                 If None, uses the default adversarial embeddings set in the model (if necessary).
             config (GenConfig | None): Generation configuration. If None, uses the default generation configuration.
+            **kwargs: Additional keyword arguments to be passed to the model's generate method.
 
         Returns:
             list[str]: List of generated adversarial texts.

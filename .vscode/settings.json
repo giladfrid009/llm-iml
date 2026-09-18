@@ -2,6 +2,7 @@
     "python.analysis.typeCheckingMode": "standard",
     "python.analysis.autoImportCompletions": false,
     "cSpell.words": [
+        "accum",
         "activ",
         "activs",
         "ADVBENCH",

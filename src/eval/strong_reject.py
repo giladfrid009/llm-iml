@@ -65,7 +65,12 @@ class StrongReject(Evaluator):
         lora_path = huggingface_hub.snapshot_download(lora_name)
 
         if llm_config is None:
-            llm_config = LLMConfig(model_name=model_name, dtype="bfloat16", lora_path=lora_path)
+            llm_config = LLMConfig(
+                model_name=model_name,
+                dtype="bfloat16",
+                lora_path=lora_path,
+                gpu_memory_utilization=0.8,
+            )
 
         if sampling_params is None:
             sampling_params = SamplingParams(

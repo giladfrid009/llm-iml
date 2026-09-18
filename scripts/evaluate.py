@@ -14,7 +14,7 @@ module_dir = pathlib.Path(__file__).parent.resolve().parent
 if str(module_dir) not in sys.path:
     sys.path.append(str(module_dir))
 
-from gserve.configs import ServeConfig, LLMConfig
+from gserve.configs import ServeConfig
 from scripts.utils.load_evaluator import load_single_evaluator, SUPPORTED_EVALUATORS
 from src.utils.logging import create_logger, setup_logging, loglevel_names, parse_log_level
 from src.utils.torch import clear_memory
@@ -222,6 +222,7 @@ def main(args: argparse.Namespace):
     path_list, data_list = read_data(args.data_path, args.recurse, args.patterns)
     loader_list = [TableLoader(df, batch_size=args.batch_size, shuffle=False) for df in data_list]
     all_results = {ds_name: {} for ds_name in path_list}
+    had_failures = False
 
     if len(loader_list) == 0:
         logger.error("No valid data files found. Exiting.")
@@ -237,6 +238,7 @@ def main(args: argparse.Namespace):
         evaluator = _create_evaluator(eval_name, serve_config)
         if evaluator is None:
             logger.error("Skipping evaluator due to initialization failure.")
+            had_failures = True
             continue
 
         logger.info(f"Hyperparameters: {evaluator.get_hparams()}")
@@ -248,16 +250,26 @@ def main(args: argparse.Namespace):
                 evaluator = _create_evaluator(eval_name, serve_config)
                 if evaluator is None:
                     logger.error("Failed to re-initialize evaluator. Skipping remaining datasets.")
+                    had_failures = True
                     break
 
             try:
                 results = evaluator.evaluate(dl)
                 all_results[ds_name].update(results)
                 eval_results[ds_name] = results
+                
+                # save results
+                output_path = str(pathlib.Path(ds_name).with_suffix(".csv"))
+                output = pathlib.Path(output_path)
+                temporary_output = output.with_name(f".{output.name}.tmp")
+                dl.df.to_csv(temporary_output, index=False)
+                temporary_output.replace(output)
+                logger.info(f"Saved results to {output_path}")
 
             except Exception as e:
                 logger.exception(e)
                 logger.error(f"Evaluation failed on dataset {ds_name}.")
+                had_failures = True
                 evaluator.close()
                 evaluator = None
 
@@ -279,12 +291,8 @@ def main(args: argparse.Namespace):
         pprint.pprint(results, width=width)
         print()
 
-    for ds_name, dl in zip(path_list, loader_list):
-        # change ds_name suffix to .csv
-        ds_name = str(pathlib.Path(ds_name).with_suffix(".csv"))
-        dl.df.to_csv(ds_name, index=False)
-        logger.info(f"Saved results to {ds_name}")
-
+    if had_failures:
+        raise RuntimeError("One or more evaluator jobs failed; see errors above")
 
 if __name__ == "__main__":
     args = parse_args()

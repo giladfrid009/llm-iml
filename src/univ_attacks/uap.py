@@ -102,6 +102,7 @@ class UAP(UnivAttack):
                         conversations=input_convs,
                         adv_embeds=self.univ_embeds,
                         config=self.gen_config,
+                        do_sample=False,
                     )
 
                 eval_result = self.judge_evaluator.eval_batch(input_texts, init_responses)
@@ -136,6 +137,7 @@ class UAP(UnivAttack):
                         conversations=sample_result.conversations,
                         adv_embeds=sample_result.adv_embeds,
                         config=self.gen_config,
+                        do_sample=False,
                     )
 
                 eval_result = self.judge_evaluator.eval_batch(input_texts, sample_responses)

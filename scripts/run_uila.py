@@ -39,8 +39,8 @@ class UILA_Experiment(UPD_Experiment):
         gen_config,
         metric_tracker,
     ) -> UnivAttack:
-        def sample_attack_factory(adv_model: AdvModel, epoch: int):
-            if epoch < args.warmup_epochs:
+        def sample_attack_factory(adv_model: AdvModel, position):
+            if position.epoch < args.warmup_epochs:
                 return SP(
                     adv_model,
                     optim_factory=lambda params: optim.AdamW(params, lr=args.warmup_attack_lr),

@@ -37,7 +37,7 @@ The following script files are available:
 
 #### Helpers
 
-* **`generate.py`** (optional) - given a perturbation from a previous experiment, generate outputs over additional datasets.
+* **`generate.py`** (optional) - given a perturbation from a previous experiment, generate outputs over additional datasets. Use `--splits train val test` to choose exactly which split files are generated; the default is `train`.
 * **`evaluate.py`** (optional) - given generated outputs from `generate.py` or from running an experiment script, evaluate them with the provided judges.
 * **`summarize.py`** (optional) - given a folder containing evaluation outputs from `evaluate.py` or from running experiment scripts, summarize all results from all sub-folders in a human readable format.
 

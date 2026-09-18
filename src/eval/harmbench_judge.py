@@ -50,7 +50,11 @@ class HarmBenchJudge(Evaluator):
             raise ValueError(f"LLMConfig model_name {llm_config.model_name} does not match the provided model_name {model_name}.")
 
         if llm_config is None:
-            llm_config = LLMConfig(model_name=model_name, dtype="bfloat16")
+            llm_config = LLMConfig(
+                model_name=model_name,
+                dtype="bfloat16",
+                gpu_memory_utilization=0.8,
+            )
 
         if sampling_params is None:
             sampling_params = SamplingParams(

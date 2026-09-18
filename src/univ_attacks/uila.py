@@ -71,10 +71,10 @@ def ila_loss(
 
 class UILA(UPD):
     """
-    Universal variant of Intermediate-Level Attack (ILA), adapted for LLMs. 
+    Universal variant of Intermediate-Level Attack (ILA), adapted for LLMs.
     - Enhancing Adversarial Example Transferability with an Intermediate Level Attack [https://arxiv.org/abs/1907.10823]
     """
-    
+
     def __init__(self, *args, normalized_loss: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -82,9 +82,8 @@ class UILA(UPD):
         self.metric_tracker.report_hparams("attack", normalized_loss=self.normalized_loss)
 
     def optim_step(self, data: dict[str, list[Any]], position: TrainPosition) -> dict[str, float | None]:
-        # create new instance of inner attack for each epoch
-        if position.epoch > 0 and position.batch == 0:
-            self.inner_attack = self.make_attack(position.epoch)
+        # create new instance of inner attack for each step
+        self.inner_attack = self.make_attack(position)
 
         METRICS = {}
         self.optimizer.zero_grad()
@@ -102,6 +101,7 @@ class UILA(UPD):
                         conversations=input_convs,
                         adv_embeds=self.univ_embeds,
                         config=self.gen_config,
+                        do_sample=False,
                     )
 
                     eval_result = self.judge_evaluator.eval_batch(input_texts, init_responses)
@@ -140,6 +140,7 @@ class UILA(UPD):
                         conversations=sample_result.conversations,
                         adv_embeds=sample_result.adv_embeds,
                         config=self.gen_config,
+                        do_sample=False,
                     )
 
                     eval_result = self.judge_evaluator.eval_batch(input_texts, sample_responses)
@@ -224,7 +225,7 @@ class UILA(UPD):
                     adv_embeds=self.univ_embeds,
                 )
                 univ_activs = self.activ_extractor.get_activations()
-            
+
             criterion = ActivationLoss(loss_fn=ila_loss, reduction="sum-mean")
             loss = criterion.forward(
                 univ_activs,
@@ -236,12 +237,7 @@ class UILA(UPD):
                 sample_mean=False,
                 normalized=self.normalized_loss,
             )
-            
 
-        # grad step
-        self.grad_scaler.scale(loss).backward()
-        self.grad_scaler.step(self.optimizer)
-        self.grad_scaler.update()
-
+        self._backward_step(loss, sample_count=len(input_convs))
         METRICS["loss"] = loss.item()
         return METRICS

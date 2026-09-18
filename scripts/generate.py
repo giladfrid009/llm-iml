@@ -1,6 +1,7 @@
 import torch
 import random
 import argparse
+import os
 import sys
 import pathlib
 
@@ -41,16 +42,16 @@ class Generator:
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
         parser.add_argument(
-            "embeds_path",
+            "embeds",
             type=str,
+            nargs="+",
             metavar="PATH",
-            help="Path to adversarial embeddings file (.pt)",
+            help="Paths to adversarial embeddings files (.pt)",
         )
 
         parser.add_argument(
             "--model",
             type=str,
-            default="meta-llama/Llama-2-7b-chat-hf",
             metavar="MODEL",
             help=f"The model name to attack. Supported models: {SUPPORTED_MODELS}",
         )
@@ -74,15 +75,13 @@ class Generator:
         )
 
         parser.add_argument(
-            "--include_train",
-            action="store_true",
-            help="Whether to generate on the training set as well.",
-        )
-
-        parser.add_argument(
-            "--include_eval",
-            action="store_true",
-            help="Whether to generate on the evaluation set as well.",
+            "--splits",
+            type=str,
+            nargs="+",
+            choices=["train", "val", "test"],
+            default=["train"],
+            metavar="SPLIT",
+            help="Dataset splits to generate. Only the named output files are touched.",
         )
 
         parser.add_argument(
@@ -99,7 +98,7 @@ class Generator:
             default="{model}_{dataset}_{split}.csv",
             help="Format string for naming the results files. Must include [{model}, {dataset}, {split}] placeholders.",
         )
-        
+
         parser.add_argument(
             "--overwrite",
             action="store_true",
@@ -174,6 +173,9 @@ class Generator:
         self._parsed_args = parser.parse_args()
         args = self.args()
 
+        if len(args.splits) != len(set(args.splits)):
+            parser.error("--splits must not contain duplicate split names")
+
         # print the parsed arguments
         print()
         print("Parsed arguments:")
@@ -192,9 +194,9 @@ class Generator:
         env.prepare_environment()
         env.set_seed(seed)
 
-    def results_path(self, dataset: str, split: str) -> str:
+    def results_path(self, embeds_path: str, dataset: str, split: str) -> str:
         args = self.args()
-        folder = pathlib.Path(args.embeds_path).parent / "generations"
+        folder = pathlib.Path(embeds_path).parent / "generations"
 
         model_name = args.model.split("/")[-1].lower()
         dataset_name = dataset.lower()
@@ -220,18 +222,6 @@ class Generator:
         logger.info(f"Loading model: {args.model}")
         model, tokenizer = load_model(args.model, torch_dtype=torch.bfloat16, device_map="cuda:0")
 
-        adv_embeds = torch.load(self.args().embeds_path, map_location=model.device)
-
-        adv_model = AdvModel(
-            model=model,
-            tokenizer=tokenizer,
-            num_tokens=adv_embeds.size(1),
-            add_spaces=self.args().add_spaces,
-            adv_suffix=not self.args().adv_prefix,
-        )
-
-        adv_model.set_embeddings(adv_embeds, strict=True)
-
         gen_config = GenConfig(
             max_new_tokens=self.args().max_new_tokens,
             do_sample=self.args().do_sample == "true",
@@ -240,43 +230,48 @@ class Generator:
             remove_invalid_values=True,
         )
 
-        univ_attack = UnivAttack(
-            adv_model=adv_model,
-            evaluators=[KeywordMatching()],
-            eval_metric="Matching/GCG1",
-            metric_tracker=MetricTracker.create(kind="clearml", project="none", disabled=True),
-            gen_config=gen_config,
-        )
-
+        datasets = {}
         for dataset in args.dataset:
-
             logger.info(f"Loading dataset: {dataset}")
             ds_train, ds_val, ds_test = load_dataset(dataset)
-            dl_train = TableLoader(ds_train, batch_size=args.batch_size, shuffle=False)
-            dl_eval = TableLoader(ds_val, batch_size=args.batch_size, shuffle=False)
-            dl_test = TableLoader(ds_test, batch_size=args.batch_size, shuffle=False)
-
             logger.info(f"Loaded dataset {dataset} with sample counts: (train, val, test) = ({len(ds_train)}, {len(ds_val)}, {len(ds_test)}).")
+            datasets[dataset] = {"train": ds_train, "val": ds_val, "test": ds_test}
 
-            if args.include_train:
-                logger.info("Generating on training set...")
-                univ_attack.predict(dl_train)
-                result_path = self.results_path(dataset, "train")
-                dl_train.df.to_csv(result_path, index=False)
-                logger.info(f"Saved training generations to {result_path}")
+        for embeds_path in args.embeds:
+            logger.info(f"Loading adversarial embeddings: {embeds_path}")
+            adv_embeds = torch.load(embeds_path, map_location=model.device)
+            
+            adv_model = AdvModel(
+                model=model,
+                tokenizer=tokenizer,
+                num_tokens=adv_embeds.size(1),
+                add_spaces=self.args().add_spaces,
+                adv_suffix=not self.args().adv_prefix,
+            )
+            
+            adv_model.set_embeddings(adv_embeds, strict=True)
+            
+            univ_attack = UnivAttack(
+                adv_model=adv_model,
+                evaluators=[KeywordMatching()],
+                eval_metric="Matching/GCG1",
+                metric_tracker=MetricTracker.create(kind="clearml", project="none", disabled=True),
+                gen_config=gen_config,
+            )
 
-            if args.include_eval:
-                logger.info("Generating on evaluation set...")
-                univ_attack.predict(dl_eval)
-                result_path = self.results_path(dataset, "eval")
-                dl_eval.df.to_csv(result_path, index=False)
-                logger.info(f"Saved evaluation generations to {result_path}")
+            for dataset, split_datasets in datasets.items():
+                for split in args.splits:
+                    try:
+                        split_path = self.results_path(embeds_path, dataset, split)
+                        logger.info(f"Generating on {split} set...")
+                        loader = TableLoader(split_datasets[split], batch_size=args.batch_size, shuffle=False)
+                        univ_attack.predict(loader)
+                        loader.df.to_csv(split_path, index=False)
+                        logger.info(f"Saved {split} generations to {split_path}")
 
-            logger.info("Generating on test set...")
-            univ_attack.predict(dl_test)
-            result_path = self.results_path(dataset, "test")
-            dl_test.df.to_csv(result_path, index=False)
-            logger.info(f"Saved test generations to {result_path}")
+                    except FileExistsError as e:
+                        logger.warning(str(e))
+                        continue
 
     def main(self):
         try:
